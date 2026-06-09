@@ -15,10 +15,19 @@ import {
   FREIGHTER_ID,
 } from "@creit.tech/stellar-wallets-kit";
 
-const VAULT_ID = process.env.NEXT_PUBLIC_VAULT_ID as string;
-const USDC_ISSUER = process.env.NEXT_PUBLIC_USDC_ISSUER as string;
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL as string;
-const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL as string;
+// Valeurs publiques testnet (contract IDs + endpoints). Defaut en dur pour que
+// la demo marche meme si les env vars ne sont pas posees sur l'hote (Render).
+// L'env reste prioritaire si elle est definie.
+const VAULT_ID =
+  process.env.NEXT_PUBLIC_VAULT_ID ||
+  "CDPZCITOBYAO4SHLGMLDSK7Y7NFR4GWXCTSRKI6ZHMPHTCFVWCPADIHJ";
+const USDC_ISSUER =
+  process.env.NEXT_PUBLIC_USDC_ISSUER ||
+  "GCHARQP3MBZJAUQJ5WHS3AF25G3Z5NP2AET34JOTWYNW75SY6QS5T5HY";
+const RPC_URL =
+  process.env.NEXT_PUBLIC_RPC_URL || "https://soroban-testnet.stellar.org";
+const HORIZON_URL =
+  process.env.NEXT_PUBLIC_HORIZON_URL || "https://horizon-testnet.org";
 const PASSPHRASE = Networks.TESTNET;
 const DECIMALS = 7;
 

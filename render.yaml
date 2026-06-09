@@ -1,0 +1,24 @@
+# Render Blueprint - demo statique ForYield x Stellar (testnet, jetable)
+# Deploiement : Render -> New -> Blueprint -> pointer ce repo.
+# La UI Next.js (dossier web/) est exportee en statique : pas de serveur,
+# pas de cold start, free tier toujours en ligne.
+services:
+  - type: web
+    name: foryield-stellar-demo
+    runtime: static
+    rootDir: web
+    buildCommand: npm install && npm run build
+    staticPublishPath: out
+    pullRequestPreviewsEnabled: false
+    # Valeurs publiques (contract IDs testnet + endpoints), aucun secret.
+    envVars:
+      - key: NEXT_PUBLIC_VAULT_ID
+        value: CDPZCITOBYAO4SHLGMLDSK7Y7NFR4GWXCTSRKI6ZHMPHTCFVWCPADIHJ
+      - key: NEXT_PUBLIC_USDC_SAC
+        value: CAOVR32GS72FJKWOF3IM3SQJOBUHDKYRDMCHGVQMT742UM3LGWNO7O7G
+      - key: NEXT_PUBLIC_USDC_ISSUER
+        value: GCHARQP3MBZJAUQJ5WHS3AF25G3Z5NP2AET34JOTWYNW75SY6QS5T5HY
+      - key: NEXT_PUBLIC_RPC_URL
+        value: https://soroban-testnet.stellar.org
+      - key: NEXT_PUBLIC_HORIZON_URL
+        value: https://horizon-testnet.org

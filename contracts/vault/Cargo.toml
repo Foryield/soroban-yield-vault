@@ -1,0 +1,17 @@
+[package]
+name = "yield-vault"
+description = "ForYield Soroban YieldVault (MVP): USDC deposit/withdraw, 1:1 shares"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = "22"
+
+[dev-dependencies]
+soroban-sdk = { version = "22", features = ["testutils"] }

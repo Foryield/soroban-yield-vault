@@ -3,8 +3,10 @@
 import { useState } from "react";
 import {
   connectWallet,
-  getUsdcBalance,
+  getNativeBalance,
   deposit,
+  fundTestnetAccount,
+  AccountNotFundedError,
   EXPLORER_TX,
 } from "@/lib/stellar";
 
@@ -21,16 +23,47 @@ export default function Home() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [txHash, setTxHash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [needsFunding, setNeedsFunding] = useState(false);
+  const [funding, setFunding] = useState(false);
+
+  // Rafraichit le solde XLM ; bascule en mode "compte non finance" si Horizon 404.
+  async function refreshBalance(addr: string) {
+    try {
+      const bal = await getNativeBalance(addr);
+      setBalance(bal);
+      setNeedsFunding(false);
+    } catch (e) {
+      if (e instanceof AccountNotFundedError) {
+        setBalance("0");
+        setNeedsFunding(true);
+        return;
+      }
+      throw e;
+    }
+  }
 
   async function handleConnect() {
     try {
       setError(null);
       const addr = await connectWallet();
       setAddress(addr);
-      const bal = await getUsdcBalance(addr);
-      setBalance(bal);
+      await refreshBalance(addr);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not connect");
+    }
+  }
+
+  async function handleFund() {
+    if (!address) return;
+    setFunding(true);
+    setError(null);
+    try {
+      await fundTestnetAccount(address);
+      await refreshBalance(address);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Funding failed");
+    } finally {
+      setFunding(false);
     }
   }
 
@@ -43,8 +76,7 @@ export default function Home() {
       const hash = await deposit(address, amount);
       setTxHash(hash);
       setPhase("success");
-      const bal = await getUsdcBalance(address);
-      setBalance(bal);
+      await refreshBalance(address);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Deposit failed");
       setPhase("error");
@@ -69,12 +101,33 @@ export default function Home() {
       <div className="card">
         <div className="title">YieldVault</div>
         <div className="subtitle">
-          Deposit USDC into the Soroban YieldVault. MiCA-regulated DeFi yield,
+          Deposit XLM into the Soroban YieldVault. MiCA-regulated DeFi yield,
           settled on Stellar in under five seconds.
         </div>
 
         {!address ? (
           <button onClick={handleConnect}>Connect Wallet</button>
+        ) : needsFunding ? (
+          <>
+            <div className="row">
+              <span className="label">Wallet</span>
+              <span className="value mono">{shorten(address)}</span>
+            </div>
+            <div className="status error">
+              This account isn&apos;t active on Stellar testnet yet. Fund it with
+              Friendbot to continue.
+            </div>
+            <button onClick={handleFund} disabled={funding}>
+              {funding ? (
+                <>
+                  <span className="spinner" />
+                  Funding...
+                </>
+              ) : (
+                "Fund with Friendbot"
+              )}
+            </button>
+          </>
         ) : (
           <>
             <div className="row">
@@ -82,12 +135,12 @@ export default function Home() {
               <span className="value mono">{shorten(address)}</span>
             </div>
             <div className="row">
-              <span className="label">USDC balance</span>
+              <span className="label">XLM balance</span>
               <span className="value">
                 {Number(balance).toLocaleString("en-US", {
                   maximumFractionDigits: 4,
                 })}{" "}
-                USDC
+                XLM
               </span>
             </div>
 
@@ -100,7 +153,7 @@ export default function Home() {
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={phase === "signing"}
               />
-              <span className="suffix">USDC</span>
+              <span className="suffix">XLM</span>
             </div>
 
             <button onClick={handleDeposit} disabled={!canDeposit}>

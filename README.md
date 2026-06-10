@@ -5,20 +5,23 @@ DeFi yield vault on Stellar. This repository contains the core `YieldVault`
 contract submitted for the Stellar Community Fund (SCF) Build Award.
 
 > **Scope (Tranche 1 / Deliverable 1 - MVP).** This contract is deliberately minimal:
-> USDC deposit, proportional share minting (1:1 until a strategy is wired), withdrawal,
-> and an admin emergency pause. Multi-protocol allocation (Blend v2, Aquarius),
-> DeFindex routing, the performance-fee module with high-water mark, transferable
-> SEP-41 shares, and the EURC StellarAssetContract wrapper ship in Tranches 2 and 3.
+> asset deposit (native XLM on the testnet demo), proportional share minting (1:1 until
+> a strategy is wired), withdrawal, and an admin emergency pause. The vault is
+> asset-agnostic - the deposit asset is set once at `initialize`, so USDC/EURC StellarAssetContracts
+> plug in unchanged. Multi-protocol allocation (Blend v2, Aquarius), DeFindex routing,
+> the performance-fee module with high-water mark, and transferable SEP-41 shares ship
+> in Tranches 2 and 3.
 
 ## Testnet deployment
 
 | Component | Contract ID |
 |---|---|
-| YieldVault | `CDPZCITOBYAO4SHLGMLDSK7Y7NFR4GWXCTSRKI6ZHMPHTCFVWCPADIHJ` |
-| USDC (test StellarAssetContract) | `CAOVR32GS72FJKWOF3IM3SQJOBUHDKYRDMCHGVQMT742UM3LGWNO7O7G` |
+| YieldVault | `CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6` |
+| Deposit asset - native XLM (SAC) | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
 
 Network: Stellar **Testnet** (`Test SDF Network ; September 2015`).
-Explore on [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CDPZCITOBYAO4SHLGMLDSK7Y7NFR4GWXCTSRKI6ZHMPHTCFVWCPADIHJ).
+The demo vault uses native XLM so any Friendbot-funded account can deposit with no faucet.
+Explore on [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6).
 
 ## Contract interface
 
@@ -51,8 +54,10 @@ stellar keys generate deployer --fund
 stellar contract deploy \
   --wasm target/wasm32v1-none/release/yield_vault.wasm \
   --source deployer --network testnet
+# Asset = native XLM SAC on testnet:
+#   stellar contract id asset --asset native --network testnet
 stellar contract invoke --id <VAULT_ID> --source deployer --network testnet \
-  -- initialize --admin <ADMIN_G_ADDR> --asset <USDC_SAC_ID>
+  -- initialize --admin <ADMIN_G_ADDR> --asset <NATIVE_SAC_ID>
 ```
 
 ## Roadmap

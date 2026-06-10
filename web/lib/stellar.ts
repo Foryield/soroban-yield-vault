@@ -7,6 +7,7 @@ import {
   nativeToScVal,
   rpc,
   Horizon,
+  NotFoundError,
 } from "@stellar/stellar-sdk";
 import {
   StellarWalletsKit,
@@ -20,10 +21,7 @@ import {
 // L'env reste prioritaire si elle est definie.
 const VAULT_ID =
   process.env.NEXT_PUBLIC_VAULT_ID ||
-  "CDPZCITOBYAO4SHLGMLDSK7Y7NFR4GWXCTSRKI6ZHMPHTCFVWCPADIHJ";
-const USDC_ISSUER =
-  process.env.NEXT_PUBLIC_USDC_ISSUER ||
-  "GCHARQP3MBZJAUQJ5WHS3AF25G3Z5NP2AET34JOTWYNW75SY6QS5T5HY";
+  "CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6";
 const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL || "https://soroban-testnet.stellar.org";
 const HORIZON_URL =
@@ -33,6 +31,25 @@ const DECIMALS = 7;
 
 export const EXPLORER_TX = (hash: string) =>
   `https://stellar.expert/explorer/testnet/tx/${hash}`;
+
+// Levee quand le compte du wallet n'existe pas encore sur testnet (Horizon 404).
+// Un compte Stellar n'existe on-chain qu'apres avoir ete finance (Friendbot).
+export class AccountNotFundedError extends Error {
+  constructor() {
+    super("Account not funded on Stellar testnet");
+    this.name = "AccountNotFundedError";
+  }
+}
+
+// Finance un compte testnet via Friendbot (XLM uniquement, pas d'USDC).
+export async function fundTestnetAccount(address: string): Promise<void> {
+  const res = await fetch(
+    `https://friendbot.stellar.org/?addr=${encodeURIComponent(address)}`,
+  );
+  if (!res.ok) {
+    throw new Error("Friendbot funding failed");
+  }
+}
 
 let kit: StellarWalletsKit | null = null;
 
@@ -65,16 +82,18 @@ export async function connectWallet(): Promise<string> {
   });
 }
 
-export async function getUsdcBalance(address: string): Promise<string> {
+export async function getNativeBalance(address: string): Promise<string> {
   const horizon = new Horizon.Server(HORIZON_URL);
-  const acc = await horizon.loadAccount(address);
-  const line = acc.balances.find(
-    (b) =>
-      "asset_code" in b &&
-      b.asset_code === "USDC" &&
-      "asset_issuer" in b &&
-      b.asset_issuer === USDC_ISSUER,
-  );
+  let acc: Awaited<ReturnType<typeof horizon.loadAccount>>;
+  try {
+    acc = await horizon.loadAccount(address);
+  } catch (e) {
+    if (e instanceof NotFoundError) {
+      throw new AccountNotFundedError();
+    }
+    throw e;
+  }
+  const line = acc.balances.find((b) => b.asset_type === "native");
   return line ? line.balance : "0";
 }
 

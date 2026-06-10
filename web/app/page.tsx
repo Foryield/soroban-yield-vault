@@ -30,7 +30,7 @@ export default function Home() {
       const bal = await getUsdcBalance(addr);
       setBalance(bal);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Connexion impossible");
+      setError(e instanceof Error ? e.message : "Could not connect");
     }
   }
 
@@ -46,7 +46,7 @@ export default function Home() {
       const bal = await getUsdcBalance(address);
       setBalance(bal);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Echec du depot");
+      setError(e instanceof Error ? e.message : "Deposit failed");
       setPhase("error");
     }
   }

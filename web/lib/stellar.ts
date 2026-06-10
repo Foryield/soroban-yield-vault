@@ -60,7 +60,7 @@ export async function connectWallet(): Promise<string> {
           reject(e);
         }
       },
-      onClosed: () => reject(new Error("Connexion annulee")),
+      onClosed: () => reject(new Error("Connection cancelled")),
     });
   });
 }
@@ -119,7 +119,7 @@ export async function deposit(
   const signed = TransactionBuilder.fromXDR(signedTxXdr, PASSPHRASE);
   const sent = await server.sendTransaction(signed);
   if (sent.status === "ERROR") {
-    throw new Error("Echec de l'envoi de la transaction");
+    throw new Error("Failed to send transaction");
   }
 
   let result = await server.getTransaction(sent.hash);
@@ -130,7 +130,7 @@ export async function deposit(
     tries++;
   }
   if (result.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
-    throw new Error("Transaction non confirmee");
+    throw new Error("Transaction not confirmed");
   }
   return sent.hash;
 }

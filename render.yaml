@@ -21,4 +21,4 @@ services:
       - key: NEXT_PUBLIC_RPC_URL
         value: https://soroban-testnet.stellar.org
       - key: NEXT_PUBLIC_HORIZON_URL
-        value: https://horizon-testnet.org
+        value: https://horizon-testnet.stellar.org

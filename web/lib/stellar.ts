@@ -27,7 +27,7 @@ const USDC_ISSUER =
 const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL || "https://soroban-testnet.stellar.org";
 const HORIZON_URL =
-  process.env.NEXT_PUBLIC_HORIZON_URL || "https://horizon-testnet.org";
+  process.env.NEXT_PUBLIC_HORIZON_URL || "https://horizon-testnet.stellar.org";
 const PASSPHRASE = Networks.TESTNET;
 const DECIMALS = 7;
 

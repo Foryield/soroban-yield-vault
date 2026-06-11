@@ -105,6 +105,22 @@ function toStroops(amount: string): bigint {
   );
 }
 
+// Re-demande l'acces a Freighter juste avant de signer. Le connect initial
+// (getAddress -> requestAccess) ne garantit pas que le domaine est encore dans
+// l'allowlist au moment de signer : getAddress peut renvoyer une cle publique
+// en cache sans autorisation vivante, ce qui declenche le warning Freighter
+// "<domaine> is not currently connected". Si le domaine est deja autorise,
+// requestAccess revient sans prompt ; sinon il propose de reconnecter.
+async function ensureWalletAccess(address: string): Promise<void> {
+  const k = getKit();
+  const { address: active } = await k.getAddress();
+  if (active !== address) {
+    throw new Error(
+      "Active Freighter account changed. Reconnect your wallet and retry.",
+    );
+  }
+}
+
 export async function deposit(
   address: string,
   amountUsdc: string,
@@ -128,6 +144,9 @@ export async function deposit(
     .build();
 
   const prepared = await server.prepareTransaction(built);
+
+  // Garantit une autorisation Freighter vivante au moment de signer.
+  await ensureWalletAccess(address);
 
   const k = getKit();
   const { signedTxXdr } = await k.signTransaction(prepared.toXDR(), {

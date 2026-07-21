@@ -50,6 +50,12 @@ Friendbot-funded account can deposit with no faucet):
 
 Network: Stellar **Testnet** (`Test SDF Network ; September 2015`).
 
+**Deliverable 2 — wallet onboarding**: the [`onboarding/`](./onboarding/)
+package provisions a Soroban-compatible wallet through the DFNS API from an
+email identifier (no extension, no seed phrase) and completes a deposit on the
+demo vault. Evidence in
+[docs/evidence/d2-wallet-onboarding.md](./docs/evidence/d2-wallet-onboarding.md).
+
 ## Contract interface
 
 | Function | Description |

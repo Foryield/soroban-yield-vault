@@ -9,6 +9,7 @@ if ((method !== "deposit" && method !== "withdraw") || !source || !amountRaw) {
 
 try {
   const amount = BigInt(amountRaw);
+  if (amount <= 0n) throw new Error(`amount must be a positive number of stroops, got ${amountRaw}`);
   const cfg = loadConfig();
   const args = method === "deposit" ? depositArgs(source, amount) : withdrawArgs(source, amount);
   const built = await buildInvocationHex({

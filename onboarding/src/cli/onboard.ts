@@ -18,7 +18,7 @@ try {
   const cfg = loadConfig();
   const client = dfnsClient(cfg);
   const summary = await onboard(email, stroops, {
-    provision: async (name) => (provisioned = await provisionWallet(client, name)),
+    provision: async (name) => (provisioned = await provisionWallet(client, name, cfg.network)),
     fund: fundWithFriendbot,
     buildEnvelope: (source, amount) =>
       buildInvocationHex({

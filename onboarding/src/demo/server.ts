@@ -81,7 +81,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const client = dfnsClient(cfg);
   const app = createDemoServer({
     onboardWallet: async (email) => {
-      const wallet = await provisionWallet(client, email);
+      const wallet = await provisionWallet(client, email, cfg.network);
       await fundWithFriendbot(wallet.address);
       return wallet;
     },
@@ -103,6 +103,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   // Loopback only: without an explicit host Node binds every interface, and
   // these routes spend the machine's DFNS credentials.
   app.listen(port, "127.0.0.1", () => {
-    console.log(`For Yield demo: http://localhost:${port}`);
+    console.log(`For Yield demo: http://127.0.0.1:${port}`);
   });
 }

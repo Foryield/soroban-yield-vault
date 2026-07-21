@@ -4,7 +4,7 @@ import { provisionWallet, fundWithFriendbot } from "../src/provision.js";
 describe("provisionWallet", () => {
   it("creates a StellarTestnet wallet and returns id + address", async () => {
     const client = { wallets: { createWallet: vi.fn().mockResolvedValue({ id: "wa-1", address: "GABC" }) } };
-    const result = await provisionWallet(client as never, "user@example.com");
+    const result = await provisionWallet(client as never, "user@example.com", "StellarTestnet");
     expect(client.wallets.createWallet).toHaveBeenCalledWith({
       body: { network: "StellarTestnet", name: "user@example.com" },
     });
@@ -13,7 +13,7 @@ describe("provisionWallet", () => {
 
   it("fails loudly when DFNS returns no address", async () => {
     const client = { wallets: { createWallet: vi.fn().mockResolvedValue({ id: "wa-1" }) } };
-    await expect(provisionWallet(client as never, "user@example.com")).rejects.toThrow(/address/i);
+    await expect(provisionWallet(client as never, "user@example.com", "StellarTestnet")).rejects.toThrow(/address/i);
   });
 });
 

@@ -33,12 +33,18 @@ export async function buildInvocationHex(
   server: rpc.Server = new rpc.Server(request.rpcUrl),
 ): Promise<BuiltEnvelope> {
   const account: Account = await server.getAccount(request.source);
+  // Networks.TESTNET: testnet-only scope, matches Config.network.
   const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: Networks.TESTNET })
     .addOperation(new Contract(request.contractId).call(request.method, ...request.args))
     .setTimeout(300)
     .build();
 
   const simulation = await server.simulateTransaction(tx);
+  // Restore-shaped responses also satisfy isSimulationSuccess: check restore first,
+  // otherwise the assembled tx fails opaquely on-chain (archived ledger entries).
+  if (rpc.Api.isSimulationRestore(simulation)) {
+    throw new Error("simulation requires state restore: archived ledger entries must be restored first");
+  }
   if (!rpc.Api.isSimulationSuccess(simulation)) {
     throw new Error(`simulation failed: ${"error" in simulation ? simulation.error : "unknown"}`);
   }

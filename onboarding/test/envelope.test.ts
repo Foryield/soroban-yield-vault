@@ -43,4 +43,16 @@ describe("buildInvocationHex", () => {
     };
     await expect(buildInvocationHex(opts(), server as never)).rejects.toThrow(/host invocation failed/);
   });
+
+  it("throws when the simulation requires a state restore", async () => {
+    // Restore-shaped responses also satisfy isSimulationSuccess; they must be rejected first.
+    const server = {
+      getAccount: vi.fn().mockResolvedValue(fakeAccount()),
+      simulateTransaction: vi.fn().mockResolvedValue({
+        transactionData: {},
+        restorePreamble: { minResourceFee: "1", transactionData: {} },
+      }),
+    };
+    await expect(buildInvocationHex(opts(), server as never)).rejects.toThrow(/state restore/);
+  });
 });

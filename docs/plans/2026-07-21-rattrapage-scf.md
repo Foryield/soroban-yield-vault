@@ -63,6 +63,11 @@ tenable en 10 semaines uniquement grâce au parallélisme des deux pistes.
   (`min_shares_out` / `min_amount_out`) à trancher avant le redéploiement
   testnet ; erreurs typées `#[contracterror]` à faire pendant la campagne
   de tests (les panics chaîne sont fragiles pour les intégrateurs).
+- Suivis actés en revue (pass 2 Blend, 21/07) : test de retrait en pénurie de
+  liquidité pool (`max_util` atteint via un second actif de collatéral, revert
+  `InvalidUtilRate` vérifié en sonde par le reviewer) à ajouter à la campagne ;
+  chemin de désallocation d'urgence / migration de pool = décision Tranche 2
+  (risque accepté D1, documenté dans l'en-tête du contrat).
 
 **S5 — D3, clos vendredi 21 août**
 

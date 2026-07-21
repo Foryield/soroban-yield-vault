@@ -4,13 +4,22 @@
 //! - depot d'un actif (USDC, via son StellarAssetContract) et emission de parts
 //!   proportionnelles : parts = montant x total_parts / actifs_avant, tronque ;
 //! - retrait pro-rata : montant = parts x actifs / total_parts, tronque ;
-//! - les deux arrondis sont en faveur du vault (des parts existantes) ;
+//! - les arrondis de parts et de montants sont en faveur du vault ; seule la
+//!   valorisation tronquee de la position Blend peut sous-estimer les actifs
+//!   d'au plus une unite brute (poussiere au benefice de l'entrant, du meme
+//!   ordre que la tolerance MINIMUM_LIQUIDITY) ;
 //! - MINIMUM_LIQUIDITY parts mortes au premier depot (anti-inflation) ;
 //! - allocation Blend v2 (optionnelle, fixee a l'initialize) : tout depot est
 //!   fourni au pool de lending, tout retrait en est servi, et total_assets
 //!   valorise la position (bTokens x b_rate) - l'interet accru fait monter le
 //!   prix de la part sans aucune action du vault ;
 //! - pause d'urgence (admin).
+//!
+//! RISQUE ACCEPTE (perimetre D1) : le pool est immuable et il n'existe aucune
+//! fonction de desallocation d'urgence. `pause()` bloque les nouvelles
+//! operations mais ne rapatrie PAS les fonds deja fournis a Blend ; si Blend
+//! gele la reserve, les retraits echouent atomiquement (aucune perte de parts)
+//! jusqu'au degel. Chemin de migration/divest : Tranche 2.
 //!
 //! Hors scope (Tranches 2-3) : routing Soroswap/Aquarius, DeFindex,
 //! frais high-water mark, parts SEP-41 transferables.

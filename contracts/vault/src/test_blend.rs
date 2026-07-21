@@ -59,6 +59,13 @@ struct BlendBench<'a> {
 }
 
 fn setup_blend<'a>(initial_mint: i128) -> BlendBench<'a> {
+    setup_blend_config(initial_mint, default_reserve_config())
+}
+
+fn setup_blend_config<'a>(
+    initial_mint: i128,
+    reserve_config: blend_pool::ReserveConfig,
+) -> BlendBench<'a> {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -87,7 +94,7 @@ fn setup_blend<'a>(initial_mint: i128) -> BlendBench<'a> {
         &1_0000000,
     );
     let pool = blend_pool::Client::new(&env, &pool_id);
-    pool.queue_set_reserve(&usdc, &default_reserve_config());
+    pool.queue_set_reserve(&usdc, &reserve_config);
     pool.set_reserve(&usdc);
 
     blend.backstop.deposit(&admin, &pool_id, &50_000_0000000);
@@ -145,6 +152,52 @@ fn withdraw_pulls_back_from_blend_pool() {
     // Le retrait est servi depuis le pool, le vault ne garde rien d'inactif.
     assert_eq!(b.usdc.balance(&b.vault.address), 0);
     assert_eq!(b.vault.total_assets(), 6_000_0000000);
+}
+
+#[test]
+fn deposit_beyond_pool_supply_cap_reverts_atomically() {
+    let mut config = default_reserve_config();
+    config.supply_cap = 5_000_0000000;
+    let b = setup_blend_config(100_000_0000000, config);
+
+    let result = b.vault.try_deposit(&b.user, &10_000_0000000);
+
+    // Le refus du pool (ExceededSupplyCap) fait echouer TOUTE la transaction :
+    // aucune part emise, aucun token deplace (atomicite Soroban).
+    assert!(result.is_err());
+    assert_eq!(b.vault.total_shares(), 0);
+    assert_eq!(b.usdc.balance(&b.user), 100_000_0000000);
+    assert_eq!(b.vault.total_assets(), 0);
+}
+
+#[test]
+fn frozen_pool_blocks_deposits_but_not_exits() {
+    let b = setup_blend(100_000_0000000);
+    b.vault.deposit(&b.user, &10_000_0000000);
+
+    b.pool.set_status(&4); // Admin Frozen : Blend refuse les nouveaux supplies
+
+    assert!(b.vault.try_deposit(&b.user, &1_000_0000000).is_err());
+    assert_eq!(b.vault.total_shares(), 10_000_0000000); // rien n'a bouge
+
+    // La sortie reste possible : Blend gele les entrees, pas les retraits.
+    let amount = b.vault.withdraw(&b.user, &4_000_0000000);
+    assert_eq!(amount, 4_000_0000000);
+}
+
+#[test]
+fn donation_before_first_deposit_with_pool_absorbed_into_genesis() {
+    let b = setup_blend(100_000_0000000);
+    // Donation avant toute part : elle reste oisive sur le vault.
+    StellarAssetClient::new(&b.env, &b.usdc.address).mint(&b.vault.address, &5_000_0000000);
+
+    let shares = b.vault.deposit(&b.user, &10_000_0000000);
+
+    // La genese absorbe l'oisif + le depot ; seul le depot part au pool.
+    assert_eq!(shares, 15_000_0000000 - 1_000);
+    assert_eq!(b.vault.total_shares(), 15_000_0000000);
+    assert_eq!(b.usdc.balance(&b.vault.address), 5_000_0000000);
+    assert_eq!(b.vault.total_assets(), 15_000_0000000);
 }
 
 #[test]

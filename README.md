@@ -30,6 +30,16 @@ holds no idle assets. Evidence transactions (init, deposit, withdraw) are logged
 in [docs/evidence/d1-vault-mvp.md](./docs/evidence/d1-vault-mvp.md).
 [Explore the D1 vault](https://stellar.expert/explorer/testnet/contract/CC3AEKESVOYLHAEBV3F3WOJP3JHF754ZEEXYG6XD3VQGI5YZEV2OEC6C).
 
+**Deliverable 3 instance — EURC via its SAC wrapper** (pure holding,
+`pool: None`; Circle's official testnet EURC):
+
+| Component | Contract ID |
+|---|---|
+| YieldVault (D3) | `CAA4MCRSKZ53KUE6L4SIWWRWRF3BGCSFKQKZJVEZSDPXTHYPGHUCMM7H` |
+| Deposit asset - EURC SAC wrapper | `CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ` |
+
+Evidence transactions in [docs/evidence/d3-eurc-sac.md](./docs/evidence/d3-eurc-sac.md).
+
 **Demo instance — native XLM, no strategy** (behind vault.for-yield.com, so any
 Friendbot-funded account can deposit with no faucet):
 

@@ -4,13 +4,15 @@ Open-source Soroban smart contract for **ForYield**, the first French MiCA-regul
 DeFi yield vault on Stellar. This repository contains the core `YieldVault`
 contract submitted for the Stellar Community Fund (SCF) Build Award.
 
-> **Scope (Tranche 1 / Deliverable 1 - MVP).** This contract is deliberately minimal:
-> asset deposit (native XLM on the testnet demo), proportional share minting (1:1 until
-> a strategy is wired), withdrawal, and an admin emergency pause. The vault is
-> asset-agnostic - the deposit asset is set once at `initialize`, so USDC/EURC StellarAssetContracts
-> plug in unchanged. Multi-protocol allocation (Blend v2, Aquarius), DeFindex routing,
-> the performance-fee module with high-water mark, and transferable SEP-41 shares ship
-> in Tranches 2 and 3.
+> **Scope (Tranche 1 / Deliverable 1).** Asset deposit with proportional share
+> minting (`shares = amount × total_shares / total_assets`, rounded in the vault's
+> favor), pro-rata withdrawal, a 1,000 dead-share lock on the first deposit
+> (first-depositor inflation protection, Uniswap V2 / DeFindex model), and an admin
+> emergency pause. The vault is asset-agnostic - the deposit asset is set once at
+> `initialize`, so USDC/EURC StellarAssetContracts plug in unchanged. In progress
+> for Deliverable 1: Blend v2 USDC allocation. Multi-protocol allocation, DeFindex
+> routing, the performance-fee module with high-water mark, and transferable SEP-41
+> shares ship in Tranches 2 and 3.
 
 ## Testnet deployment
 
@@ -28,8 +30,8 @@ Explore on [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CCK
 | Function | Description |
 |---|---|
 | `initialize(admin, asset)` | Set the admin and the deposit asset (one-shot). |
-| `deposit(from, amount) -> shares` | Pull `amount` of the asset and mint shares (1:1 at MVP). |
-| `withdraw(from, shares) -> amount` | Burn shares and return the asset (1:1 at MVP). |
+| `deposit(from, amount) -> shares` | Pull `amount` of the asset and mint proportional shares. |
+| `withdraw(from, shares) -> amount` | Burn shares and return the asset pro-rata. |
 | `total_assets() -> i128` | Asset held by the vault (on-chain token balance). |
 | `shares_of(owner) -> i128` | Shares held by an address. |
 | `total_shares() -> i128` | Total shares issued. |

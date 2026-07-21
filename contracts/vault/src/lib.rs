@@ -1,14 +1,16 @@
 #![no_std]
-//! ForYield Soroban YieldVault - MVP (Tranche 1 / Deliverable 1).
+//! ForYield Soroban YieldVault (Tranche 1 / Deliverable 1).
 //!
-//! Scope volontairement minimal pour la demo SCF Build :
-//! - depot d'un actif (USDC, via son StellarAssetContract) et emission de parts 1:1 ;
-//! - retrait : burn des parts et restitution de l'actif ;
+//! - depot d'un actif (USDC, via son StellarAssetContract) et emission de parts
+//!   proportionnelles : parts = montant x total_parts / actifs_avant, tronque ;
+//! - retrait pro-rata : montant = parts x actifs / total_parts, tronque ;
+//! - les deux arrondis sont en faveur du vault (des parts existantes) ;
+//! - MINIMUM_LIQUIDITY parts mortes au premier depot (anti-inflation) ;
 //! - pause d'urgence (admin).
 //!
-//! Hors scope MVP (Tranches 2-3) : allocation Blend/Aquarius, routing DeFindex,
-//! frais avec high-water mark, parts SEP-41 transferables, wrapper SAC EURC.
-//! Le ratio parts:actif est 1:1 tant qu'aucune strategie n'est branchee.
+//! Tant qu'aucune strategie ne rapporte, le ratio effectif reste 1 part = 1 unite.
+//! Hors scope de cet increment (suite D1 + Tranche 2) : allocation Blend v2,
+//! routing Soroswap/Aquarius, DeFindex, frais high-water mark, parts SEP-41.
 
 use soroban_sdk::{
     contract, contractimpl, contractmeta, contracttype, symbol_short, token::TokenClient, Address,
@@ -17,7 +19,7 @@ use soroban_sdk::{
 
 contractmeta!(
     key = "desc",
-    val = "ForYield YieldVault MVP - deposit/withdraw, parts 1:1"
+    val = "ForYield YieldVault - depot/retrait, parts proportionnelles"
 );
 
 #[contracttype]
@@ -29,6 +31,11 @@ enum DataKey {
     TotalShares,
     Shares(Address),
 }
+
+/// Parts mortes verrouillées au premier dépôt (jamais rachetables) : borne le
+/// coût d'une attaque par inflation du prix de la première part (modèle
+/// Uniswap V2 / DeFindex). En unités de 7 décimales, 1000 = 0,0001 actif.
+const MINIMUM_LIQUIDITY: i128 = 1_000;
 
 #[contract]
 pub struct YieldVault;
@@ -46,8 +53,8 @@ impl YieldVault {
         env.storage().instance().set(&DataKey::TotalShares, &0i128);
     }
 
-    /// Depose `amount` de l'actif et emet des parts (1:1 au MVP).
-    /// Le transfert de tokens exige l'autorisation de `from`.
+    /// Depose `amount` de l'actif et emet des parts au pro-rata des actifs
+    /// detenus. Le transfert de tokens exige l'autorisation de `from`.
     pub fn deposit(env: Env, from: Address, amount: i128) -> i128 {
         from.require_auth();
         Self::require_not_paused(&env);
@@ -56,22 +63,56 @@ impl YieldVault {
         }
 
         let token = TokenClient::new(&env, &Self::asset(&env));
-        token.transfer(&from, &env.current_contract_address(), &amount);
+        // Actifs AVANT le transfert entrant : le ratio parts:actif du calcul
+        // ne doit pas inclure le montant en train d'etre depose.
+        let assets_before = token.balance(&env.current_contract_address());
 
-        let shares = amount; // 1:1 tant qu'aucune strategie n'est branchee
+        let total_before = Self::total_shares(env.clone());
+        let (shares, total) = if total_before == 0 {
+            // Genese : tout l'actif deja detenu (donation comprise) entre dans
+            // le total, pour que l'invariant total_parts == actifs vaille des
+            // l'origine. MINIMUM_LIQUIDITY parts mortes, comptees dans le
+            // total mais attribuees a personne (jamais rachetables).
+            let genesis = assets_before
+                .checked_add(amount)
+                .expect("share math overflow");
+            if genesis <= MINIMUM_LIQUIDITY {
+                panic!("deposit too small");
+            }
+            (genesis - MINIMUM_LIQUIDITY, genesis)
+        } else {
+            // Des parts existent mais plus aucun actif (perte totale de
+            // strategie) : refuser le depot plutot que diviser par zero.
+            if assets_before == 0 {
+                panic!("vault insolvent");
+            }
+            // parts = montant x total_parts / actifs_avant, tronque : l'arrondi
+            // est toujours en faveur du vault (les parts existantes).
+            let shares = amount
+                .checked_mul(total_before)
+                .expect("share math overflow")
+                / assets_before;
+            if shares == 0 {
+                panic!("deposit too small");
+            }
+            (shares, total_before + shares)
+        };
+
+        // Etat d'abord, transfert ensuite (checks-effects-interactions),
+        // meme convention que withdraw : aucune ecriture apres l'appel externe.
         let key = DataKey::Shares(from.clone());
         let prev: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(prev + shares));
-
-        let total = Self::total_shares(env.clone()) + shares;
         env.storage().instance().set(&DataKey::TotalShares, &total);
+
+        token.transfer(&from, &env.current_contract_address(), &amount);
 
         env.events()
             .publish((symbol_short!("deposit"), from), (amount, shares));
         shares
     }
 
-    /// Retire `shares` parts : burn et restitution de l'actif (1:1 au MVP).
+    /// Retire `shares` parts : burn et restitution de l'actif au pro-rata.
     pub fn withdraw(env: Env, from: Address, shares: i128) -> i128 {
         from.require_auth();
         Self::require_not_paused(&env);
@@ -84,13 +125,23 @@ impl YieldVault {
         if balance < shares {
             panic!("insufficient shares");
         }
-        env.storage().persistent().set(&key, &(balance - shares));
 
-        let total = Self::total_shares(env.clone()) - shares;
-        env.storage().instance().set(&DataKey::TotalShares, &total);
-
-        let amount = shares; // 1:1
+        // montant = parts x actifs / total_parts, sur l'etat AVANT burn,
+        // tronque : l'arrondi est toujours en faveur du vault.
         let token = TokenClient::new(&env, &Self::asset(&env));
+        let assets = token.balance(&env.current_contract_address());
+        let total_before = Self::total_shares(env.clone());
+        let amount = shares.checked_mul(assets).expect("share math overflow") / total_before;
+        // Un retrait qui tronque a 0 unite brulerait des parts pour rien.
+        if amount == 0 {
+            panic!("withdraw too small");
+        }
+
+        env.storage().persistent().set(&key, &(balance - shares));
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalShares, &(total_before - shares));
+
         token.transfer(&env.current_contract_address(), &from, &amount);
 
         env.events()

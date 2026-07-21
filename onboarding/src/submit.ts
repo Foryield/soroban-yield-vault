@@ -26,13 +26,22 @@ export async function waitForInclusion(
   options: { fetchImpl?: typeof fetch; delayMs?: number; attempts?: number } = {},
 ): Promise<InclusionResult> {
   const { fetchImpl = fetch, delayMs = 2000, attempts = 15 } = options;
+  let lastErrorStatus: number | undefined;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     const response = await fetchImpl(`${horizonUrl}/transactions/${txHash}`);
     if (response.status === 200) {
       const body = await response.json();
-      return { successful: body.successful === true, ledger: body.ledger };
+      return { successful: body.successful === true, ledger: Number(body.ledger) };
     }
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    // 404 = not yet included (expected while polling); anything else is a
+    // Horizon error worth surfacing if we exhaust our attempts.
+    if (response.status !== 404) lastErrorStatus = response.status;
+  }
+  if (lastErrorStatus !== undefined) {
+    throw new Error(
+      `transaction ${txHash} not confirmed after ${attempts} attempts (last status=${lastErrorStatus})`,
+    );
   }
   throw new Error(`transaction ${txHash} not found on Horizon after ${attempts} attempts`);
 }

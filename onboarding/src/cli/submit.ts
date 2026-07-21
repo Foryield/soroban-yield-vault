@@ -14,6 +14,10 @@ try {
   const { txHash } = await submitViaDfns(client, walletId, hex);
   const inclusion = await waitForInclusion(cfg.horizonUrl, txHash);
   console.log(JSON.stringify({ txHash, ledger: inclusion.ledger, successful: inclusion.successful }));
+  if (!inclusion.successful) {
+    console.error(`transaction ${txHash} included in ledger ${inclusion.ledger} but failed on-chain`);
+    process.exit(2);
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);

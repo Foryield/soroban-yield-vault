@@ -33,7 +33,7 @@ fn setup<'a>(initial_mint: i128) -> Fixture<'a> {
 
     let vault_id = env.register(YieldVault, ());
     let vault = YieldVaultClient::new(&env, &vault_id);
-    vault.initialize(&admin, &asset);
+    vault.initialize(&admin, &asset, &None);
 
     Fixture {
         env,
@@ -139,7 +139,7 @@ fn unpause_restores_deposit() {
 #[should_panic(expected = "already initialized")]
 fn double_initialize_panics() {
     let f = setup(1_000);
-    f.vault.initialize(&f.admin, &f.user); // second appel : doit paniquer
+    f.vault.initialize(&f.admin, &f.user, &None); // second appel : doit paniquer
 }
 
 // --- Parts proportionnelles (D1) ---

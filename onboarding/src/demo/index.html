@@ -73,25 +73,36 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const json = await response.json();
+    let json;
+    try { json = await response.json(); } catch { json = { error: response.statusText || "request failed" }; }
     if (!response.ok) throw new Error(json.error || "request failed");
     return json;
   }
 
-  async function run(button, errorId, action) {
+  // Success hides the button for good: a re-click on camera would provision a
+  // second wallet or submit a second real deposit. Only an error restores it.
+  async function run(button, errorId, pendingLabel, action) {
     $(errorId).textContent = "";
+    const idleLabel = button.textContent;
     button.disabled = true;
-    try { await action(); } catch (error) { $(errorId).textContent = error.message; }
-    button.disabled = false;
+    button.textContent = pendingLabel;
+    try {
+      await action();
+      button.classList.add("hidden");
+    } catch (error) {
+      $(errorId).textContent = error.message;
+      button.disabled = false;
+      button.textContent = idleLabel;
+    }
   }
 
-  $("btn-onboard").addEventListener("click", () => run($("btn-onboard"), "error-onboard", async () => {
+  $("btn-onboard").addEventListener("click", () => run($("btn-onboard"), "error-onboard", "Creating…", async () => {
     wallet = await post("/api/onboard", { email: $("email").value.trim() });
     $("wallet-address").textContent = wallet.address;
     $("step-wallet").classList.remove("hidden");
   }));
 
-  $("btn-deposit").addEventListener("click", () => run($("btn-deposit"), "error-deposit", async () => {
+  $("btn-deposit").addEventListener("click", () => run($("btn-deposit"), "error-deposit", "Submitting…", async () => {
     const result = await post("/api/deposit", { walletId: wallet.walletId, address: wallet.address });
     const badge = $("result-badge");
     badge.textContent = result.successful ? "Deposit confirmed" : "Transaction failed";

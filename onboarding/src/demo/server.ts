@@ -100,7 +100,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   });
 
   const port = 4600;
-  app.listen(port, () => {
+  // Loopback only: without an explicit host Node binds every interface, and
+  // these routes spend the machine's DFNS credentials.
+  app.listen(port, "127.0.0.1", () => {
     console.log(`For Yield demo: http://localhost:${port}`);
   });
 }

@@ -59,6 +59,10 @@ tenable en 10 semaines uniquement grâce au parallélisme des deux pistes.
   tx de dépôt et retrait consignées.
 - Campagne de tests vers 200+ : unitaires, cas limites, property-based (proptest)
   sur les invariants (conservation, monotonie, round-trip). Couverture mesurée > 90 %.
+- Suivis actés en revue (pass 1, 21/07) : paramètres de slippage
+  (`min_shares_out` / `min_amount_out`) à trancher avant le redéploiement
+  testnet ; erreurs typées `#[contracterror]` à faire pendant la campagne
+  de tests (les panics chaîne sont fragiles pour les intégrateurs).
 
 **S5 — D3, clos vendredi 21 août**
 

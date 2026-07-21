@@ -1,13 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   connectWallet,
+  reconnectWallet,
   getNativeBalance,
   deposit,
   fundTestnetAccount,
+  friendlyError,
   AccountNotFundedError,
   EXPLORER_TX,
+  IS_TESTNET,
+  NETWORK_LABEL,
 } from "@/lib/stellar";
 
 type Phase = "idle" | "signing" | "success" | "error";
@@ -25,6 +29,32 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [needsFunding, setNeedsFunding] = useState(false);
   const [funding, setFunding] = useState(false);
+
+  // Restaure la session wallet persistee au chargement (silencieux : ni
+  // erreur ni prompt si aucune session ou wallet indisponible).
+  useEffect(() => {
+    let cancelled = false;
+    async function restore() {
+      const addr = await reconnectWallet();
+      if (!addr || cancelled) return;
+      setAddress(addr);
+      try {
+        const bal = await getNativeBalance(addr);
+        if (cancelled) return;
+        setBalance(bal);
+        setNeedsFunding(false);
+      } catch (e) {
+        if (e instanceof AccountNotFundedError && !cancelled) {
+          setBalance("0");
+          setNeedsFunding(true);
+        }
+      }
+    }
+    restore().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Rafraichit le solde XLM ; bascule en mode "compte non finance" si Horizon 404.
   async function refreshBalance(addr: string) {
@@ -49,7 +79,7 @@ export default function Home() {
       setAddress(addr);
       await refreshBalance(addr);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not connect");
+      setError(friendlyError(e));
     }
   }
 
@@ -61,7 +91,7 @@ export default function Home() {
       await fundTestnetAccount(address);
       await refreshBalance(address);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Funding failed");
+      setError(friendlyError(e));
     } finally {
       setFunding(false);
     }
@@ -78,7 +108,7 @@ export default function Home() {
       setPhase("success");
       await refreshBalance(address);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Deposit failed");
+      setError(friendlyError(e));
       setPhase("error");
     }
   }
@@ -95,7 +125,7 @@ export default function Home() {
         <div className="logo">
           For<span>Yield</span> &times; Stellar
         </div>
-        <div className="badge">Soroban Testnet</div>
+        <div className="badge">{NETWORK_LABEL}</div>
       </div>
 
       <div className="card">
@@ -113,20 +143,29 @@ export default function Home() {
               <span className="label">Wallet</span>
               <span className="value mono">{shorten(address)}</span>
             </div>
-            <div className="status error">
-              This account isn&apos;t active on Stellar testnet yet. Fund it with
-              Friendbot to continue.
-            </div>
-            <button onClick={handleFund} disabled={funding}>
-              {funding ? (
-                <>
-                  <span className="spinner" />
-                  Funding...
-                </>
-              ) : (
-                "Fund with Friendbot"
-              )}
-            </button>
+            {IS_TESTNET ? (
+              <>
+                <div className="status error">
+                  This account isn&apos;t active on Stellar testnet yet. Fund it
+                  with Friendbot to continue.
+                </div>
+                <button onClick={handleFund} disabled={funding}>
+                  {funding ? (
+                    <>
+                      <span className="spinner" />
+                      Funding...
+                    </>
+                  ) : (
+                    "Fund with Friendbot"
+                  )}
+                </button>
+              </>
+            ) : (
+              <div className="status error">
+                This account isn&apos;t active on Stellar yet. Send XLM to it to
+                activate it, then reload.
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -160,7 +199,7 @@ export default function Home() {
               {phase === "signing" ? (
                 <>
                   <span className="spinner" />
-                  Confirm in Freighter...
+                  Confirm in your wallet...
                 </>
               ) : (
                 "Deposit"

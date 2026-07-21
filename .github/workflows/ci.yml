@@ -36,6 +36,6 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-      # The 90% line-coverage gate (--fail-under-lines 90) turns on when the
-      # Deliverable 1 test campaign lands; until then coverage is report-only.
-      - run: cargo llvm-cov --workspace --summary-only
+      # 90% line-coverage gate, active since the Deliverable 1 test campaign
+      # (231 tests: unit, Blend integration, generated matrix, proptest).
+      - run: cargo llvm-cov --workspace --summary-only --fail-under-lines 90

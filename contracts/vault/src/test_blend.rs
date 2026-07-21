@@ -201,6 +201,58 @@ fn donation_before_first_deposit_with_pool_absorbed_into_genesis() {
 }
 
 #[test]
+fn withdraw_blocked_by_pool_utilization_reverts_atomically() {
+    let b = setup_blend(100_000_0000000);
+    b.vault.deposit(&b.user, &10_000_0000000);
+
+    // Second actif de collateral, ajoute comme reserve au pool actif
+    // (saut de ledger pour purger le timelock de queue_set_reserve).
+    let collat = b
+        .env
+        .register_stellar_asset_contract_v2(Address::generate(&b.env))
+        .address();
+    b.pool.queue_set_reserve(&collat, &default_reserve_config());
+    b.env.ledger().with_mut(|li| li.timestamp += 8 * 24 * 3600);
+    b.pool.set_reserve(&collat);
+
+    // Emprunteur : collateral dans le second actif, emprunt de 90 % de la
+    // reserve USDC (fournie uniquement par le vault).
+    let borrower = Address::generate(&b.env);
+    StellarAssetClient::new(&b.env, &collat).mint(&borrower, &40_000_0000000);
+    b.pool.submit(
+        &borrower,
+        &borrower,
+        &borrower,
+        &vec![
+            &b.env,
+            blend_pool::Request {
+                address: collat.clone(),
+                amount: 40_000_0000000,
+                request_type: 2, // SupplyCollateral
+            },
+            blend_pool::Request {
+                address: b.usdc.address.clone(),
+                amount: 9_000_0000000,
+                request_type: 4, // Borrow
+            },
+        ],
+    );
+
+    // Retirer 8k des 10k fournis porterait l'utilisation au-dela du max :
+    // le pool refuse, TOUT le retrait echoue, aucune part n'est brulee.
+    let shares_before = b.vault.shares_of(&b.user);
+    let balance_before = b.usdc.balance(&b.user);
+
+    assert!(b.vault.try_withdraw(&b.user, &8_000_0000000).is_err());
+    assert_eq!(b.vault.shares_of(&b.user), shares_before);
+    assert_eq!(b.usdc.balance(&b.user), balance_before);
+
+    // Un retrait plus modeste, compatible avec l'utilisation max, passe.
+    let amount = b.vault.withdraw(&b.user, &100_0000000);
+    assert!(amount >= 100_0000000); // >= : l'interet a pu commencer a courir
+}
+
+#[test]
 fn blend_interest_accrues_into_total_assets_and_share_price() {
     let b = setup_blend(100_000_0000000);
     b.vault.deposit(&b.user, &10_000_0000000);

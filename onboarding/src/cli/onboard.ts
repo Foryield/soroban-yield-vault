@@ -2,7 +2,7 @@ import { loadConfig } from "../config.js";
 import { dfnsClient } from "../dfns.js";
 import { buildInvocationHex, depositArgs } from "../envelope.js";
 import { onboard } from "../onboard.js";
-import { provisionWallet, fundWithFriendbot } from "../provision.js";
+import { provisionWallet, fundWithFriendbot, type ProvisionedWallet } from "../provision.js";
 import { submitViaDfns, waitForInclusion } from "../submit.js";
 
 const [email, stroopsRaw] = process.argv.slice(2);
@@ -11,12 +11,14 @@ if (!email || !stroopsRaw) {
   process.exit(1);
 }
 
+let provisioned: ProvisionedWallet | undefined;
 try {
   const stroops = BigInt(stroopsRaw);
+  if (stroops <= 0n) throw new Error(`amount must be a positive number of stroops, got ${stroopsRaw}`);
   const cfg = loadConfig();
   const client = dfnsClient(cfg);
   const summary = await onboard(email, stroops, {
-    provision: (name) => provisionWallet(client, name),
+    provision: async (name) => (provisioned = await provisionWallet(client, name)),
     fund: fundWithFriendbot,
     buildEnvelope: (source, amount) =>
       buildInvocationHex({
@@ -36,5 +38,10 @@ try {
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
+  if (provisioned) {
+    console.error(
+      `Wallet provisioned before failure: walletId=${provisioned.walletId} address=${provisioned.address}`,
+    );
+  }
   process.exit(1);
 }

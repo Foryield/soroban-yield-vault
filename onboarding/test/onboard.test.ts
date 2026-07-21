@@ -48,4 +48,14 @@ describe("onboard", () => {
     const summary = await onboard("user@example.com", 1_000_000n, deps);
     expect(summary).toMatchObject({ successful: false, ledger: 43, txHash: "abc" });
   });
+
+  it("rejects and stops the chain when funding fails", async () => {
+    const deps = makeDeps();
+    deps.fund.mockRejectedValue(new Error("friendbot funding failed"));
+
+    await expect(onboard("user@example.com", 1_000_000n, deps)).rejects.toThrow(/friendbot funding failed/);
+    expect(deps.buildEnvelope).not.toHaveBeenCalled();
+    expect(deps.submit).not.toHaveBeenCalled();
+    expect(deps.waitForInclusion).not.toHaveBeenCalled();
+  });
 });

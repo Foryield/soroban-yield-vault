@@ -104,7 +104,7 @@ fn full_withdraw_leaves_only_dead_shares() {
 }
 
 #[test]
-#[should_panic(expected = "insufficient shares")]
+#[should_panic(expected = "Error(Contract, #5)")]
 fn withdraw_beyond_balance_panics() {
     let f = setup(10_000);
     f.vault.deposit(&f.user, &2_000);
@@ -112,14 +112,14 @@ fn withdraw_beyond_balance_panics() {
 }
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn deposit_zero_panics() {
     let f = setup(1_000);
     f.vault.deposit(&f.user, &0);
 }
 
 #[test]
-#[should_panic(expected = "contract is paused")]
+#[should_panic(expected = "Error(Contract, #8)")]
 fn deposit_while_paused_panics() {
     let f = setup(1_000);
     f.vault.pause();
@@ -136,7 +136,7 @@ fn unpause_restores_deposit() {
 }
 
 #[test]
-#[should_panic(expected = "already initialized")]
+#[should_panic(expected = "Error(Contract, #1)")]
 fn double_initialize_panics() {
     let f = setup(1_000);
     f.vault.initialize(&f.admin, &f.user, &None); // second appel : doit paniquer
@@ -159,7 +159,7 @@ fn first_deposit_locks_minimum_liquidity() {
 }
 
 #[test]
-#[should_panic(expected = "deposit too small")]
+#[should_panic(expected = "Error(Contract, #3)")]
 fn first_deposit_at_minimum_liquidity_panics() {
     let f = setup(100_000);
     f.vault.deposit(&f.user, &1_000);
@@ -192,7 +192,7 @@ fn deposit_rounding_favors_vault() {
 }
 
 #[test]
-#[should_panic(expected = "deposit too small")]
+#[should_panic(expected = "Error(Contract, #3)")]
 fn deposit_rounding_to_zero_panics() {
     let f = setup(100_000);
     f.vault.deposit(&f.user, &10_000);
@@ -216,7 +216,7 @@ fn donation_before_first_deposit_is_absorbed_into_genesis() {
 }
 
 #[test]
-#[should_panic(expected = "withdraw too small")]
+#[should_panic(expected = "Error(Contract, #6)")]
 fn withdraw_rounding_to_zero_panics() {
     let f = setup(100_000);
     f.vault.deposit(&f.user, &10_000); // 10 000 parts
@@ -226,7 +226,7 @@ fn withdraw_rounding_to_zero_panics() {
 }
 
 #[test]
-#[should_panic(expected = "vault insolvent")]
+#[should_panic(expected = "Error(Contract, #7)")]
 fn deposit_into_insolvent_vault_panics() {
     let f = setup(100_000);
     f.vault.deposit(&f.user, &10_000);

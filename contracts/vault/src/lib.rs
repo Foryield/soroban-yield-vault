@@ -27,10 +27,28 @@
 use blend_contract_sdk::pool as blend;
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-    contract, contractimpl, contractmeta, contracttype, symbol_short,
+    contract, contracterror, contractimpl, contractmeta, contracttype, panic_with_error,
+    symbol_short,
     token::TokenClient,
     vec, Address, Env, IntoVal, Symbol, Vec,
 };
+
+/// Erreurs typees du vault : contractuelles pour les integrateurs (un client
+/// off-chain teste un code, pas une chaine de panique).
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum VaultError {
+    AlreadyInitialized = 1,
+    AmountMustBePositive = 2,
+    DepositTooSmall = 3,
+    SharesMustBePositive = 4,
+    InsufficientShares = 5,
+    WithdrawTooSmall = 6,
+    VaultInsolvent = 7,
+    ContractPaused = 8,
+    MathOverflow = 9,
+}
 
 contractmeta!(
     key = "desc",
@@ -73,7 +91,7 @@ impl YieldVault {
     /// utilise par les instances sans pool sur leur actif (ex. EURC).
     pub fn initialize(env: Env, admin: Address, asset: Address, pool: Option<Address>) {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            panic_with_error!(&env, VaultError::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Asset, &asset);
@@ -90,7 +108,7 @@ impl YieldVault {
         from.require_auth();
         Self::require_not_paused(&env);
         if amount <= 0 {
-            panic!("amount must be positive");
+            panic_with_error!(&env, VaultError::AmountMustBePositive);
         }
 
         let token = TokenClient::new(&env, &Self::asset(&env));
@@ -99,7 +117,7 @@ impl YieldVault {
         let assets_before = token
             .balance(&env.current_contract_address())
             .checked_add(Self::strategy_assets(&env))
-            .expect("share math overflow");
+            .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow));
 
         let total_before = Self::total_shares(env.clone());
         let (shares, total) = if total_before == 0 {
@@ -109,25 +127,25 @@ impl YieldVault {
             // total mais attribuees a personne (jamais rachetables).
             let genesis = assets_before
                 .checked_add(amount)
-                .expect("share math overflow");
+                .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow));
             if genesis <= MINIMUM_LIQUIDITY {
-                panic!("deposit too small");
+                panic_with_error!(&env, VaultError::DepositTooSmall);
             }
             (genesis - MINIMUM_LIQUIDITY, genesis)
         } else {
             // Des parts existent mais plus aucun actif (perte totale de
             // strategie) : refuser le depot plutot que diviser par zero.
             if assets_before == 0 {
-                panic!("vault insolvent");
+                panic_with_error!(&env, VaultError::VaultInsolvent);
             }
             // parts = montant x total_parts / actifs_avant, tronque : l'arrondi
             // est toujours en faveur du vault (les parts existantes).
             let shares = amount
                 .checked_mul(total_before)
-                .expect("share math overflow")
+                .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow))
                 / assets_before;
             if shares == 0 {
-                panic!("deposit too small");
+                panic_with_error!(&env, VaultError::DepositTooSmall);
             }
             (shares, total_before + shares)
         };
@@ -160,13 +178,13 @@ impl YieldVault {
         from.require_auth();
         Self::require_not_paused(&env);
         if shares <= 0 {
-            panic!("shares must be positive");
+            panic_with_error!(&env, VaultError::SharesMustBePositive);
         }
 
         let key = DataKey::Shares(from.clone());
         let balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         if balance < shares {
-            panic!("insufficient shares");
+            panic_with_error!(&env, VaultError::InsufficientShares);
         }
 
         // montant = parts x actifs / total_parts, sur l'etat AVANT burn,
@@ -175,12 +193,15 @@ impl YieldVault {
         let idle = token.balance(&env.current_contract_address());
         let assets = idle
             .checked_add(Self::strategy_assets(&env))
-            .expect("share math overflow");
+            .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow));
         let total_before = Self::total_shares(env.clone());
-        let amount = shares.checked_mul(assets).expect("share math overflow") / total_before;
+        let amount = shares
+            .checked_mul(assets)
+            .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow))
+            / total_before;
         // Un retrait qui tronque a 0 unite brulerait des parts pour rien.
         if amount == 0 {
-            panic!("withdraw too small");
+            panic_with_error!(&env, VaultError::WithdrawTooSmall);
         }
 
         env.storage().persistent().set(&key, &(balance - shares));
@@ -210,7 +231,7 @@ impl YieldVault {
         TokenClient::new(&env, &Self::asset(&env))
             .balance(&env.current_contract_address())
             .checked_add(Self::strategy_assets(&env))
-            .expect("share math overflow")
+            .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow))
     }
 
     /// Parts detenues par `owner`.
@@ -273,7 +294,7 @@ impl YieldVault {
                 let b_tokens = positions.supply.get(reserve.config.index).unwrap_or(0);
                 b_tokens
                     .checked_mul(reserve.data.b_rate)
-                    .expect("share math overflow")
+                    .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow))
                     / SCALAR_12
             }
         }
@@ -330,7 +351,7 @@ impl YieldVault {
             .get(&DataKey::Paused)
             .unwrap_or(false)
         {
-            panic!("contract is paused");
+            panic_with_error!(env, VaultError::ContractPaused);
         }
     }
 }
@@ -339,3 +360,7 @@ impl YieldVault {
 mod test;
 #[cfg(test)]
 mod test_blend;
+#[cfg(test)]
+mod test_matrix;
+#[cfg(test)]
+mod test_props;

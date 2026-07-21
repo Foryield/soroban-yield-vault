@@ -14,22 +14,37 @@ contract submitted for the Stellar Community Fund (SCF) Build Award.
 > routing, the performance-fee module with high-water mark, and transferable SEP-41
 > shares ship in Tranches 2 and 3.
 
-## Testnet deployment
+## Testnet deployments
+
+**Deliverable 1 instance — USDC, allocated to Blend v2** (the reviewer-evidence
+instance):
 
 | Component | Contract ID |
 |---|---|
-| YieldVault | `CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6` |
+| YieldVault (D1) | `CC3AEKESVOYLHAEBV3F3WOJP3JHF754ZEEXYG6XD3VQGI5YZEV2OEC6C` |
+| Deposit asset - Blend testnet USDC (SAC) | `CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU` |
+| Allocation target - Blend v2 TestnetV2 pool | `CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF` |
+
+Every deposit is supplied to the Blend pool in the same transaction; the vault
+holds no idle assets. Evidence transactions (init, deposit, withdraw) are logged
+in [docs/evidence/d1-vault-mvp.md](./docs/evidence/d1-vault-mvp.md).
+[Explore the D1 vault](https://stellar.expert/explorer/testnet/contract/CC3AEKESVOYLHAEBV3F3WOJP3JHF754ZEEXYG6XD3VQGI5YZEV2OEC6C).
+
+**Demo instance — native XLM, no strategy** (behind vault.for-yield.com, so any
+Friendbot-funded account can deposit with no faucet):
+
+| Component | Contract ID |
+|---|---|
+| YieldVault (demo) | `CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6` |
 | Deposit asset - native XLM (SAC) | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
 
 Network: Stellar **Testnet** (`Test SDF Network ; September 2015`).
-The demo vault uses native XLM so any Friendbot-funded account can deposit with no faucet.
-Explore on [Stellar Expert](https://stellar.expert/explorer/testnet/contract/CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6).
 
 ## Contract interface
 
 | Function | Description |
 |---|---|
-| `initialize(admin, asset)` | Set the admin and the deposit asset (one-shot). |
+| `initialize(admin, asset, pool)` | Set the admin, deposit asset and optional Blend pool (one-shot, immutable). |
 | `deposit(from, amount) -> shares` | Pull `amount` of the asset and mint proportional shares. |
 | `withdraw(from, shares) -> amount` | Burn shares and return the asset pro-rata. |
 | `total_assets() -> i128` | Asset held by the vault (on-chain token balance). |

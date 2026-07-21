@@ -6,9 +6,17 @@ const FULL_ENV = {
 };
 
 describe("loadConfig", () => {
-  it("throws when a required DFNS var is missing", () => {
-    expect(() => loadConfig({ ...FULL_ENV, DFNS_AUTH_TOKEN: undefined }))
-      .toThrow(/DFNS_AUTH_TOKEN/);
+  it.each(["DFNS_AUTH_TOKEN", "DFNS_CRED_ID", "DFNS_PRIVATE_KEY"])(
+    "throws when %s is missing",
+    (key) => {
+      expect(() => loadConfig({ ...FULL_ENV, [key]: undefined }))
+        .toThrow(new RegExp(key));
+    },
+  );
+
+  it("returns an explicitly set env var over the default", () => {
+    const cfg = loadConfig({ ...FULL_ENV, STELLAR_RPC_URL: "https://rpc.example.test" });
+    expect(cfg.rpcUrl).toBe("https://rpc.example.test");
   });
 
   it("applies public defaults for network endpoints", () => {

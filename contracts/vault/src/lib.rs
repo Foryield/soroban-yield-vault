@@ -66,17 +66,26 @@ impl YieldVault {
         // Actifs AVANT le transfert entrant : le ratio parts:actif du calcul
         // ne doit pas inclure le montant en train d'etre depose.
         let assets_before = token.balance(&env.current_contract_address());
-        token.transfer(&from, &env.current_contract_address(), &amount);
 
         let total_before = Self::total_shares(env.clone());
         let (shares, total) = if total_before == 0 {
-            // Premier depot : MINIMUM_LIQUIDITY parts mortes, comptees dans le
+            // Genese : tout l'actif deja detenu (donation comprise) entre dans
+            // le total, pour que l'invariant total_parts == actifs vaille des
+            // l'origine. MINIMUM_LIQUIDITY parts mortes, comptees dans le
             // total mais attribuees a personne (jamais rachetables).
-            if amount <= MINIMUM_LIQUIDITY {
+            let genesis = assets_before
+                .checked_add(amount)
+                .expect("share math overflow");
+            if genesis <= MINIMUM_LIQUIDITY {
                 panic!("deposit too small");
             }
-            (amount - MINIMUM_LIQUIDITY, amount)
+            (genesis - MINIMUM_LIQUIDITY, genesis)
         } else {
+            // Des parts existent mais plus aucun actif (perte totale de
+            // strategie) : refuser le depot plutot que diviser par zero.
+            if assets_before == 0 {
+                panic!("vault insolvent");
+            }
             // parts = montant x total_parts / actifs_avant, tronque : l'arrondi
             // est toujours en faveur du vault (les parts existantes).
             let shares = amount
@@ -89,10 +98,14 @@ impl YieldVault {
             (shares, total_before + shares)
         };
 
+        // Etat d'abord, transfert ensuite (checks-effects-interactions),
+        // meme convention que withdraw : aucune ecriture apres l'appel externe.
         let key = DataKey::Shares(from.clone());
         let prev: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(prev + shares));
         env.storage().instance().set(&DataKey::TotalShares, &total);
+
+        token.transfer(&from, &env.current_contract_address(), &amount);
 
         env.events()
             .publish((symbol_short!("deposit"), from), (amount, shares));
@@ -119,6 +132,10 @@ impl YieldVault {
         let assets = token.balance(&env.current_contract_address());
         let total_before = Self::total_shares(env.clone());
         let amount = shares.checked_mul(assets).expect("share math overflow") / total_before;
+        // Un retrait qui tronque a 0 unite brulerait des parts pour rien.
+        if amount == 0 {
+            panic!("withdraw too small");
+        }
 
         env.storage().persistent().set(&key, &(balance - shares));
         env.storage()

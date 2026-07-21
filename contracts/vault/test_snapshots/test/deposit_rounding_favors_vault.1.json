@@ -200,7 +200,7 @@
                 "seq_num": 0,
                 "num_sub_entries": 0,
                 "inflation_dest": null,
-                "flags": 0,
+                "flags": 8,
                 "home_domain": "",
                 "thresholds": "01010101",
                 "signers": [],
@@ -570,7 +570,7 @@
                         "symbol": "clawback"
                       },
                       "val": {
-                        "bool": false
+                        "bool": true
                       }
                     }
                   ]
@@ -643,7 +643,7 @@
                         "symbol": "clawback"
                       },
                       "val": {
-                        "bool": false
+                        "bool": true
                       }
                     }
                   ]

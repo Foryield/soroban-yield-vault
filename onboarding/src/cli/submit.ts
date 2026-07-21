@@ -1,6 +1,9 @@
 import { loadConfig } from "../config.js";
 import { dfnsClient } from "../dfns.js";
+import { loadDotenv } from "../env.js";
 import { submitViaDfns, waitForInclusion } from "../submit.js";
+
+loadDotenv();
 
 const [walletId, hex] = process.argv.slice(2);
 if (!walletId || !hex) {

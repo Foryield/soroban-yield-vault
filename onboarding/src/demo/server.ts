@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { loadConfig } from "../config.js";
 import { dfnsClient } from "../dfns.js";
+import { loadDotenv } from "../env.js";
 import { provisionWallet, fundWithFriendbot } from "../provision.js";
 import { buildInvocationHex, depositArgs } from "../envelope.js";
 import { submitViaDfns, waitForInclusion } from "../submit.js";
@@ -77,6 +78,9 @@ export function createDemoServer(bricks: DemoBricks): express.Express {
 // Run directly (npm run demo): wire the real bricks, exactly like cli/onboard.ts.
 // The envelope is built at deposit time so its sequence number is fresh.
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // Inside the main-block guard only: importing createDemoServer in tests
+  // must never touch the filesystem.
+  loadDotenv();
   const cfg = loadConfig();
   const client = dfnsClient(cfg);
   const app = createDemoServer({

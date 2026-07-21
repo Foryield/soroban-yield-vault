@@ -19,6 +19,9 @@ Fill the three `DFNS_*` values in `.env`: the service-account token
 private key PEM (`DFNS_PRIVATE_KEY`). The Stellar testnet endpoints and the
 demo vault contract id have public defaults - no change needed.
 
+The CLIs and the demo load `.env` automatically from the package root;
+environment variables already exported in your shell take precedence.
+
 ## Bricks
 
 **Provision** - create a DFNS `StellarTestnet` wallet and fund it via Friendbot:

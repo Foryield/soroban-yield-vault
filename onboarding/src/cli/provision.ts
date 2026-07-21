@@ -1,6 +1,9 @@
 import { loadConfig } from "../config.js";
 import { dfnsClient } from "../dfns.js";
+import { loadDotenv } from "../env.js";
 import { provisionWallet, fundWithFriendbot, type ProvisionedWallet } from "../provision.js";
+
+loadDotenv();
 
 const name = process.argv[2];
 if (!name) {

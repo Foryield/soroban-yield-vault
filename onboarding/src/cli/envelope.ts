@@ -1,5 +1,8 @@
 import { loadConfig } from "../config.js";
+import { loadDotenv } from "../env.js";
 import { buildInvocationHex, depositArgs, withdrawArgs } from "../envelope.js";
+
+loadDotenv();
 
 const [method, source, amountRaw] = process.argv.slice(2);
 if ((method !== "deposit" && method !== "withdraw") || !source || !amountRaw) {

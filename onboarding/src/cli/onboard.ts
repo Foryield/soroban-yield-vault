@@ -1,9 +1,12 @@
 import { loadConfig } from "../config.js";
 import { dfnsClient } from "../dfns.js";
+import { loadDotenv } from "../env.js";
 import { buildInvocationHex, depositArgs } from "../envelope.js";
 import { onboard } from "../onboard.js";
 import { provisionWallet, fundWithFriendbot, type ProvisionedWallet } from "../provision.js";
 import { submitViaDfns, waitForInclusion } from "../submit.js";
+
+loadDotenv();
 
 const [email, stroopsRaw] = process.argv.slice(2);
 if (!email || !stroopsRaw) {

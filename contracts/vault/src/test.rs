@@ -4,7 +4,7 @@ use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, Events, IssuerFlags},
     token::{StellarAssetClient, TokenClient},
-    Address, Env, IntoVal, TryFromVal,
+    vec, Address, Env, IntoVal,
 };
 
 struct Fixture<'a> {
@@ -33,7 +33,7 @@ fn setup<'a>(initial_mint: i128) -> Fixture<'a> {
 
     let vault_id = env.register(YieldVault, ());
     let vault = YieldVaultClient::new(&env, &vault_id);
-    vault.initialize(&admin, &asset);
+    vault.initialize(&admin, &asset, &None);
 
     Fixture {
         env,
@@ -139,7 +139,7 @@ fn unpause_restores_deposit() {
 #[should_panic(expected = "already initialized")]
 fn double_initialize_panics() {
     let f = setup(1_000);
-    f.vault.initialize(&f.admin, &f.user); // second appel : doit paniquer
+    f.vault.initialize(&f.admin, &f.user, &None); // second appel : doit paniquer
 }
 
 // --- Parts proportionnelles (D1) ---
@@ -264,24 +264,33 @@ fn withdraw_rounding_favors_vault() {
 fn deposit_and_withdraw_emit_structured_events() {
     let f = setup(100_000);
 
+    // all() ne retourne que les events de la derniere invocation : capturer
+    // apres chaque appel.
     f.vault.deposit(&f.user, &10_000);
-    let (contract, topics, data) = f.env.events().all().last_unchecked();
-    assert_eq!(contract, f.vault.address);
     assert_eq!(
-        topics,
-        (symbol_short!("deposit"), f.user.clone()).into_val(&f.env)
+        f.env.events().all().filter_by_contract(&f.vault.address),
+        vec![
+            &f.env,
+            (
+                f.vault.address.clone(),
+                (symbol_short!("deposit"), f.user.clone()).into_val(&f.env),
+                (10_000_i128, 9_000_i128).into_val(&f.env),
+            ),
+        ]
     );
-    let (amount, shares) = <(i128, i128)>::try_from_val(&f.env, &data).unwrap();
-    assert_eq!((amount, shares), (10_000, 9_000));
 
     f.vault.withdraw(&f.user, &4_000);
-    let (_, topics, data) = f.env.events().all().last_unchecked();
     assert_eq!(
-        topics,
-        (symbol_short!("withdraw"), f.user.clone()).into_val(&f.env)
+        f.env.events().all().filter_by_contract(&f.vault.address),
+        vec![
+            &f.env,
+            (
+                f.vault.address.clone(),
+                (symbol_short!("withdraw"), f.user.clone()).into_val(&f.env),
+                (4_000_i128, 4_000_i128).into_val(&f.env),
+            ),
+        ]
     );
-    let (shares_burned, amount_out) = <(i128, i128)>::try_from_val(&f.env, &data).unwrap();
-    assert_eq!((shares_burned, amount_out), (4_000, 4_000));
 }
 
 #[test]

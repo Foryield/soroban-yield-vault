@@ -13,36 +13,75 @@ import {
   StellarWalletsKit,
   WalletNetwork,
   allowAllModules,
+  parseError,
   FREIGHTER_ID,
 } from "@creit.tech/stellar-wallets-kit";
+import { LedgerModule } from "@creit.tech/stellar-wallets-kit/modules/ledger.module";
 
-// Valeurs publiques testnet (contract IDs + endpoints). Defaut en dur pour que
-// la demo marche meme si les env vars ne sont pas posees sur l'hote (Render).
-// L'env reste prioritaire si elle est definie.
+// --- Configuration reseau ---------------------------------------------------
+// NEXT_PUBLIC_STELLAR_NETWORK selectionne le reseau : "testnet" (defaut) ou
+// "mainnet". Passphrase, endpoints, explorer et Friendbot en decoulent.
+// Les env NEXT_PUBLIC_* restent prioritaires sur les defauts publics.
+// Sur mainnet, VAULT_ID et RPC_URL n'ont aucun defaut : ils DOIVENT etre
+// fournis par l'environnement (fail-closed, jamais de contrat implicite).
+
+export type StellarNetwork = "testnet" | "mainnet";
+
+function resolveNetwork(raw: string | undefined): StellarNetwork {
+  const value = (raw || "testnet").toLowerCase();
+  if (value === "mainnet" || value === "public") return "mainnet";
+  if (value === "testnet") return "testnet";
+  throw new Error(`Unsupported NEXT_PUBLIC_STELLAR_NETWORK: ${raw}`);
+}
+
+export const NETWORK: StellarNetwork = resolveNetwork(
+  process.env.NEXT_PUBLIC_STELLAR_NETWORK,
+);
+export const IS_TESTNET = NETWORK === "testnet";
+export const NETWORK_LABEL = IS_TESTNET ? "Soroban Testnet" : "Soroban Mainnet";
+
+const PASSPHRASE = IS_TESTNET ? Networks.TESTNET : Networks.PUBLIC;
+
 const VAULT_ID =
   process.env.NEXT_PUBLIC_VAULT_ID ||
-  "CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6";
+  (IS_TESTNET ? "CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6" : "");
 const RPC_URL =
-  process.env.NEXT_PUBLIC_RPC_URL || "https://soroban-testnet.stellar.org";
+  process.env.NEXT_PUBLIC_RPC_URL ||
+  (IS_TESTNET ? "https://soroban-testnet.stellar.org" : "");
 const HORIZON_URL =
-  process.env.NEXT_PUBLIC_HORIZON_URL || "https://horizon-testnet.stellar.org";
-const PASSPHRASE = Networks.TESTNET;
+  process.env.NEXT_PUBLIC_HORIZON_URL ||
+  (IS_TESTNET
+    ? "https://horizon-testnet.stellar.org"
+    : "https://horizon.stellar.org");
+
+function requireConfig(value: string, name: string): string {
+  if (!value) {
+    throw new Error(`${name} must be configured for ${NETWORK}`);
+  }
+  return value;
+}
+
 const DECIMALS = 7;
+const EXPLORER_SEGMENT = IS_TESTNET ? "testnet" : "public";
 
 export const EXPLORER_TX = (hash: string) =>
-  `https://stellar.expert/explorer/testnet/tx/${hash}`;
+  `https://stellar.expert/explorer/${EXPLORER_SEGMENT}/tx/${hash}`;
 
-// Levee quand le compte du wallet n'existe pas encore sur testnet (Horizon 404).
-// Un compte Stellar n'existe on-chain qu'apres avoir ete finance (Friendbot).
+// Levee quand le compte du wallet n'existe pas encore on-chain (Horizon 404).
+// Un compte Stellar n'existe qu'apres avoir ete finance.
 export class AccountNotFundedError extends Error {
   constructor() {
-    super("Account not funded on Stellar testnet");
+    super(`Account not funded on Stellar ${NETWORK}`);
     this.name = "AccountNotFundedError";
   }
 }
 
-// Finance un compte testnet via Friendbot (XLM uniquement, pas d'USDC).
+// Finance un compte via Friendbot. Testnet uniquement : sur mainnet le
+// financement est un vrai transfert de fonds, jamais automatise ici.
 export async function fundTestnetAccount(address: string): Promise<void> {
+  if (!IS_TESTNET) {
+    throw new Error("Friendbot is only available on testnet");
+  }
   const res = await fetch(
     `https://friendbot.stellar.org/?addr=${encodeURIComponent(address)}`,
   );
@@ -51,17 +90,77 @@ export async function fundTestnetAccount(address: string): Promise<void> {
   }
 }
 
+// --- Wallet kit (multi-wallet + session) ------------------------------------
+// allowAllModules() charge les wallets sans configuration prealable
+// (Freighter, xBull, Albedo, Lobstr, Rabet, Hana, ...) ; Ledger exige un
+// module explicite (transport WebUSB) et est ajoute a part.
+
+const WALLET_STORAGE_KEY = "foryield:walletId";
+
+function storedWalletId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(WALLET_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeWalletId(id: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (id) {
+      window.localStorage.setItem(WALLET_STORAGE_KEY, id);
+    } else {
+      window.localStorage.removeItem(WALLET_STORAGE_KEY);
+    }
+  } catch {
+    // stockage indisponible (navigation privee) : session non persistee
+  }
+}
+
 let kit: StellarWalletsKit | null = null;
 
 function getKit(): StellarWalletsKit {
   if (!kit) {
     kit = new StellarWalletsKit({
-      network: WalletNetwork.TESTNET,
-      selectedWalletId: FREIGHTER_ID,
-      modules: allowAllModules(),
+      network: IS_TESTNET ? WalletNetwork.TESTNET : WalletNetwork.PUBLIC,
+      selectedWalletId: storedWalletId() || FREIGHTER_ID,
+      modules: [...allowAllModules(), new LedgerModule()],
     });
   }
   return kit;
+}
+
+// Traduit les erreurs kit/wallet en message actionnable pour l'UI.
+// parseError vient du kit et normalise les shapes d'erreur par wallet.
+export function friendlyError(e: unknown): string {
+  if (e instanceof AccountNotFundedError) {
+    return e.message;
+  }
+  let message = "";
+  try {
+    const parsed = parseError(e);
+    message = String(parsed?.message ?? "");
+  } catch {
+    message = "";
+  }
+  if (!message) {
+    message = e instanceof Error ? e.message : String(e ?? "Unknown error");
+  }
+  const lower = message.toLowerCase();
+  if (
+    lower.includes("declined") ||
+    lower.includes("denied") ||
+    lower.includes("reject") ||
+    lower.includes("cancel")
+  ) {
+    return "Request declined in the wallet.";
+  }
+  if (lower.includes("not currently connected") || lower.includes("locked")) {
+    return "Wallet locked or disconnected. Open it and reconnect.";
+  }
+  return message;
 }
 
 export async function connectWallet(): Promise<string> {
@@ -72,6 +171,7 @@ export async function connectWallet(): Promise<string> {
         try {
           k.setWallet(option.id);
           const { address } = await k.getAddress();
+          storeWalletId(option.id);
           resolve(address);
         } catch (e) {
           reject(e);
@@ -80,6 +180,35 @@ export async function connectWallet(): Promise<string> {
       onClosed: () => reject(new Error("Connection cancelled")),
     });
   });
+}
+
+// Restaure silencieusement la session wallet persistee (rechargement de page).
+// Retourne null si aucune session ou si le wallet ne repond plus ; dans ce
+// cas la session est purgee pour ne pas re-echouer a chaque chargement.
+export async function reconnectWallet(): Promise<string | null> {
+  const id = storedWalletId();
+  if (!id) return null;
+  try {
+    const k = getKit();
+    k.setWallet(id);
+    const { address } = await k.getAddress();
+    return address;
+  } catch {
+    storeWalletId(null);
+    return null;
+  }
+}
+
+// Oublie la session persistee et deselectionne le wallet.
+export async function disconnectWallet(): Promise<void> {
+  storeWalletId(null);
+  if (kit) {
+    try {
+      await kit.disconnect();
+    } catch {
+      // certains wallets n'ont pas d'etat a deconnecter
+    }
+  }
 }
 
 export async function getNativeBalance(address: string): Promise<string> {
@@ -105,34 +234,31 @@ function toStroops(amount: string): bigint {
   );
 }
 
-// Re-demande l'acces a Freighter juste avant de signer. Le connect initial
-// (getAddress -> requestAccess) ne garantit pas que le domaine est encore dans
-// l'allowlist au moment de signer : getAddress peut renvoyer une cle publique
-// en cache sans autorisation vivante, ce qui declenche le warning Freighter
-// "<domaine> is not currently connected". Si le domaine est deja autorise,
-// requestAccess revient sans prompt ; sinon il propose de reconnecter.
+// Verifie que le wallet actif est toujours celui attendu juste avant de
+// signer. Le connect initial ne garantit pas une autorisation vivante au
+// moment de signer (cle en cache, allowlist revoquee, compte change).
 async function ensureWalletAccess(address: string): Promise<void> {
   const k = getKit();
   const { address: active } = await k.getAddress();
   if (active !== address) {
     throw new Error(
-      "Active Freighter account changed. Reconnect your wallet and retry.",
+      "Active wallet account changed. Reconnect your wallet and retry.",
     );
   }
 }
 
 export async function deposit(
   address: string,
-  amountUsdc: string,
+  amountAsset: string,
 ): Promise<string> {
-  const server = new rpc.Server(RPC_URL);
+  const server = new rpc.Server(requireConfig(RPC_URL, "NEXT_PUBLIC_RPC_URL"));
   const account = await server.getAccount(address);
-  const contract = new Contract(VAULT_ID);
+  const contract = new Contract(requireConfig(VAULT_ID, "NEXT_PUBLIC_VAULT_ID"));
 
   const op = contract.call(
     "deposit",
     new Address(address).toScVal(),
-    nativeToScVal(toStroops(amountUsdc), { type: "i128" }),
+    nativeToScVal(toStroops(amountAsset), { type: "i128" }),
   );
 
   const built = new TransactionBuilder(account, {
@@ -145,7 +271,7 @@ export async function deposit(
 
   const prepared = await server.prepareTransaction(built);
 
-  // Garantit une autorisation Freighter vivante au moment de signer.
+  // Garantit une autorisation wallet vivante au moment de signer.
   await ensureWalletAccess(address);
 
   const k = getKit();

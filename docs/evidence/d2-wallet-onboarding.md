@@ -33,6 +33,25 @@ separately (walkthrough video at closure).
   submitted unsigned to `POST /wallets/{walletId}/transactions`; DFNS returned
   `status: Broadcasted` with the tx hash in under a second.
 
-Still open for D2-DFNS: onboarding path from an email/social login (no browser
-extension, no seed phrase), a full deposit on the testnet vault from the
-provisioned wallet, onboarding walkthrough video.
+## 2026-07-21 — DFNS onboarding end to end: email in, confirmed deposit out
+
+- **What it proves**: the D2 Measure ("a DFNS-provisioned wallet completing a
+  deposit on testnet") through the packaged onboarding flow — a single
+  `npm run onboard -- <email> <stroops>` provisions a fresh DFNS
+  `StellarTestnet` wallet from an email identifier (no extension, no seed
+  phrase), funds it, builds and simulates the Soroban deposit, broadcasts it
+  through DFNS, and confirms inclusion on Horizon.
+- **Wallet**: `wa-01ju3-b2a9o-e84rqvita01ljtbh`
+  (`GASMKUYUXYLX4FOUB7IK2RQFPBHGUJDCGTMG56NNVHCR7SDEWPW6GKFI`, named from the
+  demo email, funded by Friendbot)
+- **Transaction**: `deposit` of 0.1 XLM on the demo vault
+  `CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6` —
+  hash [`733845a2a537a30efaef3f48c568a390b0cb7ae30cb29fb4eab570f9d6370b26`](https://stellar.expert/explorer/testnet/tx/733845a2a537a30efaef3f48c568a390b0cb7ae30cb29fb4eab570f9d6370b26),
+  ledger 3730705, successful. `shares_of(GASM…GKFI)` reads `1000000` after the
+  call.
+- **Code**: the `onboarding/` package (provision / envelope / submit bricks +
+  orchestrator + local demo page), delivered on this branch with 33
+  credential-free unit tests and its own CI job.
+
+Still open for D2-DFNS: onboarding walkthrough video (filmed on the local demo
+page, `npm run demo`), recorded here at closure.

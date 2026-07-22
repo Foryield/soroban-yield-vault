@@ -1,0 +1,55 @@
+# Wasm de venues vendorisés (tests d'intégration du routeur)
+
+Binaires wasm des venues Soroswap et Aqua, utilisés par les tests
+d'intégration du routeur via `contractimport!` (fixtures « stack réelle »,
+tasks 10 et 11 du plan D4). Récupérés par `scripts/fetch_test_wasms.sh`,
+qui re-télécharge chaque fichier depuis la source épinglée puis vérifie
+son empreinte contre `SHA256SUMS`.
+
+## Provenance
+
+- Dépôt source : [`soroswap/aggregator`](https://github.com/soroswap/aggregator),
+  répertoire `contracts/aggregator/`
+- Commit épinglé : `84de10e0f8d26168b4a76f8c23b963e50917517c`
+  (HEAD de `main` au moment du vendoring, commit du 2025-12-22)
+- Date de récupération : 2026-07-22
+
+| Fichier | Sous-répertoire source | SHA-256 |
+| --- | --- | --- |
+| `soroswap_factory.wasm` | `soroswap_contracts` | `b8f7c4289f9f8c187efa57a5cc4598b1fa773f83d16f0e2044c1936b4ab02bfd` |
+| `soroswap_pair.wasm` | `soroswap_contracts` | `f25a763b8166ccded22c30eb9aef0dc1e12ec5d7190e2febac6e20a4840b79b8` |
+| `soroswap_router.wasm` | `soroswap_contracts` | `5f86422399da20b8601a7201f765afc7e4b2bbbccd0520851a8af638d3a6415a` |
+| `soroban_liquidity_pool_router_contract.wasm` | `aqua_contracts` | `04b594a5f9c7ed5291e10dc019ba0845866ca701a3d05fef206a7e9eef302d76` |
+| `soroban_liquidity_pool_contract.wasm` | `aqua_contracts` | `549376178582fc695a358d5e333dc568609a5e23460f01002c23ba7cd2863ead` |
+| `soroban_liquidity_pool_plane_contract.wasm` | `aqua_contracts` | `3a35e48573a4aa300de8e417c8e3b01e30123c49ce67e7d67e8752d1850ac729` |
+| `soroban_liquidity_pool_liquidity_calculator_contract.wasm` | `aqua_contracts` | `75161be17f8f028638b91095bbd8827a1a11e3684e11f0bc431663a5f1e75b52` |
+| `soroban_token_contract.wasm` | `aqua_contracts` | `596ace8b855436478512821a2e0ecb02973b1bad0a4057dc541fd0ca4d7cf037` |
+
+## Motivation
+
+Le dépôt canonique d'Aqua (`AquaToken/soroban-amm`) répond en 404, constat
+antérieur au 2026-07-22. Les binaires embarqués dans `soroswap/aggregator`
+sont la référence vivante des deux venues : ce sont ceux contre lesquels
+l'agrégateur Soroswap teste ses propres adapters. Le commit épinglé est
+celui dont les sources des adapters ont été vérifiées le 2026-07-22.
+
+## Note sur le wasm de l'agrégateur
+
+Aucun wasm précompilé du contrat agrégateur lui-même n'existe dans le
+dépôt `soroswap/aggregator` au commit épinglé (seuls les wasm de venues
+sont publiés, sous `contracts/aggregator/` et `contracts/adapters/`).
+L'agrégateur doit donc être construit depuis les sources. La fixture de la
+task 10 teste la venue Soroswap contre router + factory + pair ; la
+décision de construire l'agrégateur ou de lui substituer un adapter de
+test est prise en task 10, conformément au plan.
+
+## Usage
+
+```sh
+scripts/fetch_test_wasms.sh
+```
+
+Le script est rejouable : il écrase les fichiers existants puis vérifie
+`SHA256SUMS` avec `shasum -a 256 -c`. Toute divergence fait échouer
+l'exécution. Les tests d'intégration consomment ces binaires avec
+`soroban_sdk::contractimport!(file = "test_wasms/<fichier>.wasm")`.

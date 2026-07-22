@@ -29,7 +29,8 @@
 
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-    contract, contracterror, contractimpl, contractmeta, contracttype, panic_with_error,
+    contract, contracterror, contractevent, contractimpl, contractmeta, contracttype,
+    panic_with_error,
     token::TokenClient,
     vec, Address, BytesN, Env, IntoVal, Symbol, Vec,
 };
@@ -88,6 +89,50 @@ pub struct SwapResult {
     pub amount_out: i128,
     pub venue: Venue,
     pub fee: i128,
+}
+
+/// Event `swap` : #[contractevent] (style cible D6a) des le premier commit,
+/// le routeur etant un contrat neuf sans format herite (le vault garde ses
+/// events env.events().publish deprecies jusqu'a la migration D6a planifiee).
+///
+/// Convention D6a minimale : acteur (from), instruments (token_in,
+/// token_out), montants (amount_in, amount_out, fee, min_out), decision
+/// d'execution (venue EFFECTIVE, celle qui a servi apres fallback).
+///
+/// Choix topics/data : nom d'event fixe `swap` + acteur + instruments en
+/// topics (un consommateur filtre par compte ou par paire sans decoder la
+/// data) ; montants et venue en data (payload non filtrable). Le derive du
+/// sdk supporte #[topic] par champ ; 4 topics au total, le plafond d'usage
+/// des events Soroban (le transfer SAC en emploie 4). Pas d'event d'echec :
+/// l'echec des deux venues revert tout, events compris.
+#[contractevent(topics = ["swap"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SwapEvent {
+    #[topic]
+    pub from: Address,
+    #[topic]
+    pub token_in: Address,
+    #[topic]
+    pub token_out: Address,
+    pub amount_in: i128,
+    pub amount_out: i128,
+    pub venue: Venue,
+    pub fee: i128,
+    pub min_out: i128,
+}
+
+/// Event `aqua_pool_set` : changement de config admin auditable on-chain
+/// (posture D6a, suivi de revue Task 6). Porte la paire TRIEE par adresse,
+/// l'identite de la cle de registre, quel que soit l'ordre des arguments du
+/// setter. Tokens en topics (filtrage par paire), pool_hash en data.
+#[contractevent(topics = ["aqua_pool_set"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AquaPoolSetEvent {
+    #[topic]
+    pub token_a: Address,
+    #[topic]
+    pub token_b: Address,
+    pub pool_hash: BytesN<32>,
 }
 
 /// Accumulateurs par paire ordonnee (token_in, token_out) : matiere premiere
@@ -229,9 +274,24 @@ impl SwapRouter {
         // l'ecriture d'etat (CEI).
         Self::record_swap(&env, &token_in, &token_out, amount_in, amount_out, fee);
 
+        // Event juste apres l'ecriture des stats : il decrit un swap DEJA
+        // comptabilise, et le bloc etat+event reste groupe avant le transfert
+        // sortant (CEI ; un event n'est pas de l'etat, mais la lecture y
+        // gagne). Venue EFFECTIVE : celle qui a servi apres fallback.
+        SwapEvent {
+            from: from.clone(),
+            token_in,
+            token_out,
+            amount_in,
+            amount_out,
+            venue,
+            fee,
+            min_out,
+        }
+        .publish(&env);
+
         out_token.transfer(&this, &from, &amount_out);
 
-        // Event de swap : Task 7 (schema d'events du deliverable).
         SwapResult {
             amount_out,
             venue,
@@ -245,9 +305,22 @@ impl SwapRouter {
     /// pour un simple identifiant de pool.
     pub fn set_aqua_pool(env: Env, token_a: Address, token_b: Address, pool_hash: BytesN<32>) {
         Self::admin(&env).require_auth();
-        env.storage()
-            .instance()
-            .set(&Self::aqua_pool_key(&token_a, &token_b), &pool_hash);
+        // Paire degeneree rejetee (suivi de revue Task 6) : sans deleter en
+        // D4, une entree (t, t) n'aurait aucune voie de suppression.
+        if token_a == token_b {
+            panic_with_error!(&env, RouterError::SameToken);
+        }
+        let (token_a, token_b) = Self::sorted_pair(token_a, token_b);
+        env.storage().instance().set(
+            &DataKey::AquaPool(token_a.clone(), token_b.clone()),
+            &pool_hash,
+        );
+        AquaPoolSetEvent {
+            token_a,
+            token_b,
+            pool_hash,
+        }
+        .publish(&env);
     }
 
     /// Pool Aquarius enregistre pour la paire (ordre des tokens indifferent),
@@ -341,14 +414,20 @@ impl SwapRouter {
         ]);
     }
 
-    /// Cle de registre de la paire, TRIEE par adresse : setter et lecteurs
-    /// partagent la meme construction, aucun desaccord de cle possible.
-    fn aqua_pool_key(a: &Address, b: &Address) -> DataKey {
+    /// Paire TRIEE par adresse : setter (cle ET event) et lecteurs partagent
+    /// la meme construction, aucun desaccord d'identite possible.
+    fn sorted_pair(a: Address, b: Address) -> (Address, Address) {
         if a < b {
-            DataKey::AquaPool(a.clone(), b.clone())
+            (a, b)
         } else {
-            DataKey::AquaPool(b.clone(), a.clone())
+            (b, a)
         }
+    }
+
+    /// Cle de registre de la paire, TRIEE par adresse.
+    fn aqua_pool_key(a: &Address, b: &Address) -> DataKey {
+        let (a, b) = Self::sorted_pair(a.clone(), b.clone());
+        DataKey::AquaPool(a, b)
     }
 
     /// Pool Aqua de la paire. `None` tant que `set_aqua_pool` n'a pas
@@ -416,3 +495,5 @@ mod venues;
 mod test;
 #[cfg(test)]
 mod test_mocks;
+#[cfg(test)]
+mod test_props;

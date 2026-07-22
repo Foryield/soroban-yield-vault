@@ -4,11 +4,17 @@ extern crate std;
 use super::test_mocks::{
     MockAggregator, MockAggregatorClient, MockAqua, MockAquaClient, MockBehavior,
 };
-use super::{venues, PairStats, RouterError, SwapResult, SwapRouter, SwapRouterClient, Venue};
+use super::{
+    venues, AquaPoolSetEvent, PairStats, RouterError, SwapEvent, SwapResult, SwapRouter,
+    SwapRouterClient, Venue,
+};
 use soroban_sdk::{
-    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation, MockAuth, MockAuthInvoke},
+    testutils::{
+        Address as _, AuthorizedFunction, AuthorizedInvocation, Events as _, MockAuth,
+        MockAuthInvoke,
+    },
     token::{StellarAssetClient, TokenClient},
-    Address, BytesN, Env, IntoVal, Symbol,
+    Address, BytesN, Env, Event as _, IntoVal, Symbol,
 };
 
 struct Fixture<'a> {
@@ -975,4 +981,138 @@ fn pair_stats_defaults_to_zeros() {
     let token_out = Address::generate(&f.env);
 
     assert_eq!(f.router.pair_stats(&token_in, &token_out), zero_stats());
+}
+
+// --- Events #[contractevent] (Task 7) : schema D6a, venue EFFECTIVE.
+//
+// Semantique de env.events().all() VERIFIEE dans soroban-sdk 25.3.2 : le test
+// Env active l'invocation metering (sdk env.rs, new_for_testutils), qui VIDE
+// le buffer d'events du host a chaque invocation racine (soroban-env-host
+// 25.2.2, invocation_metering.rs, push_invocation a stack_depth 0) ; all()
+// filtre en outre les events des sous-appels echoues (!failed_call). Donc :
+// all() = events de la DERNIERE invocation racine uniquement -> asserter
+// immediatement apres l'appel sous test, comme le fait deja le vault.
+
+#[test]
+fn swap_emits_event_with_full_schema_and_effective_venue() {
+    let f = swap_setup();
+    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &SERVED_OUT);
+
+    f.router.swap_exact_in(
+        &f.user,
+        &f.token_in.address,
+        &f.token_out.address,
+        &AMOUNT_IN,
+        &MIN_OUT,
+        &Venue::SoroswapAggregator,
+    );
+
+    // Comparaison XDR complete (topics ET data) via Event::to_xdr : le seul
+    // event du routeur dans l'invocation est `swap` (les transferts token
+    // sont emis par les contrats token, filtres par filter_by_contract).
+    assert_eq!(
+        f.env.events().all().filter_by_contract(&f.router.address),
+        [SwapEvent {
+            from: f.user.clone(),
+            token_in: f.token_in.address.clone(),
+            token_out: f.token_out.address.clone(),
+            amount_in: AMOUNT_IN,
+            amount_out: SERVED_OUT,
+            venue: Venue::SoroswapAggregator,
+            fee: SOROSWAP_FEE,
+            min_out: MIN_OUT,
+        }
+        .to_xdr(&f.env, &f.router.address)]
+    );
+}
+
+// Cas fallback : la preferee panique, le secours sert -> l'event porte la
+// venue EFFECTIVE (AquariusRouter) et le fee au bareme de la venue qui a
+// servi, meme exigence que SwapResult et les stats.
+#[test]
+fn swap_event_carries_effective_venue_on_fallback() {
+    let f = swap_setup();
+    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Panic);
+    MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
+    set_aqua_registry(&f, &pool_hash(&f.env));
+
+    f.router.swap_exact_in(
+        &f.user,
+        &f.token_in.address,
+        &f.token_out.address,
+        &AMOUNT_IN,
+        &MIN_OUT,
+        &Venue::SoroswapAggregator,
+    );
+
+    assert_eq!(
+        f.env.events().all().filter_by_contract(&f.router.address),
+        [SwapEvent {
+            from: f.user.clone(),
+            token_in: f.token_in.address.clone(),
+            token_out: f.token_out.address.clone(),
+            amount_in: AMOUNT_IN,
+            amount_out: SERVED_OUT,
+            venue: Venue::AquariusRouter,
+            fee: AQUARIUS_FEE,
+            min_out: MIN_OUT,
+        }
+        .to_xdr(&f.env, &f.router.address)]
+    );
+}
+
+// Suivi de revue Task 6 : changement de config admin auditable on-chain
+// (posture D6a). L'event porte la paire TRIEE (l'identite de la cle de
+// registre), quelle que soit l'ordre des arguments passes au setter.
+#[test]
+fn set_aqua_pool_emits_event_with_sorted_pair() {
+    let f = setup();
+    let token_a = Address::generate(&f.env);
+    let token_b = Address::generate(&f.env);
+    let (lo, hi) = if token_a < token_b {
+        (token_a, token_b)
+    } else {
+        (token_b, token_a)
+    };
+    let hash = pool_hash(&f.env);
+
+    // Arguments volontairement dans l'ordre INVERSE du tri : l'event doit
+    // porter la paire triee, pas la paire passee.
+    f.router.set_aqua_pool(&hi, &lo, &hash);
+
+    assert_eq!(
+        f.env.events().all().filter_by_contract(&f.router.address),
+        [AquaPoolSetEvent {
+            token_a: lo,
+            token_b: hi,
+            pool_hash: hash,
+        }
+        .to_xdr(&f.env, &f.router.address)]
+    );
+}
+
+// Suivi de revue Task 6 : paire degeneree (token_a == token_b) rejetee en
+// erreur typee -- sans cette garde, l'entree n'aurait aucune voie de
+// suppression (pas de deleter en D4). Aucun event sur rejet.
+#[test]
+fn set_aqua_pool_rejects_same_token_without_event() {
+    let f = setup();
+    let token = Address::generate(&f.env);
+    let hash = pool_hash(&f.env);
+
+    let result = f.router.try_set_aqua_pool(&token, &token, &hash);
+
+    assert_eq!(result, Err(Ok(RouterError::SameToken.into())));
+    // Absence d'event : l'invocation a echoue, all() ne restitue rien d'elle
+    // (events des appels echoues filtres) -- et le registre est intact.
+    assert!(f
+        .env
+        .events()
+        .all()
+        .filter_by_contract(&f.router.address)
+        .events()
+        .is_empty());
+    assert_eq!(f.router.aqua_pool_of(&token, &token), None);
 }

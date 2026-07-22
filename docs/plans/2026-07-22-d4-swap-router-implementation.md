@@ -1,5 +1,11 @@
 # D4 Swap Router — Plan d'implémentation
 
+> **Note d'amendement (22/07, tâche 6)** : les erreurs `AquaPoolNotSet` (5) et
+> `AmountConversion` (8) mentionnées plus bas ont été RETIRÉES en cours de
+> chantier (architecture attempt-bool, aucune surface d'émission). L'amendement
+> daté du design doc fait foi ; les mentions ci-dessous sont conservées comme
+> trace d'exécution.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (ou
 > superpowers:subagent-driven-development en session) pour exécuter ce plan
 > tâche par tâche.

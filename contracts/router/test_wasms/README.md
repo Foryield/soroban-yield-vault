@@ -43,6 +43,25 @@ task 10 teste la venue Soroswap contre router + factory + pair ; la
 décision de construire l'agrégateur ou de lui substituer un adapter de
 test est prise en task 10, conformément au plan.
 
+## Re-épinglage
+
+Pour mettre à jour les binaires sur un nouveau commit source, la procédure
+est délibérée et se fait en une seule passe :
+
+1. Changer `PINNED_SHA` dans `scripts/fetch_test_wasms.sh`.
+2. Exécuter le script : la vérification échoue sur les nouveaux binaires,
+   c'est attendu.
+3. Régénérer les checksums depuis ce répertoire :
+   `shasum -a 256 *.wasm > SHA256SUMS` (ou `sha256sum`).
+4. Mettre à jour le README : la table de provenance doit être régénérée
+   en même temps que `SHA256SUMS` (les deux listent les mêmes empreintes),
+   ainsi que le commit épinglé et les deux dates (commit source, date de
+   récupération).
+
+Un échec de checksum en dehors d'un re-épinglage délibéré doit être
+traité comme un signal de compromission (binaire altéré à la source ou en
+transit), jamais résolu en régénérant `SHA256SUMS` par-dessus.
+
 ## Usage
 
 ```sh

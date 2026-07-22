@@ -522,3 +522,5 @@ mod test_mocks;
 mod test_props;
 #[cfg(test)]
 mod test_soroswap_stack;
+#[cfg(test)]
+mod test_stack_common;

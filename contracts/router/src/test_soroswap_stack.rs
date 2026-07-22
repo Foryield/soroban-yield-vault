@@ -3,15 +3,11 @@
 // = 5,0) : le groupement d'underscores suit les decimales de l'actif, pas les
 // milliers, comme dans test_blend.rs du vault.
 #![allow(clippy::inconsistent_digit_grouping, clippy::zero_prefixed_literal)]
-// L'arite des clients generes par contractimport! est dictee par les ABI
-// externes (8-9 arguments), meme justification que dans venues/.
-#![allow(clippy::too_many_arguments)]
 //! Integration du routeur avec le stack Soroswap REEL (wasm vendorises,
 //! commit epingle 84de10e0, cf. test_wasms/README.md) : factory + pair +
 //! router Soroswap + AGGREGATOR (construit localement depuis les sources
-//! epinglees, aucun binaire canonique publie). La fixture deploie la chaine
-//! complete et la paire USDC/EURC via add_liquidity (semantique Uniswap V2,
-//! miroir de scripts/seed_soroswap_pool.sh).
+//! epinglees, aucun binaire canonique publie). Socle de fixture partage avec
+//! le stack Aqua : cf. test_stack_common.rs.
 //!
 //! Ce que ce fichier prouve : la math x*y=k avec frais 0,3 % du pair reel,
 //! la convention d'appel de notre client contre l'ABI reel de l'aggregator,
@@ -23,30 +19,16 @@
 
 extern crate std;
 
-use super::{PairStats, RouterError, SwapResult, SwapRouter, SwapRouterClient, Venue};
+use super::test_stack_common::{
+    self as common, pair_wasm, router_wasm, AMOUNT_IN, LEDGER_TIME, MIN_OUT, RESERVE,
+    SOROSWAP_FEE_BPS,
+};
+use super::{PairStats, RouterError, SwapResult, SwapRouterClient, Venue};
 use soroban_sdk::{
-    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation, Ledger},
-    token::{StellarAssetClient, TokenClient},
+    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
+    token::TokenClient,
     vec, Address, Env, IntoVal, Symbol,
 };
-
-mod factory_wasm {
-    soroban_sdk::contractimport!(file = "test_wasms/soroswap_factory.wasm");
-}
-mod pair_wasm {
-    soroban_sdk::contractimport!(file = "test_wasms/soroswap_pair.wasm");
-}
-mod router_wasm {
-    soroban_sdk::contractimport!(file = "test_wasms/soroswap_router.wasm");
-}
-mod aggregator_wasm {
-    soroban_sdk::contractimport!(file = "test_wasms/soroswap_aggregator.wasm");
-}
-
-/// Reserves initiales de la paire : 1000 USDC / 1000 EURC (prix 1:1).
-const RESERVE: i128 = 1_000_0000000;
-const AMOUNT_IN: i128 = 5_0000000;
-const MIN_OUT: i128 = 4_9000000;
 
 /// Montant sorti attendu, DERIVE de la source epinglee (soroswap/core,
 /// contracts/library/src/quotes.rs, get_amount_out ; meme math cote pair,
@@ -59,18 +41,17 @@ const MIN_OUT: i128 = 4_9000000;
 ///              = floor(49_850_000 * 10_000_000_000 / 10_049_850_000)
 ///              = floor(498_500_000_000_000_000 / 10_049_850_000)
 ///              = 49_602_730     (reste 3_909_500_000, troncature)
-const EXPECTED_OUT: i128 = 4_9602730;
+///
+/// Partage avec test_aqua_stack.rs : le test de fallback reel y fait servir
+/// le swap par CE stack Soroswap, sur les memes reserves.
+pub const EXPECTED_OUT: i128 = 4_9602730;
 
 /// Frais COMPTABLES du routeur ForYield : amount_in x 30 bps / 10 000
 /// = 150_000. Egalite numerique fortuite avec le fee LP du pair (meme taux
-/// 0,3 %, mais arrondi plafond cote pair, troncature cote routeur).
-const SOROSWAP_FEE_BPS: u32 = 30;
-const AQUARIUS_FEE_BPS: u32 = 10;
-const FEE: i128 = AMOUNT_IN * SOROSWAP_FEE_BPS as i128 / 10_000;
-
-/// Timestamp de ledger fixe et non nul : les tests de deadline comparent
-/// contre cette valeur.
-const LEDGER_TIME: u64 = 1_700_000_000;
+/// 0,3 %, mais arrondi plafond cote pair, troncature cote routeur). Partage
+/// avec le test de fallback reel de test_aqua_stack.rs (venue effective =
+/// Soroswap, memes frais comptables).
+pub const FEE: i128 = AMOUNT_IN * SOROSWAP_FEE_BPS as i128 / 10_000;
 
 struct StackFixture<'a> {
     env: Env,
@@ -82,90 +63,23 @@ struct StackFixture<'a> {
     router: SwapRouterClient<'a>,
 }
 
-/// Stack Soroswap complet : factory (initialisee avec le hash du wasm du
-/// pair), router Soroswap, aggregator reel (initialize admin + adapter
-/// Soroswap pointant le router), paire USDC/EURC creee et alimentee par
-/// add_liquidity, routeur ForYield branche sur l'aggregator. La venue
-/// Aquarius est une adresse sans contrat : registre vide, la venue rend
-/// false sans appel (chemin fallback des tests d'echec).
+/// Socle commun + stack Soroswap reel + routeur ForYield branche sur
+/// l'aggregator. La venue Aquarius est une adresse sans contrat : registre
+/// vide, la venue rend false sans appel (chemin fallback des tests d'echec).
+/// AQUARIUS_FEE_BPS est donc INERTE ici : exige par initialize, jamais lu
+/// (aucun swap ne se conclut sur la venue Aquarius dans ce fichier).
 fn setup_stack<'a>() -> StackFixture<'a> {
-    let env = Env::default();
-    env.mock_all_auths();
-    env.ledger().with_mut(|li| li.timestamp = LEDGER_TIME);
-    // Les wasm reels depassent le budget CPU par defaut de l'env de test.
-    env.cost_estimate().budget().reset_unlimited();
-
-    let admin = Address::generate(&env);
-    let user = Address::generate(&env);
-    let usdc = TokenClient::new(
-        &env,
-        &env.register_stellar_asset_contract_v2(admin.clone())
-            .address(),
-    );
-    let eurc = TokenClient::new(
-        &env,
-        &env.register_stellar_asset_contract_v2(admin.clone())
-            .address(),
-    );
-
-    let pair_hash = env.deployer().upload_contract_wasm(pair_wasm::WASM);
-    let factory = env.register(factory_wasm::WASM, ());
-    factory_wasm::Client::new(&env, &factory).initialize(&admin, &pair_hash);
-
-    let soroswap_router_id = env.register(router_wasm::WASM, ());
-    let soroswap_router = router_wasm::Client::new(&env, &soroswap_router_id);
-    soroswap_router.initialize(&factory);
-
-    let aggregator = env.register(aggregator_wasm::WASM, ());
-    aggregator_wasm::Client::new(&env, &aggregator).initialize(
-        &admin,
-        &vec![
-            &env,
-            aggregator_wasm::Adapter {
-                protocol_id: aggregator_wasm::Protocol::Soroswap,
-                router: soroswap_router_id.clone(),
-                paused: false,
-            },
-        ],
-    );
-
-    // Liquidite initiale : add_liquidity cree la paire si elle n'existe pas
-    // (mins = desired : premiere fourniture, prix libre, aucun arrondi).
-    StellarAssetClient::new(&env, &usdc.address).mint(&admin, &RESERVE);
-    StellarAssetClient::new(&env, &eurc.address).mint(&admin, &RESERVE);
-    soroswap_router.add_liquidity(
-        &usdc.address,
-        &eurc.address,
-        &RESERVE,
-        &RESERVE,
-        &RESERVE,
-        &RESERVE,
-        &admin,
-        &(LEDGER_TIME + 3600),
-    );
-    let pair = pair_wasm::Client::new(
-        &env,
-        &soroswap_router.router_pair_for(&usdc.address, &eurc.address),
-    );
-
-    StellarAssetClient::new(&env, &usdc.address).mint(&user, &AMOUNT_IN);
-
-    let router = SwapRouterClient::new(&env, &env.register(SwapRouter, ()));
-    router.initialize(
-        &admin,
-        &aggregator,
-        &Address::generate(&env),
-        &SOROSWAP_FEE_BPS,
-        &AQUARIUS_FEE_BPS,
-    );
+    let base = common::setup_base();
+    let stack = common::deploy_soroswap_stack(&base);
+    let router = common::init_router(&base, &stack.aggregator, &Address::generate(&base.env));
 
     StackFixture {
-        env,
-        user,
-        usdc,
-        eurc,
-        soroswap_router,
-        pair,
+        env: base.env,
+        user: base.user,
+        usdc: base.usdc,
+        eurc: base.eurc,
+        soroswap_router: stack.router,
+        pair: stack.pair,
         router,
     }
 }

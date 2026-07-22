@@ -90,6 +90,16 @@ pub trait SoroswapRouter {
 /// `timestamp()` nu echouerait a chaque appel. `saturating_add` : jamais de
 /// panique dans le chemin de venue ; a saturation (timestamp = u64::MAX,
 /// irrealiste) la deadline egale `now`, la venue refuse et le fallback decide.
+///
+/// INVARIANT (suivi de revue Task 10) : appelee DEUX fois par tentative, une
+/// dans `pull_auth_entries` (args de la frame pre-autorisee du router
+/// Soroswap) et une dans `attempt` (args de l'appel reel). Les deux DOIVENT
+/// produire la meme valeur, sans quoi la pre-autorisation ne s'apparie pas et
+/// l'auth echoue : c'est garanti parce que le timestamp du ledger est
+/// CONSTANT a l'interieur d'une transaction (deux lectures dans la meme
+/// invocation rendent le meme resultat). Toute reecriture qui derivait la
+/// deadline d'autre chose que du timestamp courant devrait la calculer une
+/// fois et la passer aux deux.
 fn deadline(env: &Env) -> u64 {
     env.ledger().timestamp().saturating_add(1)
 }
@@ -158,6 +168,10 @@ pub fn pull_auth_entries(
         return entries;
     };
 
+    // Meme invariant, plus faible, que pour `deadline` : ce `path` doit etre
+    // EGAL a celui que `attempt` place dans la distribution (construction
+    // identique [token_in, token_out], memes arguments), sans quoi la frame
+    // pre-autorisee ne s'apparie pas avec l'appel reel du router Soroswap.
     let path = vec![env, token_in.clone(), token_out.clone()];
     entries.push_back(InvokerContractAuthEntry::Contract(SubContractInvocation {
         context: ContractContext {

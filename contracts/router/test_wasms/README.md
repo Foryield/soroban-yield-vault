@@ -100,8 +100,11 @@ est délibérée et se fait en une seule passe :
 1. Changer `PINNED_SHA` dans `scripts/fetch_test_wasms.sh`.
 2. Exécuter le script : la vérification échoue sur les nouveaux binaires,
    c'est attendu.
-3. Régénérer les checksums depuis ce répertoire :
-   `shasum -a 256 *.wasm > SHA256SUMS` (ou `sha256sum`).
+3. Régénérer les checksums depuis ce répertoire, en EXCLUANT
+   `soroswap_aggregator.wasm` (construit localement, hors manifeste ; un
+   manifeste à 9 entrées ferait échouer la garde du script et le test) :
+   `ls *.wasm | grep -v soroswap_aggregator | xargs shasum -a 256 > SHA256SUMS`
+   (ou `sha256sum`).
 4. Mettre à jour le README : la table de provenance doit être régénérée
    en même temps que `SHA256SUMS` (les deux listent les mêmes empreintes),
    ainsi que le commit épinglé et les deux dates (commit source, date de

@@ -279,8 +279,10 @@ fn locally_built_aggregator_wasm_matches_recorded_sha256() {
 
 /// Garde anti-derive des 8 wasm re-telechargeables (suivi de revue Task 11,
 /// durcissement supply-chain du repo public) : SHA256SUMS est parse au
-/// moment du test et chaque entree confrontee aux octets reellement presents
-/// sur le disque. Complement du script fetch (qui ne verifie qu'au
+/// moment du test et chaque entree confrontee aux octets presents sur le
+/// disque au moment de la compilation (include_bytes! est une dependance de
+/// build : tout changement de fichier force la recompilation, la garde voit
+/// donc toujours les octets courants). Complement du script fetch (qui ne verifie qu'au
 /// re-telechargement) : ici la verification court a chaque run de tests.
 #[test]
 fn vendored_wasms_match_sha256sums() {

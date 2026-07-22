@@ -367,7 +367,21 @@ impl SwapRouter {
         let this = env.current_contract_address();
         match venue {
             Venue::SoroswapAggregator => {
-                Self::authorize_venue_pull(env, &venue_addr, token_in, amount_in);
+                // La topologie d'auth du stack Soroswap reel est propre a la
+                // venue (frame du router Soroswap + transfert vers la paire,
+                // decouverts par appels de lecture) : le module venue
+                // construit les entrees, le routeur les endosse. Les appels
+                // de decouverte precedent OBLIGATOIREMENT l'endossement (une
+                // pre-autorisation ne couvre que l'invocation suivante).
+                let entries = venues::soroswap::pull_auth_entries(
+                    env,
+                    &venue_addr,
+                    token_in,
+                    token_out,
+                    amount_in,
+                    &this,
+                );
+                env.authorize_as_current_contract(entries);
                 venues::soroswap::attempt(
                     env,
                     &venue_addr,
@@ -400,12 +414,14 @@ impl SwapRouter {
         }
     }
 
-    /// La venue tire `token_in` du routeur via un token.transfer imbrique :
-    /// l'auth d'invocateur ne couvrant que l'appel direct, ce transfert est
-    /// pre-autorise explicitement (meme motif que pool_supply du vault D1).
-    /// La pre-autorisation est etroite (token, venue et montant exacts) et
-    /// meurt avec la transaction : une tentative echouee ne laisse rien
-    /// d'exploitable.
+    /// La venue Aquarius tire `token_in` du routeur via un token.transfer
+    /// imbrique : l'auth d'invocateur ne couvrant que l'appel direct, ce
+    /// transfert est pre-autorise explicitement (meme motif que pool_supply
+    /// du vault D1). La pre-autorisation est etroite (token, venue et montant
+    /// exacts) et meurt avec la transaction : une tentative echouee ne laisse
+    /// rien d'exploitable. La venue Soroswap a sa propre construction
+    /// d'entrees (cf. venues::soroswap::pull_auth_entries : l'arbre reel
+    /// passe par le router Soroswap et la paire, pas par l'aggregator).
     fn authorize_venue_pull(env: &Env, venue_addr: &Address, token_in: &Address, amount_in: i128) {
         let this = env.current_contract_address();
         env.authorize_as_current_contract(vec![
@@ -504,3 +520,5 @@ mod test;
 mod test_mocks;
 #[cfg(test)]
 mod test_props;
+#[cfg(test)]
+mod test_soroswap_stack;

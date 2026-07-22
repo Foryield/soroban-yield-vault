@@ -185,3 +185,42 @@ typées du design sans surface d'émission ; elles sont RETIRÉES de l'enum
 Limitation assumée du registre Aqua : pas de suppression d'entrée (le flux
 nominal de re-seed après reset écrase avec le hash frais) ; un hash périmé
 fait échouer la venue puis traverser le fallback, sans risque de fonds.
+
+## Amendement du 22/07 (intégration, tâche 10)
+
+Décisions et constats établis en montant la fixture Soroswap réelle
+(factory + pair + router + agrégateur, wasm épinglés au commit `84de10e0`) :
+
+- **Agrégateur construit depuis les sources** : aucun binaire canonique de
+  l'agrégateur n'est publié dans `soroswap/aggregator`. Le build depuis le
+  commit épinglé aboutit (rustc 1.94.0, cible `wasm32-unknown-unknown`,
+  reproductible à l'octet avec cette chaîne, vérifié par deux builds).
+  L'artefact est vendorisé dans `test_wasms/` avec sa provenance consignée
+  au README, hors `SHA256SUMS` (manifeste réservé aux téléchargements
+  canoniques re-vérifiables). Le repli « adapter de test » prévu au plan
+  n'a pas été nécessaire.
+- **Deadline stricte** : `ensure_deadline` du router Soroswap rejette
+  `now >= deadline` (comparaison stricte, vérifiée dans la source épinglée
+  et contre le wasm réel, dans les deux sens de la frontière). Le
+  `deadline = timestamp()` initial de `venues/soroswap.rs` aurait donc
+  échoué à chaque appel ; corrigé en `timestamp() + 1` (saturating, jamais
+  de panique dans le chemin de venue).
+- **Topologie d'auth réelle** : l'agrégateur ne détient jamais les fonds ;
+  son adapter interne fait tirer `token_in` par le ROUTER Soroswap
+  (`to.require_auth()` sur la frame du router, puis `transfer(to -> pair)`).
+  La pré-autorisation générique `transfer(routeur -> agrégateur)` ne
+  couvrait pas cet arbre : le swap réel échouait en `AllVenuesFailed`
+  (vérifié par expérience contrôlée). Correctif : la venue Soroswap
+  construit ses entrées d'auth (`pull_auth_entries`) en découvrant router
+  et paire par appels de lecture (`get_adapters`, `router_pair_for`),
+  découverte OBLIGATOIREMENT antérieure à
+  `authorize_as_current_contract` (une pré-autorisation ne couvre que
+  l'invocation suivante). L'entrée générique est conservée : elle couvre la
+  topologie des mocks et un agrégateur qui tirerait lui-même ; une entrée
+  non consommée meurt avec la transaction.
+- **Portée de la preuve** : la fixture prouve la math x*y=k avec frais
+  0,3 % du pair réel (montant attendu dérivé de la source, pas observé),
+  la convention d'appel contre l'ABI réel de l'agrégateur, l'arbre d'auth
+  réel et le chemin d'erreur typé sur min_out intenable. Reste couvert par
+  la démo testnet PR C : le comportement des versions DÉPLOYÉES de
+  l'agrégateur (potentiellement postérieures au commit épinglé).

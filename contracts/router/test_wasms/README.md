@@ -33,15 +33,36 @@ sont la référence vivante des deux venues : ce sont ceux contre lesquels
 l'agrégateur Soroswap teste ses propres adapters. Le commit épinglé est
 celui dont les sources des adapters ont été vérifiées le 2026-07-22.
 
-## Note sur le wasm de l'agrégateur
+## Wasm de l'agrégateur : construit localement (hors SHA256SUMS)
 
 Aucun wasm précompilé du contrat agrégateur lui-même n'existe dans le
 dépôt `soroswap/aggregator` au commit épinglé (seuls les wasm de venues
 sont publiés, sous `contracts/aggregator/` et `contracts/adapters/`).
-L'agrégateur doit donc être construit depuis les sources. La fixture de la
-task 10 teste la venue Soroswap contre router + factory + pair ; la
-décision de construire l'agrégateur ou de lui substituer un adapter de
-test est prise en task 10, conformément au plan.
+`soroswap_aggregator.wasm` a donc été **construit depuis les sources** au
+même commit épinglé (`84de10e0f8d26168b4a76f8c23b963e50917517c`), le
+2026-07-22 :
+
+```sh
+git clone https://github.com/soroswap/aggregator && cd aggregator
+git checkout 84de10e0f8d26168b4a76f8c23b963e50917517c
+cd contracts/aggregator
+cargo build --target wasm32-unknown-unknown --release
+# artefact : contracts/target/wasm32-unknown-unknown/release/soroswap_aggregator.wasm
+```
+
+- Chaîne de compilation : rustc 1.94.0 (4a4ef493e 2026-03-02), cible
+  `wasm32-unknown-unknown`, profil release du workspace source
+  (soroban-sdk 22.0.7). L'étape `soroban contract optimize` du Makefile
+  amont est omise : sans effet sur la sémantique, inutile pour un wasm de
+  test.
+- SHA-256 : `4ee0fddf79d695d48e694413d8eee7ba592d38b626d94c8b4e3c54f725eb2f40`
+- Le build est reproductible à l'octet avec cette chaîne (vérifié par deux
+  builds depuis `cargo clean`), mais l'empreinte dépend de la version de
+  rustc : ce n'est **pas un téléchargement canonique**, le fichier reste
+  donc **hors de `SHA256SUMS`** (manifeste réservé aux binaires
+  re-téléchargeables par `scripts/fetch_test_wasms.sh`) et hors du script.
+  Pour le régénérer, rejouer la procédure ci-dessus et confronter
+  l'empreinte à celle consignée ici.
 
 ## Re-épinglage
 

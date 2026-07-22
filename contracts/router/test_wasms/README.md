@@ -39,8 +39,13 @@ Le dépôt canonique d'Aqua (`AquaToken/soroban-amm`) étant en 404, la
 sémantique des wasm Aqua vendorisés a été établie sur un miroir des
 sources :
 
-- Dépôt : [`calc1f4r/soroban-amm`](https://github.com/calc1f4r/soroban-amm)
-- Commit : `f9d4a5e0`
+- Dépôt de référence :
+  [`Foryield/soroban-amm`](https://github.com/Foryield/soroban-amm)
+  (copie durable sous notre contrôle, forkée le 2026-07-22 depuis
+  [`calc1f4r/soroban-amm`](https://github.com/calc1f4r/soroban-amm),
+  crédité comme origine)
+- Commit : `f9d4a5e0589e785dd8d44959f100545dd0d0f17c` (daté 2025-05-23,
+  vérifié accessible dans le fork)
 - Génération : la même que les wasm vendorisés (rssdkver 22.0.6 dans la
   méta des wasm)
 - Date de vérification : 2026-07-22
@@ -58,8 +63,9 @@ Ce miroir est ce qui a établi :
   frame puis escrow `transfer(user -> router Aqua)` (le `user` de
   `swap_chained` étant l'appelant direct, notre routeur).
 
-Une copie durable du miroir (fork sous l'org Foryield) est recommandée,
-décision en attente.
+Copie durable en place depuis le 2026-07-22 : le fork
+`Foryield/soroban-amm` fige le graphe de commits sous notre contrôle,
+indépendamment du devenir du miroir d'origine.
 
 ## Wasm de l'agrégateur : construit localement (hors SHA256SUMS)
 

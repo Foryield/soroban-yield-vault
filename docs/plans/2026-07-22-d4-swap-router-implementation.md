@@ -330,6 +330,12 @@ compléter `attempt_venue` pour Aqua) → vert.
 clé = paire TRIÉE par adresse (un pool sert les deux sens) ; conversion
 retour u128 > i128::MAX → `AmountConversion`.
 
+Suivi de revue (Task 3, re-revue) : extraire les conversions i128↔u128 de
+`venues/aqua.rs` dans un helper PUR et le tester unitairement aux bornes
+(-1, 0, i128::MAX, i128::MAX+1 côté u128) : c'est la seule construction
+réellement probante pour la garde négative (démontré par mutation : le test
+au niveau mock ne distingue pas retour anticipé et appel annulé par rollback).
+
 **Step 2-4 :** rouge → implémentation → vert.
 **Step 5 : Commit** `feat(router): registre admin des pools Aquarius`
 

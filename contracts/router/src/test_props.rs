@@ -7,7 +7,9 @@
 //! - solde du routeur NUL dans les deux tokens (rien ne reste hors
 //!   transaction, succes comme revert) ;
 //! - stats de la paire = somme EXACTE des swaps SERVIS, recalculee par le
-//!   modele du test (volume_in, volume_out, fees, count).
+//!   modele du test (volume_in, volume_out, fees, count) ;
+//! - issue de chaque appel conforme au modele : venue effective et montant
+//!   sur succes, erreur TYPEE predite (slippage vs panne de venue) sur echec.
 
 use super::test_mocks::{
     MockAggregator, MockAggregatorClient, MockAqua, MockAquaClient, MockBehavior,

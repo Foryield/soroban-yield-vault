@@ -100,8 +100,8 @@ fn double_initialize_fails_with_already_initialized() {
 }
 
 // --- Fumee des clients de venues (Task 3) : mock repond, client try_ OK.
-// Le routage complet (fallback, min-out par delta de solde) arrive en
-// Tasks 4-5.
+// Le routage complet (fallback, min-out par delta de solde) est couvert par
+// les sections Tasks 4-5 ci-dessous.
 
 const AMOUNT_IN: i128 = 5_0000000;
 const SERVED_OUT: i128 = 4_9000000;

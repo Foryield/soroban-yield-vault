@@ -15,10 +15,17 @@
   — re-reads the Soroswap router and Blend USDC addresses from their
   canonical registries on every run, nothing hardcoded.
 
-Still open for D4: swap routing layer in the vault (Soroswap aggregator
-primary, Aquarius router fallback), slippage protection (min-out params,
-decision of 2026-07-21), swap-fee accounting, best-execution selection,
-USDC<->EURC rebalance demonstration + hashes + video.
+Everything still open for D4 at that date has since been delivered:
+the swap routing layer (Soroswap aggregator primary, Aquarius router
+fallback), slippage min-out and swap-fee accounting shipped as the
+`SwapRouter` contract in
+https://github.com/Foryield/soroban-yield-vault/pull/9; the real-stack
+integration fixtures (vendored Soroswap and Aquarius wasm) in
+https://github.com/Foryield/soroban-yield-vault/pull/10; the venue seeds,
+deployment, best-execution quotes and USDC<->EURC rebalance demonstration
+are the sections below (this PR). The closing checklist at the end of this
+file maps each requirement to its proof; only the video walkthrough remains,
+recorded separately.
 
 ## 2026-07-22 — Aquarius pool seeded
 
@@ -278,3 +285,55 @@ USDC<->EURC rebalance demonstration + hashes + video.
   `get_pools` returns for the pair), prints both outputs and the winner;
   addresses re-read from their canonical sources at run time, same
   posture as the seed scripts.
+
+## 2026-07-22 — D4 requirement checklist (closure)
+
+Each D4 requirement mapped to its proof — contract function
+(`contracts/router/src/lib.rs`,
+`CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK`), test, and
+on-chain hash:
+
+- **Soroswap aggregator as primary venue**: `swap_exact_in(..., preferred
+  = SoroswapAggregator)` routes through the deployed aggregator. Tests:
+  `swap_exact_in_serves_via_preferred_soroswap` (mocked),
+  `swap_exact_in_serves_through_real_soroswap_stack` (vendored real
+  stack). On-chain: rebalance swap
+  [30afee28…](https://stellar.expert/explorer/testnet/tx/30afee289178c6962a793805ce4f19e568d2c940bbce3f55a9e7e852a056146b),
+  `swap` event `venue: 0 (SoroswapAggregator)`.
+- **Aquarius router as fallback**: venue order flips on `preferred`, each
+  attempt is a `try_` call judged by balance delta, failure falls through
+  atomically. Tests: `fallback_preferred_soroswap_panics_aqua_serves`,
+  `preferred_aqua_without_registry_falls_back_to_soroswap` (mocked),
+  `real_fallback_empty_aqua_pool_served_by_soroswap` (vendored real
+  stack). On-chain:
+  [d5b0e95f…](https://stellar.expert/explorer/testnet/tx/d5b0e95f11c3cf01f0e9c51116f5dc3ecfa5162011be35cf889cdd73f67ffa56)
+  — client asked for Aquarius, contract served via Soroswap, proven by
+  the decoded `swap` event of the transaction itself.
+- **Slippage protection (min-out)**: `min_out` propagated to the venue
+  AND re-checked by the router on balance delta (defense in depth against
+  a lying venue). Tests: `swap_serving_exactly_min_out_succeeds`,
+  `lying_venue_serving_under_min_hits_slippage_exceeded`,
+  `min_out_above_achievable_fails_all_venues_and_funds_intact`. On-chain:
+  rebalance swap served 8798634 against `min_out` 8710647 (quote minus 1%
+  margin, hash above).
+- **Swap-fee accounting**: `fee = amount_in x fee_bps / 10_000`
+  (accounting only, the router levies nothing) returned in `SwapResult`
+  and cumulated per ordered pair in `pair_stats`. Tests:
+  `swap_exact_in_serves_via_preferred_soroswap` (fee asserted), stats
+  invariant proptest (`test_props.rs`). On-chain: post-campaign
+  `pair_stats(USDC, EURC)` = `{volume_in: 20000029, volume_out: 16620923,
+  fees: 60000, swaps: 2}`, exact to the unit.
+- **Best-execution selection**: off-chain by simulation
+  (`scripts/quote_venues.sh`), the contract guarantees min-out and
+  fallback rather than selection (design decision of
+  2026-07-22). Proof: the quotes section above — 8798611 (Soroswap) vs
+  4992488 (Aquarius) for 1.0 USDC, winner routed as `preferred`.
+- **USDC<->EURC rebalance demonstrated**: 3-hash chain — D1 USDC vault
+  `withdraw`
+  [daa6fcd9…](https://stellar.expert/explorer/testnet/tx/daa6fcd99ad02a5965faed59f22ddddba35afd1258706073f98bc17902e26963),
+  routed `swap_exact_in`
+  [30afee28…](https://stellar.expert/explorer/testnet/tx/30afee289178c6962a793805ce4f19e568d2c940bbce3f55a9e7e852a056146b),
+  D3 EURC vault `deposit`
+  [cb38a0ed…](https://stellar.expert/explorer/testnet/tx/cb38a0ed8510f313d67d1d314b1bb7a5077e237ede747d1368b582952fdaf04f).
+
+Outside this evidence pack: the video walkthrough, recorded separately.

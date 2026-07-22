@@ -18,7 +18,7 @@
 # le vrai router). La simulation prealable echoue si le compte ne peut pas
 # payer ; marche a suivre pour obtenir de l'AQUA : trustline puis swap
 # XLM->AQUA sur le pool XLM/AQUA du meme router
-# (cf. docs/evidence/d4-dex-routing.md, section du 2026-07-22).
+# (cf. docs/evidence/d4-dex-routing.md, section "Aquarius pool seeded").
 #
 # Usage : scripts/seed_aquarius_pool.sh <cle> <montant_usdc_7dp> <montant_eurc_7dp>
 set -euo pipefail
@@ -79,7 +79,7 @@ SIM=$(simulate init_standard_pool --user "$ADDR" --tokens "$TOKENS_JSON" --fee_f
   echo "ERREUR : simulation init_standard_pool en echec (diagnostic ci-dessus)." >&2
   echo "Cause probable : paiement de creation en AQUA non couvert. Obtenir de" >&2
   echo "l'AQUA testnet : trustline AQUA puis swap XLM->AQUA sur le meme router" >&2
-  echo "(cf. docs/evidence/d4-dex-routing.md, 2026-07-22)." >&2
+  echo "(cf. docs/evidence/d4-dex-routing.md, section Aquarius pool seeded)." >&2
   exit 1
 }
 POOL_HASH=$(echo "$SIM" | python3 -c "import json,sys; print(json.load(sys.stdin)[0])")

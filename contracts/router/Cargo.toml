@@ -1,0 +1,18 @@
+[package]
+name = "swap-router"
+description = "ForYield SwapRouter - best-execution Soroswap/Aquarius, min-out, fallback atomique"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = "25"
+
+[dev-dependencies]
+proptest = "1"
+soroban-sdk = { version = "25", features = ["testutils"] }

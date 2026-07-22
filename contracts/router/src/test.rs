@@ -265,10 +265,13 @@ fn aqua_attempt_returns_false_on_negative_amounts_without_calling_venue() {
         );
         assert!(!ok);
     }
-    // Les soldes intacts ne suffisent pas (un appel panique puis annule les
-    // laisserait identiques) : le marqueur d'invocation absent prouve que la
-    // garde a rendu false AVANT tout appel a la venue, alors que le mock
-    // etait pret a servir.
+    // Ce test fige le contrat observable : attempt rend false, les fonds
+    // sont intacts, et aucun appel de venue ABOUTI n'a eu lieu (le marqueur
+    // absent est un fil-piege valide contre un appel complete). Il ne peut
+    // PAS distinguer le retour anticipe d'un appel invoque puis annule par
+    // rollback : l'ecriture du marqueur serait annulee avec la frame, tout
+    // marqueur en storage a cette limite. La preuve directe de la garde
+    // arrive en Task 6, via un helper de conversion pur teste aux bornes.
     assert!(!MockAquaClient::new(&f.env, &mock).was_called());
     assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
 }

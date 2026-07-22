@@ -8,7 +8,9 @@
 #![allow(clippy::too_many_arguments)]
 //! Socle commun des fixtures « stack reelle » (tasks 10 et 11, suivi de revue
 //! Task 10) : env + budget, tokens SAC USDC/EURC, financement de
-//! l'utilisateur, routeur ForYield, et deploiement du stack Soroswap complet.
+//! l'utilisateur, routeur ForYield, deploiement du stack Soroswap complet,
+//! helper de reordonnancement des reserves et gardes anti-derive des wasm
+//! vendorises (aggregator local + manifeste SHA256SUMS).
 //! La fixture Aqua (test_aqua_stack.rs) reutilise ce socle ET le stack
 //! Soroswap pour le test de fallback reel ; la fixture Soroswap
 //! (test_soroswap_stack.rs) n'y ajoute que ses derivations propres.

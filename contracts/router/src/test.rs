@@ -1,6 +1,13 @@
 #![cfg(test)]
-use super::{PairStats, RouterError, SwapRouter, SwapRouterClient, Venue};
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use super::test_mocks::{
+    MockAggregator, MockAggregatorClient, MockAqua, MockAquaClient, MockBehavior,
+};
+use super::{venues, PairStats, RouterError, SwapRouter, SwapRouterClient, Venue};
+use soroban_sdk::{
+    testutils::Address as _,
+    token::{StellarAssetClient, TokenClient},
+    Address, BytesN, Env,
+};
 
 struct Fixture<'a> {
     env: Env,
@@ -82,6 +89,179 @@ fn double_initialize_fails_with_already_initialized() {
     // initialize retourne () : le client try_ type l'erreur en
     // soroban_sdk::Error, la comparaison passe par la conversion contracterror.
     assert_eq!(result, Err(Ok(RouterError::AlreadyInitialized.into())));
+}
+
+// --- Fumee des clients de venues (Task 3) : mock repond, client try_ OK.
+// Le routage complet (fallback, min-out par delta de solde) arrive en
+// Tasks 4-5.
+
+const AMOUNT_IN: i128 = 5_0000000;
+const SERVED_OUT: i128 = 4_9000000;
+const MIN_OUT: i128 = 4_8000000;
+
+struct VenueFixture<'a> {
+    env: Env,
+    user: Address,
+    token_in: TokenClient<'a>,
+    token_out: TokenClient<'a>,
+}
+
+/// Deux tokens de test : `user` detient AMOUNT_IN de token_in, le mock sera
+/// pre-finance en token_out par `fund` (le mock sert depuis son propre solde,
+/// cf. test_mocks).
+fn venue_setup<'a>() -> VenueFixture<'a> {
+    let env = Env::default();
+    // Au niveau unitaire, le require_auth du transfert de `to`/`user` est
+    // imbrique sous l'appel de venue (non rattache a la racine) : la variante
+    // allowing_non_root_auth est necessaire. Dans le vrai flux (Task 4),
+    // c'est le ROUTEUR qui pre-autorise son propre transfert via
+    // authorize_as_current_contract, comme pool_supply du vault.
+    env.mock_all_auths_allowing_non_root_auth();
+
+    let issuer = Address::generate(&env);
+    let user = Address::generate(&env);
+    let token_in = TokenClient::new(
+        &env,
+        &env.register_stellar_asset_contract_v2(issuer.clone())
+            .address(),
+    );
+    let token_out = TokenClient::new(
+        &env,
+        &env.register_stellar_asset_contract_v2(issuer).address(),
+    );
+    StellarAssetClient::new(&env, &token_in.address).mint(&user, &AMOUNT_IN);
+
+    VenueFixture {
+        env,
+        user,
+        token_in,
+        token_out,
+    }
+}
+
+fn fund(f: &VenueFixture, holder: &Address, amount: i128) {
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(holder, &amount);
+}
+
+#[test]
+fn soroswap_attempt_against_mock_moves_real_tokens() {
+    let f = venue_setup();
+    let mock = f.env.register(MockAggregator, ());
+    MockAggregatorClient::new(&f.env, &mock).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    fund(&f, &mock, SERVED_OUT);
+
+    let ok = venues::soroswap::attempt(
+        &f.env,
+        &mock,
+        &f.token_in.address,
+        &f.token_out.address,
+        AMOUNT_IN,
+        MIN_OUT,
+        &f.user,
+    );
+
+    assert!(ok);
+    // Vrai flux de fonds : token_in tire depuis `to`, token_out servi a `to`.
+    assert_eq!(f.token_in.balance(&f.user), 0);
+    assert_eq!(f.token_in.balance(&mock), AMOUNT_IN);
+    assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
+    assert_eq!(f.token_out.balance(&mock), 0);
+}
+
+#[test]
+fn aqua_attempt_against_mock_moves_real_tokens() {
+    let f = venue_setup();
+    let mock = f.env.register(MockAqua, ());
+    MockAquaClient::new(&f.env, &mock).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    fund(&f, &mock, SERVED_OUT);
+    let pool_hash = BytesN::from_array(&f.env, &[7u8; 32]);
+
+    let ok = venues::aqua::attempt(
+        &f.env,
+        &mock,
+        &f.token_in.address,
+        &f.token_out.address,
+        AMOUNT_IN,
+        MIN_OUT,
+        &f.user,
+        &pool_hash,
+    );
+
+    assert!(ok);
+    assert_eq!(f.token_in.balance(&f.user), 0);
+    assert_eq!(f.token_in.balance(&mock), AMOUNT_IN);
+    assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
+    assert_eq!(f.token_out.balance(&mock), 0);
+}
+
+#[test]
+fn attempt_returns_false_when_venue_panics_and_rolls_back() {
+    let f = venue_setup();
+    let mock = f.env.register(MockAggregator, ());
+    MockAggregatorClient::new(&f.env, &mock).set_behavior(&MockBehavior::Panic);
+
+    let ok = venues::soroswap::attempt(
+        &f.env,
+        &mock,
+        &f.token_in.address,
+        &f.token_out.address,
+        AMOUNT_IN,
+        MIN_OUT,
+        &f.user,
+    );
+
+    // Le try_ absorbe la panne ET l'invocation ratee est annulee : aucun
+    // token n'a bouge.
+    assert!(!ok);
+    assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
+    assert_eq!(f.token_in.balance(&mock), 0);
+}
+
+#[test]
+fn aqua_attempt_panicking_mock_returns_false() {
+    let f = venue_setup();
+    let mock = f.env.register(MockAqua, ());
+    MockAquaClient::new(&f.env, &mock).set_behavior(&MockBehavior::Panic);
+    let pool_hash = BytesN::from_array(&f.env, &[7u8; 32]);
+
+    let ok = venues::aqua::attempt(
+        &f.env,
+        &mock,
+        &f.token_in.address,
+        &f.token_out.address,
+        AMOUNT_IN,
+        MIN_OUT,
+        &f.user,
+        &pool_hash,
+    );
+
+    assert!(!ok);
+    assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
+}
+
+#[test]
+fn aqua_attempt_returns_false_on_negative_amounts_without_calling_venue() {
+    let f = venue_setup();
+    let mock = f.env.register(MockAqua, ());
+    // set_behavior volontairement omis : si la venue etait appelee, le mock
+    // paniquerait sur le storage vide (et try_ masquerait la difference) ;
+    // les soldes intacts prouvent le retour AVANT tout appel.
+    let pool_hash = BytesN::from_array(&f.env, &[7u8; 32]);
+
+    for (amount_in, min_out) in [(-1_i128, MIN_OUT), (AMOUNT_IN, -1_i128)] {
+        let ok = venues::aqua::attempt(
+            &f.env,
+            &mock,
+            &f.token_in.address,
+            &f.token_out.address,
+            amount_in,
+            min_out,
+            &f.user,
+            &pool_hash,
+        );
+        assert!(!ok);
+    }
+    assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
 }
 
 #[test]

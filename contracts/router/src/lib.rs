@@ -169,5 +169,12 @@ impl SwapRouter {
     }
 }
 
+// Consomme a partir de la Task 4 (swap_exact_in) : d'ici la, seul le code de
+// test exerce le module, d'ou l'allow(dead_code) sur le build non-test.
+#[allow(dead_code)]
+mod venues;
+
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod test_mocks;

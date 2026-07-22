@@ -322,6 +322,17 @@ sert.
 **Step 2-4 :** rouge → implémentation (déjà largement en place en Task 4,
 compléter `attempt_venue` pour Aqua) → vert.
 
+Suivis de revue (Task 4) à traiter ici :
+- La branche `SlippageExceeded` (venue qui annonce succès avec un delta
+  < min_out) est inatteignable avec les mocks actuels (Serve panique sous le
+  min) : ajouter `MockBehavior::ServeIgnoringMin(i128)` + test assertant
+  `SlippageExceeded` et le revert des fonds.
+- Résorber l'écart CEI : déplacer `record_swap` AVANT le transfert sortant
+  (amount_out déjà connu), convention maison du vault.
+- Documenter le modèle de confiance des tokens dans le doc de module :
+  SAC/SEP-41 sans frais de transfert ni hooks supposés ; un token menteur ne
+  nuit qu'à son appelant, le routeur ne détient rien entre transactions.
+
 **Step 5 : Commit** `feat(router): fallback atomique - matrice complete`
 
 ### Task 6 : registre pool Aqua + conversions (TDD)
@@ -329,6 +340,14 @@ compléter `attempt_venue` pour Aqua) → vert.
 **Step 1 : tests** : `set_aqua_pool` admin-only (non-admin → auth échoue) ;
 clé = paire TRIÉE par adresse (un pool sert les deux sens) ; conversion
 retour u128 > i128::MAX → `AmountConversion`.
+
+Suivi de revue (Task 4) : registre `AquaPool` en storage INSTANCE, décision
+confirmée en revue (un pool persistent expiré redeviendrait silencieusement
+« registre vide » : dégradation de routage sans signal ; en instance, le
+registre vit et meurt avec le contrat). Contrepartie à documenter sur le
+setter : cardinalité petite et bornée (écritures admin-only, univers de
+paires curé) ; si l'espace de paires s'ouvre, migrer en persistent avec
+`extend_ttl` à l'écriture et à la lecture.
 
 Suivi de revue (Task 3, re-revue) : extraire les conversions i128↔u128 de
 `venues/aqua.rs` dans un helper PUR et le tester unitairement aux bornes

@@ -1020,6 +1020,7 @@ fn swap_emits_event_with_full_schema_and_effective_venue() {
             amount_in: AMOUNT_IN,
             amount_out: SERVED_OUT,
             venue: Venue::SoroswapAggregator,
+            preferred: Venue::SoroswapAggregator,
             fee: SOROSWAP_FEE,
             min_out: MIN_OUT,
         }
@@ -1027,9 +1028,12 @@ fn swap_emits_event_with_full_schema_and_effective_venue() {
     );
 }
 
-// Cas fallback : la preferee panique, le secours sert -> l'event porte la
-// venue EFFECTIVE (AquariusRouter) et le fee au bareme de la venue qui a
-// servi, meme exigence que SwapResult et les stats.
+// Cas fallback, LE cas discriminant du champ preferred : la preferee
+// (SoroswapAggregator) panique, le secours sert -> l'event porte a la fois
+// la venue EFFECTIVE (AquariusRouter, meme exigence que SwapResult et les
+// stats, fee au bareme de la venue qui a servi) et la venue PREFEREE :
+// preferred != venue signale le fallback au consommateur du seul flux
+// d'events.
 #[test]
 fn swap_event_carries_effective_venue_on_fallback() {
     let f = swap_setup();
@@ -1056,6 +1060,7 @@ fn swap_event_carries_effective_venue_on_fallback() {
             amount_in: AMOUNT_IN,
             amount_out: SERVED_OUT,
             venue: Venue::AquariusRouter,
+            preferred: Venue::SoroswapAggregator,
             fee: AQUARIUS_FEE,
             min_out: MIN_OUT,
         }
@@ -1065,7 +1070,7 @@ fn swap_event_carries_effective_venue_on_fallback() {
 
 // Suivi de revue Task 6 : changement de config admin auditable on-chain
 // (posture D6a). L'event porte la paire TRIEE (l'identite de la cle de
-// registre), quelle que soit l'ordre des arguments passes au setter.
+// registre), quel que soit l'ordre des arguments passes au setter.
 #[test]
 fn set_aqua_pool_emits_event_with_sorted_pair() {
     let f = setup();

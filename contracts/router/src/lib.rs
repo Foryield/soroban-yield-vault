@@ -96,8 +96,11 @@ pub struct SwapResult {
 /// events env.events().publish deprecies jusqu'a la migration D6a planifiee).
 ///
 /// Convention D6a minimale : acteur (from), instruments (token_in,
-/// token_out), montants (amount_in, amount_out, fee, min_out), decision
-/// d'execution (venue EFFECTIVE, celle qui a servi apres fallback).
+/// token_out), montants (amount_in, amount_out, fee, min_out), venue
+/// preferee vs effective = decision d'execution (venue = EFFECTIVE, celle
+/// qui a servi apres fallback ; preferred = demandee par le client : un
+/// consommateur du seul flux d'events voit qu'un fallback a eu lieu,
+/// preferred != venue, sans recouper les arguments d'invocation).
 ///
 /// Choix topics/data : nom d'event fixe `swap` + acteur + instruments en
 /// topics (un consommateur filtre par compte ou par paire sans decoder la
@@ -117,6 +120,7 @@ pub struct SwapEvent {
     pub amount_in: i128,
     pub amount_out: i128,
     pub venue: Venue,
+    pub preferred: Venue,
     pub fee: i128,
     pub min_out: i128,
 }
@@ -277,7 +281,9 @@ impl SwapRouter {
         // Event juste apres l'ecriture des stats : il decrit un swap DEJA
         // comptabilise, et le bloc etat+event reste groupe avant le transfert
         // sortant (CEI ; un event n'est pas de l'etat, mais la lecture y
-        // gagne). Venue EFFECTIVE : celle qui a servi apres fallback.
+        // gagne). Venue EFFECTIVE (celle qui a servi apres fallback) ET
+        // preferee : preferred != venue signale un fallback au consommateur
+        // du seul flux d'events.
         SwapEvent {
             from: from.clone(),
             token_in,
@@ -285,6 +291,7 @@ impl SwapRouter {
             amount_in,
             amount_out,
             venue,
+            preferred,
             fee,
             min_out,
         }

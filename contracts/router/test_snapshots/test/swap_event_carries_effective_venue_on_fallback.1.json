@@ -1273,6 +1273,14 @@
                 },
                 {
                   "key": {
+                    "symbol": "preferred"
+                  },
+                  "val": {
+                    "u32": 0
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "venue"
                   },
                   "val": {

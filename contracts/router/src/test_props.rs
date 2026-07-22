@@ -12,7 +12,7 @@
 use super::test_mocks::{
     MockAggregator, MockAggregatorClient, MockAqua, MockAquaClient, MockBehavior,
 };
-use super::{PairStats, SwapRouter, SwapRouterClient, Venue};
+use super::{PairStats, RouterError, SwapRouter, SwapRouterClient, Venue};
 use proptest::prelude::*;
 use soroban_sdk::{
     testutils::{Address as _, EnvTestConfig},
@@ -90,9 +90,9 @@ impl Op {
         }
     }
 
-    /// Modele du routeur : venue effective et montant servi, None si le swap
-    /// entier doit echouer (revert integral).
-    fn expected_outcome(&self, registry_set: bool) -> Option<(Venue, i128)> {
+    /// Modele du routeur : venue effective et montant servi, ou l'erreur
+    /// typee attendue si le swap entier doit echouer (revert integral).
+    fn expected_outcome(&self, registry_set: bool) -> Result<(Venue, i128), RouterError> {
         let order = match self.preferred() {
             Venue::SoroswapAggregator => [Venue::SoroswapAggregator, Venue::AquariusRouter],
             Venue::AquariusRouter => [Venue::AquariusRouter, Venue::SoroswapAggregator],
@@ -104,12 +104,26 @@ impl Op {
                 continue;
             }
             match self.mode(venue) {
-                VenueMode::Serve => return Some((venue, self.serve_amount(venue))),
+                VenueMode::Serve => return Ok((venue, self.serve_amount(venue))),
                 VenueMode::Panic | VenueMode::UnderMin => continue,
-                VenueMode::Trap => return None,
+                // Le piege arrete le swap entier, avec l'erreur typee propre
+                // a son mecanisme :
+                // - Soroswap (ServeIgnoringMin) : attempt rend true, le
+                //   routeur juge delta = min_out - 1 < min_out et panique
+                //   SlippageExceeded sans essayer le secours ;
+                // - Aqua (ServeReturningHuge) : la venue EXECUTE (tire
+                //   token_in du routeur) puis attempt rend false ; le
+                //   secours ne peut plus tirer (solde routeur vide) ou la
+                //   boucle est epuisee -> AllVenuesFailed dans les deux cas.
+                VenueMode::Trap => {
+                    return Err(match venue {
+                        Venue::SoroswapAggregator => RouterError::SlippageExceeded,
+                        Venue::AquariusRouter => RouterError::AllVenuesFailed,
+                    })
+                }
             }
         }
-        None
+        Err(RouterError::AllVenuesFailed)
     }
 }
 
@@ -260,7 +274,7 @@ proptest! {
             );
 
             match op.expected_outcome(registry_set) {
-                Some((venue, amount_out)) => {
+                Ok((venue, amount_out)) => {
                     let served = result.expect("swap modele servi").expect("conversion");
                     prop_assert_eq!(served.venue, venue);
                     prop_assert_eq!(served.amount_out, amount_out);
@@ -269,7 +283,9 @@ proptest! {
                     expected.fees += op.amount_in * fee_bps(venue) / 10_000;
                     expected.swaps += 1;
                 }
-                None => prop_assert!(result.is_err(), "swap modele echoue a ete servi"),
+                // Erreur TYPEE assertee, pas un simple is_err : le modele
+                // predit aussi le code d'echec (slippage vs panne de venue).
+                Err(expected_err) => prop_assert_eq!(result, Err(Ok(expected_err.into()))),
             }
 
             // Invariant 1 : solde du routeur NUL dans les deux tokens.

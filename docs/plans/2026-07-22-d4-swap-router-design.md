@@ -98,7 +98,10 @@ routeur étant un contrat neuf sans format hérité :
 
 - `swap` : from, token_in, token_out, amount_in, amount_out, venue
   **effective** (celle qui a servi après fallback, même exigence que le
-  `with_fallback` de foryield-v2), fee, min_out.
+  `with_fallback` de foryield-v2), venue **préférée**, fee, min_out. La venue
+  préférée en data permet à un consommateur du seul flux d'events (piste
+  d'audit D6a, dashboard D6c) de détecter qu'un fallback a eu lieu (préférée
+  différente de l'effective) sans recouper les arguments d'invocation.
 - Pas d'event d'échec : l'échec des deux venues revert tout, events compris ;
   il s'observe par le statut de la transaction.
 

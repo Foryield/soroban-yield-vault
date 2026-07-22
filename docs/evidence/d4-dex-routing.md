@@ -194,8 +194,8 @@ recorded separately.
   simulated before submission; ops key `d1-ops`
   (`GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG`).
 - **Quotes for 1.0 USDC (`10000000`), both venues, simulation only**
-  (raw `--build-only` + `stellar tx simulate` outputs archived in the
-  session workspace; `scripts/quote_venues.sh` reproduces them):
+  (`scripts/quote_venues.sh` reproduces the raw `--build-only` +
+  `stellar tx simulate` outputs on demand):
   - Soroswap, `router_get_amounts_out(10000000, [USDC, EURC])` on the
     canonical router: **8798611** out, against reserves
     `160000000/150000000` — constant-product with the 0.3% fee on the
@@ -252,8 +252,10 @@ recorded separately.
   6000000, preferred: 1 (AquariusRouter), venue: 0
   (SoroswapAggregator)}` — the on-chain record that the client asked for
   Aquarius and the contract fell back to Soroswap inside the same
-  transaction. No Aquarius-side events appear in the final meta: the
-  failed attempt's frame rolled back atomically, events included.
+  transaction. No Aquarius-side events appear among the transaction's
+  committed events (the failed attempt's frame rolled back atomically,
+  events included; only the non-consensus `diagnostic_events` retain a
+  trace of the attempt).
 - **Preflight footprint finding** (ops note for any fallback
   transaction): the first two submissions of the fallback transaction
   failed on-chain with `ResourceLimitExceeded` DESPITE clean simulations
@@ -299,7 +301,11 @@ on-chain hash:
   `swap_exact_in_serves_through_real_soroswap_stack` (vendored real
   stack). On-chain: rebalance swap
   [30afee28…](https://stellar.expert/explorer/testnet/tx/30afee289178c6962a793805ce4f19e568d2c940bbce3f55a9e7e852a056146b),
-  `swap` event `venue: 0 (SoroswapAggregator)`.
+  `swap` event `venue: 0 (SoroswapAggregator)`. Stronger than our own
+  label: the committed events of that same transaction include an event
+  emitted by the deployed aggregator contract itself (`CC74XDT7…URMA`),
+  proving the primary path went through the aggregator, not the Soroswap
+  router directly.
 - **Aquarius router as fallback**: venue order flips on `preferred`, each
   attempt is a `try_` call judged by balance delta, failure falls through
   atomically. Tests: `fallback_preferred_soroswap_panics_aqua_serves`,

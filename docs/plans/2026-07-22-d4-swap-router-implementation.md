@@ -161,8 +161,10 @@ wasm32v1-none --release -p swap-router` → vert.
 - Create: `contracts/router/src/test.rs`
 
 **Step 1 : tests qui échouent** : `initialize` stocke admin, venues, fee_bps ;
-un second `initialize` → `AlreadyInitialized` (via `try_initialize`, motif
-`Err(Ok(RouterError::...))` comme dans `contracts/vault/src/test.rs`).
+un second `initialize` → `AlreadyInitialized` (via `try_initialize` ; comme
+`initialize` retourne `()`, le motif est
+`Err(Ok(RouterError::AlreadyInitialized.into()))`, l'erreur côté client `try_`
+étant un `soroban_sdk::Error`).
 
 **Step 2 :** `cargo test -p swap-router` → échec de compilation attendu.
 
@@ -291,6 +293,10 @@ Pré-autorisation `authorize_as_current_contract` du `transfer(this -> venue,
 amount_in)` avant chaque tentative (même motif que `pool_supply` du vault).
 Arithmétique : `checked_*` partout, `MathOverflow`.
 
+Suivi de revue (Task 2) : ajouter à l'`initialize` la garde
+`fee_bps <= 10_000` pour les deux venues (nouvelle erreur `InvalidFeeBps = 10`),
+testée, maintenant que `fee` est calculé.
+
 **Step 4 :** vert. **Step 5 : Commit** `feat(router): swap_exact_in - chemin nominal Soroswap`
 
 ### Task 5 : matrice de fallback (TDD)
@@ -414,6 +420,11 @@ mémoire projet ; re-provisionner si insuffisant : emprunt Blend + faucet
 Circle, chemins connus de D1/D3). Exécution consignée dans l'évidence.
 
 ### Task 14 : déploiement + initialisation du routeur
+
+Suivi de revue (Task 2) : `deploy` et `initialize` enchaînés dans le même
+script pour fermer la fenêtre de front-run d'initialisation (posture héritée
+du vault, plus rentable à attaquer ici : venues arbitraires), et le consigner
+dans l'évidence.
 
 `stellar contract deploy` du wasm release ; `initialize` avec aggregator
 Soroswap et router Aquarius testnet (adresses relues des registres/spike),

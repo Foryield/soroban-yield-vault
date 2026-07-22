@@ -162,7 +162,10 @@ USDC<->EURC rebalance demonstration + hashes + video.
   (`stellar contract extend --id <contract> --ledgers-to-extend <n>` to
   push them forward). After archival, restoration is permissionless:
   `stellar contract restore --id CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK --network testnet`
-  (add `--key <DataKey>` for an archived persistent stats entry). State
+  (an archived persistent `Stats` entry requires
+  `--key-xdr <base64 LedgerKey XDR>` plus `--durability persistent` —
+  `--key` accepts symbol keys only, not tuple keys like
+  `Stats(token_in, token_out)`). State
   is preserved across archival/restore; nothing is lost, only
   temporarily inaccessible.
 - **Redeploy script** (testnet resets 2-4x/year):
@@ -171,3 +174,107 @@ USDC<->EURC rebalance demonstration + hashes + video.
   registries, chains deploy + initialize, registers the Aqua pool hash
   printed by `seed_aquarius_pool.sh`, and prints the `aqua_pool_of`
   verification.
+
+## 2026-07-22 — Best-execution quotes, rebalance and on-chain fallback proof
+
+- **What it proves**: the complete D4 loop, live — both venues quoted
+  off-chain by simulation, a USDC→EURC rebalance executed in 3 transaction
+  hashes through the deployed SwapRouter (vault withdraw → routed swap →
+  vault deposit), an on-chain fallback where the client asks for Aquarius
+  and the contract serves via Soroswap (proven by the decoded `swap` event
+  of the transaction itself), and `pair_stats` accounting that matches the
+  two swaps to the unit. All amounts in 7-decimal units; every transaction
+  simulated before submission; ops key `d1-ops`
+  (`GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG`).
+- **Quotes for 1.0 USDC (`10000000`), both venues, simulation only**
+  (raw `--build-only` + `stellar tx simulate` outputs archived in the
+  session workspace; `scripts/quote_venues.sh` reproduces them):
+  - Soroswap, `router_get_amounts_out(10000000, [USDC, EURC])` on the
+    canonical router: **8798611** out, against reserves
+    `160000000/150000000` — constant-product with the 0.3% fee on the
+    input amount.
+  - Aquarius, `estimate_swap` on the deployed router (pool
+    `9ac7a9cd…718e`): **4992488** out, against reserves
+    `10000000/10000000`. Cross-checked with a full `swap_chained`
+    simulation: identical output, `trade` event fee `15000`. A version
+    nuance surfaced: the deployed pool's arithmetic matches the 0.3% fee
+    applied on the INPUT (`floor(10^7·9970000/(10^7+9970000)) =
+    4992488`), whereas the vendored-wasm fixture of PR B derived
+    fee-on-output-with-ceil from the mirror sources (which would give
+    `4985000`). The deployed testnet deployment differs from the pinned
+    wasm on where the fee is applied (~0.15% here); immaterial for this
+    campaign — both figures sit far below Soroswap — and the calibration
+    below uses the deployed router's own numbers.
+  - **Winner: Soroswap** (8798611 vs 4992488, +76%) — expected, its pool
+    is an order of magnitude deeper (16/15 vs 1/1 by design, cf. the
+    Aquarius seed section). `preferred = SoroswapAggregator` for the
+    rebalance swap.
+  - Ordering choice (documented per plan): the rebalance chain runs
+    FIRST, against these fresh quotes; the fallback transaction runs
+    after, with both venues re-quoted post-shift for its calibration.
+- **Rebalance chain, 3 hashes** (step 0 unnecessary: simulated
+  `shares_of(ops)` on the D1 USDC vault returned `599999000` — the
+  evidence-instance shares of 2026-07-21 are still held, the withdraw is
+  real):
+  1. USDC vault `CC3AEKESVOYLHAEBV3F3WOJP3JHF754ZEEXYG6XD3VQGI5YZEV2OEC6C`
+     `withdraw(ops, 10000000 shares)` → **10000029** USDC returned
+     (share price slightly above par from accrued Blend interest:
+     `total_assets 600001744 / total_shares 600000000`; simulation
+     predicted the exact amount):
+     [daa6fcd99ad02a5965faed59f22ddddba35afd1258706073f98bc17902e26963](https://stellar.expert/explorer/testnet/tx/daa6fcd99ad02a5965faed59f22ddddba35afd1258706073f98bc17902e26963)
+  2. SwapRouter `swap_exact_in(ops, USDC, EURC, 10000029, min_out
+     8710647, preferred=SoroswapAggregator)` — min_out = the re-quote for
+     the exact withdrawn amount (`router_get_amounts_out(10000029)` =
+     `8798634`) minus a 1% slippage margin. Served **8798634** EURC,
+     effective venue Soroswap (`SwapResult {amount_out: 8798634, venue:
+     0, fee: 30000}`, delivered output equal to the quote to the unit):
+     [30afee289178c6962a793805ce4f19e568d2c940bbce3f55a9e7e852a056146b](https://stellar.expert/explorer/testnet/tx/30afee289178c6962a793805ce4f19e568d2c940bbce3f55a9e7e852a056146b)
+  3. EURC vault `CAA4MCRSKZ53KUE6L4SIWWRWRF3BGCSFKQKZJVEZSDPXTHYPGHUCMM7H`
+     `deposit(ops, 8798634)` → **8798634** shares minted (vault at par):
+     [cb38a0ed8510f313d67d1d314b1bb7a5077e237ede747d1368b582952fdaf04f](https://stellar.expert/explorer/testnet/tx/cb38a0ed8510f313d67d1d314b1bb7a5077e237ede747d1368b582952fdaf04f)
+- **Fallback proof**: post-rebalance re-quotes for 1.0 USDC — Soroswap
+  **7822289** (shifted reserves `170000029/141201366`), Aquarius
+  unchanged at **4992488**. `min_out` calibrated to **6000000**: 20.2%
+  ABOVE what Aquarius can serve, 23.3% BELOW what Soroswap serves.
+  `swap_exact_in(ops, USDC, EURC, 10000000, min_out 6000000,
+  preferred=AquariusRouter)` succeeded:
+  [d5b0e95f11c3cf01f0e9c51116f5dc3ecfa5162011be35cf889cdd73f67ffa56](https://stellar.expert/explorer/testnet/tx/d5b0e95f11c3cf01f0e9c51116f5dc3ecfa5162011be35cf889cdd73f67ffa56)
+  (ledger 3743449). The `swap` event decoded from the transaction meta
+  IS the proof — topics `[swap, ops, USDC, EURC]`, data:
+  `{amount_in: 10000000, amount_out: 7822289, fee: 30000, min_out:
+  6000000, preferred: 1 (AquariusRouter), venue: 0
+  (SoroswapAggregator)}` — the on-chain record that the client asked for
+  Aquarius and the contract fell back to Soroswap inside the same
+  transaction. No Aquarius-side events appear in the final meta: the
+  failed attempt's frame rolled back atomically, events included.
+- **Preflight footprint finding** (ops note for any fallback
+  transaction): the first two submissions of the fallback transaction
+  failed on-chain with `ResourceLimitExceeded` DESPITE clean simulations
+  ([fdfba43d…](https://stellar.expert/explorer/testnet/tx/fdfba43d8cee89aec0a69e2033000ded87fd238e6f68aa44432bed6e823ee785),
+  [c84ea8ee…](https://stellar.expert/explorer/testnet/tx/c84ea8eec67b4a5fddacedc9d33afaf8ca7f3fef405daae425d1a1a276a75576)
+  — the second with `--instruction-leeway`, ruling instructions out).
+  Root cause: the RPC preflight records the entries touched by the
+  rolled-back Aquarius attempt as READ-ONLY and omits part of its write
+  set (pool token balances, pool instance, the Aqua router's outbound
+  escrow balance) — but real execution performs those writes BEFORE the
+  venue's trap, and the rollback happens after the footprint check, so
+  the transaction dies on a footprint violation (surfaced as
+  `ResourceLimitExceeded`). Fix applied: decode the simulated envelope,
+  merge in the `read_write` footprint of a direct `swap_chained`
+  simulation (the failing venue's true footprint), bump resources, sign
+  and send manually — third submission succeeded. Any
+  execute-then-fail preferred venue will hit this; budget the manual
+  footprint merge (or submit the fallback path with a pre-widened
+  footprint) in ops runbooks.
+- **`pair_stats(USDC, EURC)` read on-chain after the campaign**:
+  `{volume_in: 20000029, volume_out: 16620923, fees: 60000, swaps: 2}` —
+  exactly `10000029 + 10000000`, `8798634 + 7822289`, `30000 + 30000`,
+  and the two served swaps. The failed submissions left no trace in the
+  stats (full revert), and the vault legs are invisible to the router by
+  design: only served swaps are accounted.
+- **Quote helper** (durable): `scripts/quote_venues.sh <key>
+  <usdc_amount_7dp>` — quotes both venues by simulation only (Soroswap
+  `router_get_amounts_out`, Aquarius `estimate_swap` across every pool
+  `get_pools` returns for the pair), prints both outputs and the winner;
+  addresses re-read from their canonical sources at run time, same
+  posture as the seed scripts.

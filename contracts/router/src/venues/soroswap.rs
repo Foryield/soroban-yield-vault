@@ -63,6 +63,9 @@ pub fn attempt(
     min_out: i128,
     to: &Address,
 ) -> bool {
+    // Pas de garde sur les negatifs ici, a dessein : les montants restent en
+    // i128, la venue les rejette elle-meme et try_ absorbe l'erreur (la
+    // pre-garde d'aqua n'existe que pour le cast i128 -> u128 non sur).
     let distribution = vec![
         env,
         DexDistribution {

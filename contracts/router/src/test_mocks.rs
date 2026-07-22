@@ -33,6 +33,23 @@ pub enum MockBehavior {
     Panic,
 }
 
+/// Marqueur d'invocation : pose en tete de la fonction de swap. Un appel
+/// panique est annule avec son ecriture de storage : le marqueur ne prouve
+/// donc que les invocations ABOUTIES ; son absence apres un chemin sans appel
+/// ni panique prouve que la venue n'a pas ete invoquee.
+fn mark_called(env: &Env) {
+    env.storage()
+        .instance()
+        .set(&symbol_short!("called"), &true);
+}
+
+fn was_called(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&symbol_short!("called"))
+        .unwrap_or(false)
+}
+
 /// Montant a servir selon le comportement configure, ou panique (venue en
 /// panne, ou sortie sous le minimum demande).
 fn serve_amount(env: &Env, min_required: i128) -> i128 {
@@ -64,6 +81,10 @@ impl MockAggregator {
             .set(&symbol_short!("behavior"), &behavior);
     }
 
+    pub fn was_called(env: Env) -> bool {
+        was_called(&env)
+    }
+
     pub fn swap_exact_tokens_for_tokens(
         env: Env,
         token_in: Address,
@@ -74,6 +95,7 @@ impl MockAggregator {
         to: Address,
         _deadline: u64,
     ) -> Vec<Vec<i128>> {
+        mark_called(&env);
         let served = serve_amount(&env, amount_out_min);
         let this = env.current_contract_address();
         TokenClient::new(&env, &token_in).transfer(&to, &this, &amount_in);
@@ -95,6 +117,10 @@ impl MockAqua {
             .set(&symbol_short!("behavior"), &behavior);
     }
 
+    pub fn was_called(env: Env) -> bool {
+        was_called(&env)
+    }
+
     pub fn swap_chained(
         env: Env,
         user: Address,
@@ -103,6 +129,18 @@ impl MockAqua {
         in_amount: u128,
         out_min: u128,
     ) -> u128 {
+        mark_called(&env);
+        // Convention auto-verifiee : le premier maillon doit porter la paire
+        // {token_in, token_out du maillon} TRIEE en ordre d'adresse croissant
+        // (comme le vrai router Aqua) ; un tri inverse dans venues::aqua ne
+        // passerait pas inapercu.
+        let (pair, _, first_out) = swaps_chain.first().expect("swaps_chain vide");
+        assert_eq!(pair.len(), 2, "venue mock: paire de taille invalide");
+        let (a, b) = (pair.get_unchecked(0), pair.get_unchecked(1));
+        assert!(a < b, "venue mock: paire non triee par adresse");
+        let sorted_ok = (a == token_in && b == first_out) || (a == first_out && b == token_in);
+        assert!(sorted_ok, "venue mock: paire != {{token_in, token_out}}");
+
         let out_min = i128::try_from(out_min).expect("out_min de test > i128::MAX");
         let served = serve_amount(&env, out_min);
         // Comme le vrai router : le token servi est le token_out du dernier

@@ -166,6 +166,9 @@ fn soroswap_attempt_against_mock_moves_real_tokens() {
     assert_eq!(f.token_in.balance(&mock), AMOUNT_IN);
     assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
     assert_eq!(f.token_out.balance(&mock), 0);
+    // Preuve que le marqueur d'invocation est vivant (il fonde le test de
+    // garde sur montants negatifs).
+    assert!(MockAggregatorClient::new(&f.env, &mock).was_called());
 }
 
 #[test]
@@ -192,6 +195,8 @@ fn aqua_attempt_against_mock_moves_real_tokens() {
     assert_eq!(f.token_in.balance(&mock), AMOUNT_IN);
     assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
     assert_eq!(f.token_out.balance(&mock), 0);
+    // Meme preuve de vie du marqueur que cote aggregator.
+    assert!(MockAquaClient::new(&f.env, &mock).was_called());
 }
 
 #[test]
@@ -243,9 +248,8 @@ fn aqua_attempt_panicking_mock_returns_false() {
 fn aqua_attempt_returns_false_on_negative_amounts_without_calling_venue() {
     let f = venue_setup();
     let mock = f.env.register(MockAqua, ());
-    // set_behavior volontairement omis : si la venue etait appelee, le mock
-    // paniquerait sur le storage vide (et try_ masquerait la difference) ;
-    // les soldes intacts prouvent le retour AVANT tout appel.
+    MockAquaClient::new(&f.env, &mock).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    fund(&f, &mock, SERVED_OUT);
     let pool_hash = BytesN::from_array(&f.env, &[7u8; 32]);
 
     for (amount_in, min_out) in [(-1_i128, MIN_OUT), (AMOUNT_IN, -1_i128)] {
@@ -261,6 +265,11 @@ fn aqua_attempt_returns_false_on_negative_amounts_without_calling_venue() {
         );
         assert!(!ok);
     }
+    // Les soldes intacts ne suffisent pas (un appel panique puis annule les
+    // laisserait identiques) : le marqueur d'invocation absent prouve que la
+    // garde a rendu false AVANT tout appel a la venue, alors que le mock
+    // etait pret a servir.
+    assert!(!MockAquaClient::new(&f.env, &mock).was_called());
     assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
 }
 

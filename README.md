@@ -40,6 +40,18 @@ in [docs/evidence/d1-vault-mvp.md](./docs/evidence/d1-vault-mvp.md).
 
 Evidence transactions in [docs/evidence/d3-eurc-sac.md](./docs/evidence/d3-eurc-sac.md).
 
+**Deliverable 4 instance — SwapRouter, DEX routing (Soroswap + Aquarius)**:
+
+| Component | Contract ID |
+|---|---|
+| SwapRouter (D4) | `CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK` |
+
+Routes USDC<->EURC through the Soroswap aggregator (primary) with an atomic
+Aquarius fallback, min-out slippage protection and per-pair swap-fee accounting.
+Evidence (venue seeds, deployment, quotes, 3-hash rebalance, on-chain fallback
+proof) in [docs/evidence/d4-dex-routing.md](./docs/evidence/d4-dex-routing.md).
+[Explore the D4 router](https://stellar.expert/explorer/testnet/contract/CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK).
+
 **Demo instance — native XLM, no strategy** (behind vault.for-yield.com, so any
 Friendbot-funded account can deposit with no faucet):
 

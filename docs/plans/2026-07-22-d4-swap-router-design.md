@@ -140,3 +140,25 @@ Dans `docs/evidence/d4-dex-routing.md`, complétées le jour même :
 PR A : contrat routeur + tests mockés. PR B : fixtures d'intégration.
 PR C : seed Aquarius + déploiement + évidences. Chaque PR mergée sur CI verte,
 revue par subagent à contexte frais (convention D2).
+
+## Amendement du 22/07 (vérification des sources avant plan)
+
+Faits établis en lisant les sources (`soroswap/aggregator`, dont l'adapter
+Aqua de référence) avant l'écriture du plan d'implémentation :
+
+- `DexDistribution` a un 4e champ `bytes: Option<Vec<BytesN<32>>>` (hashes
+  de pool Aqua) en plus de `protocol_id`, `path`, `parts`.
+- Aquarius identifie ses pools par un `pool_hash` passé à `swap_chained`
+  (chaque maillon = paire triée par adresse, pool_hash, token_out). Le
+  routeur gagne donc un registre admin `set_aqua_pool(token_a, token_b,
+  pool_hash)` (clé = paire triée) ; sans entrée, la venue Aquarius échoue
+  en erreur typée `AquaPoolNotSet` et le fallback la traverse. Justification
+  d'un setter admin plutôt que l'initialize : le hash change à chaque
+  re-seed après reset testnet, un redéploiement du routeur serait
+  disproportionné pour un identifiant de pool.
+- Le repo canonique `AquaToken/soroban-amm` n'est plus accessible (404).
+  Références de substitution : l'adapter Aqua des sources Soroswap et les
+  wasm Aqua vendorisés dans `soroswap/aggregator` (commit à épingler,
+  provenance et hashes consignés au vendoring).
+
+Plan d'exécution : [2026-07-22-d4-swap-router-implementation.md](2026-07-22-d4-swap-router-implementation.md).

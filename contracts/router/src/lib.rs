@@ -18,7 +18,10 @@
 //! Hors scope D4 : multi-hop (pas de `path` expose), setters de venues,
 //! frais preleves par le routeur (fee_bps = comptabilite, pas prelevement).
 
-use soroban_sdk::{contract, contracterror, contractmeta, contracttype, Address};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contractmeta, contracttype, panic_with_error, Address,
+    Env,
+};
 
 /// Erreurs typees du routeur : contractuelles pour les integrateurs (un
 /// client off-chain teste un code, pas une chaine de panique). Les erreurs
@@ -92,3 +95,79 @@ enum DataKey {
 
 #[contract]
 pub struct SwapRouter;
+
+#[contractimpl]
+impl SwapRouter {
+    /// Initialise le routeur. Idempotence interdite : un second appel panique.
+    /// Les venues et leurs fee_bps sont immuables (pas de setter en D4) :
+    /// changement de venue = redeploiement.
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        soroswap_aggregator: Address,
+        aquarius_router: Address,
+        soroswap_fee_bps: u32,
+        aquarius_fee_bps: u32,
+    ) {
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&env, RouterError::AlreadyInitialized);
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::SoroswapAggregator, &soroswap_aggregator);
+        env.storage()
+            .instance()
+            .set(&DataKey::AquariusRouter, &aquarius_router);
+        env.storage()
+            .instance()
+            .set(&DataKey::SoroswapFeeBps, &soroswap_fee_bps);
+        env.storage()
+            .instance()
+            .set(&DataKey::AquariusFeeBps, &aquarius_fee_bps);
+    }
+
+    /// Statistiques cumulees de la paire ORDONNEE (token_in, token_out) telle
+    /// que swappee : le sens du flux compte, un aller-retour alimente deux
+    /// entrees distinctes. Zeros tant qu'aucun swap n'a ete servi.
+    pub fn pair_stats(env: Env, token_in: Address, token_out: Address) -> PairStats {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Stats(token_in, token_out))
+            .unwrap_or(PairStats {
+                volume_in: 0,
+                volume_out: 0,
+                fees: 0,
+                swaps: 0,
+            })
+    }
+
+    // Les trois getters prives sont consommes par swap_exact_in (suite de la
+    // PR A) et deja exerces par les tests ; les allow(dead_code) sautent des
+    // que swap_exact_in existe.
+    #[allow(dead_code)]
+    fn admin(env: &Env) -> Address {
+        env.storage().instance().get(&DataKey::Admin).unwrap()
+    }
+
+    #[allow(dead_code)]
+    fn venue_addr(env: &Env, venue: Venue) -> Address {
+        let key = match venue {
+            Venue::SoroswapAggregator => DataKey::SoroswapAggregator,
+            Venue::AquariusRouter => DataKey::AquariusRouter,
+        };
+        env.storage().instance().get(&key).unwrap()
+    }
+
+    #[allow(dead_code)]
+    fn fee_bps(env: &Env, venue: Venue) -> u32 {
+        let key = match venue {
+            Venue::SoroswapAggregator => DataKey::SoroswapFeeBps,
+            Venue::AquariusRouter => DataKey::AquariusFeeBps,
+        };
+        env.storage().instance().get(&key).unwrap()
+    }
+}
+
+#[cfg(test)]
+mod test;

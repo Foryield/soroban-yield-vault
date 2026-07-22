@@ -8,10 +8,15 @@
 //! - venues (aggregator Soroswap, router Aquarius) fixees a l'initialize,
 //!   immuables : changement de venue = redeploiement (meme convention que le
 //!   pool du vault D1) ;
-//! - registre admin des pools Aquarius (pool_hash par paire) : le hash change
-//!   a chaque re-seed testnet, un setter admin evite un redeploiement pour un
-//!   simple identifiant de pool ; sans entree, la venue Aquarius echoue en
-//!   `AquaPoolNotSet` et le fallback la traverse ;
+//! - registre admin des pools Aquarius (pool_hash par paire TRIEE) : le hash
+//!   change a chaque re-seed testnet, `set_aqua_pool` (admin) evite un
+//!   redeploiement pour un simple identifiant de pool ; registre VIDE = la
+//!   venue Aquarius rend false et le fallback la traverse (pas d'erreur
+//!   typee : pool non configure est un etat d'ops, observable via
+//!   `aqua_pool_of`). Registre en storage instance : cardinalite petite et
+//!   bornee (ecritures admin uniquement, univers cure de paires stablecoin) ;
+//!   si l'espace de paires s'ouvrait, migrer en persistent avec extend_ttl
+//!   en lecture et ecriture ;
 //! - invariant : solde du routeur nul hors transaction (le produit du swap
 //!   est integralement reverse a l'appelant dans la meme invocation) ;
 //! - modele de confiance des tokens : SAC/SEP-41 supposes sans frais de
@@ -41,10 +46,15 @@ pub enum RouterError {
     AmountMustBePositive = 2,
     MinOutMustBePositive = 3,
     SameToken = 4,
-    AquaPoolNotSet = 5,
+    // Codes 5 (AquaPoolNotSet) et 8 (AmountConversion) RETIRES, decision de
+    // design validee : l'architecture attempt-bool route registre vide et
+    // debordement de conversion vers false -> fallback -> AllVenuesFailed ;
+    // le client distingue deja slippage (SlippageExceeded) et panne de venue
+    // (AllVenuesFailed) ; pool non configure est un etat d'ops observable
+    // via aqua_pool_of. Les codes des variantes restantes sont FIGES, trous
+    // admis : un code publie ne change jamais de sens.
     AllVenuesFailed = 6,
     SlippageExceeded = 7,
-    AmountConversion = 8,
     MathOverflow = 9,
     InvalidFeeBps = 10,
 }
@@ -229,6 +239,24 @@ impl SwapRouter {
         }
     }
 
+    /// Enregistre (ou remplace) le pool Aquarius de la paire, sous cle TRIEE
+    /// par adresse (un pool sert les deux sens). Admin uniquement. Le hash
+    /// change a chaque re-seed testnet : ce setter evite un redeploiement
+    /// pour un simple identifiant de pool.
+    pub fn set_aqua_pool(env: Env, token_a: Address, token_b: Address, pool_hash: BytesN<32>) {
+        Self::admin(&env).require_auth();
+        env.storage()
+            .instance()
+            .set(&Self::aqua_pool_key(&token_a, &token_b), &pool_hash);
+    }
+
+    /// Pool Aquarius enregistre pour la paire (ordre des tokens indifferent),
+    /// `None` si le registre est vide. Surface ops/demo : verifier l'etat du
+    /// registre sans redeployer (PR C s'en sert apres chaque re-seed).
+    pub fn aqua_pool_of(env: Env, token_a: Address, token_b: Address) -> Option<BytesN<32>> {
+        Self::aqua_pool(&env, &token_a, &token_b)
+    }
+
     /// Statistiques cumulees de la paire ORDONNEE (token_in, token_out) telle
     /// que swappee : le sens du flux compte, un aller-retour alimente deux
     /// entrees distinctes. Zeros tant qu'aucun swap n'a ete servi.
@@ -271,9 +299,9 @@ impl SwapRouter {
                 )
             }
             Venue::AquariusRouter => {
-                // Registre vide -> false, le fallback traverse la venue.
-                // L'erreur typee AquaPoolNotSet (venue preferee sans pool) et
-                // le setter admin du registre arrivent en Task 6.
+                // Registre vide -> false, le fallback traverse la venue :
+                // etat d'ops observable via aqua_pool_of, pas d'erreur typee
+                // dediee (cf. RouterError).
                 let Some(pool_hash) = Self::aqua_pool(env, token_in, token_out) else {
                     return false;
                 };
@@ -313,16 +341,20 @@ impl SwapRouter {
         ]);
     }
 
-    /// Pool Aqua de la paire, cle TRIEE par adresse (un pool sert les deux
-    /// sens). `None` tant que le setter admin (Task 6) n'a pas alimente le
-    /// registre.
-    fn aqua_pool(env: &Env, a: &Address, b: &Address) -> Option<BytesN<32>> {
-        let key = if a < b {
+    /// Cle de registre de la paire, TRIEE par adresse : setter et lecteurs
+    /// partagent la meme construction, aucun desaccord de cle possible.
+    fn aqua_pool_key(a: &Address, b: &Address) -> DataKey {
+        if a < b {
             DataKey::AquaPool(a.clone(), b.clone())
         } else {
             DataKey::AquaPool(b.clone(), a.clone())
-        };
-        env.storage().instance().get(&key)
+        }
+    }
+
+    /// Pool Aqua de la paire. `None` tant que `set_aqua_pool` n'a pas
+    /// alimente le registre.
+    fn aqua_pool(env: &Env, a: &Address, b: &Address) -> Option<BytesN<32>> {
+        env.storage().instance().get(&Self::aqua_pool_key(a, b))
     }
 
     /// Accumule les stats de la paire ORDONNEE (token_in, token_out) en
@@ -357,9 +389,6 @@ impl SwapRouter {
             .set(&DataKey::Stats(token_in.clone(), token_out.clone()), &stats);
     }
 
-    // Consomme par set_aqua_pool (registre admin, Task 6) ; deja exerce par
-    // les tests d'initialize.
-    #[allow(dead_code)]
     fn admin(env: &Env) -> Address {
         env.storage().instance().get(&DataKey::Admin).unwrap()
     }

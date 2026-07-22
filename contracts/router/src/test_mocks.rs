@@ -35,6 +35,11 @@ pub enum MockBehavior {
     /// Seule maniere d'atteindre la branche SlippageExceeded du routeur
     /// (defense en profondeur : jugement sur delta de solde).
     ServeIgnoringMin(i128),
+    /// Venue qui EXECUTE reellement (tire token_in, sert ce montant de
+    /// token_out, minimum ignore) puis RETOURNE un montant inconvertible
+    /// (> i128::MAX). Ne s'observe que chez MockAqua, seul retour u128 :
+    /// temoin du chemin ou attempt rend false APRES execution reelle.
+    ServeReturningHuge(i128),
 }
 
 /// Marqueur d'invocation : pose en tete de la fonction de swap. Un appel
@@ -54,15 +59,17 @@ fn was_called(env: &Env) -> bool {
         .unwrap_or(false)
 }
 
+fn configured_behavior(env: &Env) -> MockBehavior {
+    env.storage()
+        .instance()
+        .get(&symbol_short!("behavior"))
+        .expect("appeler set_behavior avant le swap")
+}
+
 /// Montant a servir selon le comportement configure, ou panique (venue en
 /// panne, ou sortie sous le minimum demande).
 fn serve_amount(env: &Env, min_required: i128) -> i128 {
-    let behavior: MockBehavior = env
-        .storage()
-        .instance()
-        .get(&symbol_short!("behavior"))
-        .expect("appeler set_behavior avant le swap");
-    match behavior {
+    match configured_behavior(env) {
         MockBehavior::Panic => panic!("venue mock en panne"),
         MockBehavior::Serve(amount) => {
             if amount < min_required {
@@ -70,7 +77,7 @@ fn serve_amount(env: &Env, min_required: i128) -> i128 {
             }
             amount
         }
-        MockBehavior::ServeIgnoringMin(amount) => amount,
+        MockBehavior::ServeIgnoringMin(amount) | MockBehavior::ServeReturningHuge(amount) => amount,
     }
 }
 
@@ -155,6 +162,12 @@ impl MockAqua {
         let this = env.current_contract_address();
         TokenClient::new(&env, &token_in).transfer(&user, &this, &amount_in);
         TokenClient::new(&env, &token_out).transfer(&this, &user, &served);
-        u128::try_from(served).expect("montant servi negatif")
+        // ServeReturningHuge : les tokens ONT bouge, mais le retour ment
+        // (inconvertible en i128) ; l'attempt de l'appelant doit rendre
+        // false et laisser l'atomicite de la transaction proteger les fonds.
+        match configured_behavior(&env) {
+            MockBehavior::ServeReturningHuge(_) => (i128::MAX as u128) + 1,
+            _ => u128::try_from(served).expect("montant servi negatif"),
+        }
     }
 }

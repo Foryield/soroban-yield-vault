@@ -4,11 +4,9 @@ extern crate std;
 use super::test_mocks::{
     MockAggregator, MockAggregatorClient, MockAqua, MockAquaClient, MockBehavior,
 };
-use super::{
-    venues, DataKey, PairStats, RouterError, SwapResult, SwapRouter, SwapRouterClient, Venue,
-};
+use super::{venues, PairStats, RouterError, SwapResult, SwapRouter, SwapRouterClient, Venue};
 use soroban_sdk::{
-    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
+    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation, MockAuth, MockAuthInvoke},
     token::{StellarAssetClient, TokenClient},
     Address, BytesN, Env, IntoVal, Symbol,
 };
@@ -280,8 +278,8 @@ fn aqua_attempt_returns_false_on_negative_amounts_without_calling_venue() {
     // absent est un fil-piege valide contre un appel complete). Il ne peut
     // PAS distinguer le retour anticipe d'un appel invoque puis annule par
     // rollback : l'ecriture du marqueur serait annulee avec la frame, tout
-    // marqueur en storage a cette limite. La preuve directe de la garde
-    // arrive en Task 6, via un helper de conversion pur teste aux bornes.
+    // marqueur en storage a cette limite. La preuve directe de la garde vit
+    // dans venues::convert (helpers purs testes aux bornes, sans contrat).
     assert!(!MockAquaClient::new(&f.env, &mock).was_called());
     assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
 }
@@ -350,22 +348,11 @@ fn swap_setup<'a>() -> SwapFixture<'a> {
     }
 }
 
-/// Ecrit l'entree de registre Aqua DIRECTEMENT en storage instance du
-/// routeur, cle = paire TRIEE par adresse (meme convention que `aqua_pool`) :
-/// le setter public admin arrive en Task 6, les tests de la matrice n'en
-/// dependent pas.
+/// Alimente le registre Aqua par le SETTER PUBLIC (auth admin mockee par la
+/// fixture) : les tests de la matrice traversent la meme surface que les ops.
 fn set_aqua_registry(f: &SwapFixture, pool_hash: &BytesN<32>) {
-    let (a, b) = if f.token_in.address < f.token_out.address {
-        (f.token_in.address.clone(), f.token_out.address.clone())
-    } else {
-        (f.token_out.address.clone(), f.token_in.address.clone())
-    };
-    f.env.as_contract(&f.router.address, || {
-        f.env
-            .storage()
-            .instance()
-            .set(&DataKey::AquaPool(a, b), pool_hash);
-    });
+    f.router
+        .set_aqua_pool(&f.token_in.address, &f.token_out.address, pool_hash);
 }
 
 /// Stats zero : etat attendu de la paire apres tout swap ECHOUE (le revert
@@ -771,6 +758,52 @@ fn lying_venue_serving_under_min_hits_slippage_exceeded() {
     );
 }
 
+// Temoin de l'invariant AllVenuesFailed (suivi de revue Task 5) : une venue
+// qui EXECUTE reellement (tire token_in du routeur, sert token_out) puis
+// retourne un montant inconvertible (> i128::MAX) rend attempt false AVANT
+// tout jugement de delta (aqua.rs : Ok(Ok(out)) inconvertible -> false).
+// Le solde token_in du routeur etant vide apres le tirage d'Aqua, le tirage
+// de la venue de secours echoue -> AllVenuesFailed -> revert INTEGRAL : les
+// fonds sont proteges par l'atomicite de la transaction, pas par le
+// jugement local (lib.rs, commentaire d'invariant).
+#[test]
+fn venue_executing_but_returning_inconvertible_reverts_all() {
+    let f = swap_setup();
+    MockAquaClient::new(&f.env, &f.aquarius)
+        .set_behavior(&MockBehavior::ServeReturningHuge(SERVED_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
+    // Soroswap PRETE a servir : si le routeur jugeait le delta d'Aqua
+    // (SERVED_OUT >= MIN_OUT) ou si Soroswap pouvait tirer, le swap
+    // reussirait ; AllVenuesFailed prouve donc les deux mecanismes.
+    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &SERVED_OUT);
+    set_aqua_registry(&f, &pool_hash(&f.env));
+
+    let result = f.router.try_swap_exact_in(
+        &f.user,
+        &f.token_in.address,
+        &f.token_out.address,
+        &AMOUNT_IN,
+        &MIN_OUT,
+        &Venue::AquariusRouter,
+    );
+
+    assert_eq!(result, Err(Ok(RouterError::AllVenuesFailed.into())));
+    // Revert integral : `from` intact sur les deux tokens, routeur vide,
+    // les mocks retrouvent leur pre-financement.
+    assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
+    assert_eq!(f.token_out.balance(&f.user), 0);
+    assert_eq!(f.token_in.balance(&f.router.address), 0);
+    assert_eq!(f.token_out.balance(&f.router.address), 0);
+    assert_eq!(f.token_in.balance(&f.aquarius), 0);
+    assert_eq!(f.token_out.balance(&f.aquarius), SERVED_OUT);
+    assert_eq!(
+        f.router
+            .pair_stats(&f.token_in.address, &f.token_out.address),
+        zero_stats()
+    );
+}
+
 #[test]
 fn initialize_rejects_fee_bps_above_100_percent() {
     // La garde couvre chacune des deux venues independamment.
@@ -868,6 +901,71 @@ fn swap_records_only_user_auth_venue_pull_preauthorized() {
             }
         )]
     );
+}
+
+// --- Registre admin des pools Aqua (Task 6) : setter admin-only, getter
+// ops/demo (PR C verifie l'etat du registre par ce getter).
+
+#[test]
+fn set_aqua_pool_rejects_non_admin() {
+    // Pas de mock_all_auths : seule l'auth du NON-admin est mockee, le
+    // require_auth de l'admin doit donc echouer (initialize ne requiert
+    // aucune auth, aucun mock necessaire avant).
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let non_admin = Address::generate(&env);
+    let token_a = Address::generate(&env);
+    let token_b = Address::generate(&env);
+    let router = SwapRouterClient::new(&env, &env.register(SwapRouter, ()));
+    router.initialize(
+        &admin,
+        &Address::generate(&env),
+        &Address::generate(&env),
+        &SOROSWAP_FEE_BPS,
+        &AQUARIUS_FEE_BPS,
+    );
+    let hash = pool_hash(&env);
+
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &router.address,
+            fn_name: "set_aqua_pool",
+            args: (token_a.clone(), token_b.clone(), hash.clone()).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = router.try_set_aqua_pool(&token_a, &token_b, &hash);
+
+    // Echec d'auth = erreur HOTE (pas un code RouterError) : l'admin n'a
+    // pas signe. Si le require_auth disparaissait, l'appel reussirait et ce
+    // test echouerait.
+    assert!(result.is_err());
+    assert_eq!(router.aqua_pool_of(&token_a, &token_b), None);
+}
+
+#[test]
+fn set_aqua_pool_stores_sorted_pair_and_getter_reads_both_orders() {
+    let f = setup();
+    let token_a = Address::generate(&f.env);
+    let token_b = Address::generate(&f.env);
+    let hash_1 = BytesN::from_array(&f.env, &[1u8; 32]);
+    let hash_2 = BytesN::from_array(&f.env, &[2u8; 32]);
+
+    assert_eq!(f.router.aqua_pool_of(&token_a, &token_b), None);
+
+    f.router.set_aqua_pool(&token_a, &token_b, &hash_1);
+    // Un pool sert les deux sens : le getter repond quel que soit l'ordre.
+    assert_eq!(
+        f.router.aqua_pool_of(&token_a, &token_b),
+        Some(hash_1.clone())
+    );
+    assert_eq!(f.router.aqua_pool_of(&token_b, &token_a), Some(hash_1));
+
+    // Ecriture dans l'ordre INVERSE : meme cle triee, l'entree est
+    // remplacee, pas dupliquee.
+    f.router.set_aqua_pool(&token_b, &token_a, &hash_2);
+    assert_eq!(f.router.aqua_pool_of(&token_a, &token_b), Some(hash_2));
 }
 
 #[test]

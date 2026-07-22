@@ -7,10 +7,12 @@
 //! (paire de tokens TRIEE par ordre d'adresse, pool_hash, token_out) ;
 //! les montants sont en u128.
 
-// L'arite de `attempt` (8 arguments) est transitoire : `pool_hash` devient
-// une resolution interne au registre en Task 6.
+// L'arite de `attempt` (8 arguments) reflete la frontiere explicite : le
+// routeur resout `pool_hash` au registre admin et le passe tel quel, le
+// module venue reste pur (aucune lecture de storage ici).
 #![allow(clippy::too_many_arguments)]
 
+use super::convert;
 use soroban_sdk::{contractclient, vec, Address, BytesN, Env, Vec};
 
 // Le trait ne sert qu'a generer le client (`contractclient`) : il n'est
@@ -29,16 +31,15 @@ pub trait AquaRouter {
 }
 
 /// Tente le swap via le router Aquarius : chaine d'un seul maillon, paire
-/// triee par adresse (un pool Aqua sert les deux sens), `pool_hash` fourni
-/// par l'appelant (la resolution depuis le registre `DataKey::AquaPool`
-/// arrive en Task 6).
+/// triee par adresse (un pool Aqua sert les deux sens), `pool_hash` resolu
+/// par le routeur depuis le registre admin (`set_aqua_pool`).
 ///
-/// Conversions i128 -> u128 sures uniquement si >= 0 : le routeur garantit
-/// deja la positivite, mais le module doit etre sur par lui-meme (negatif ->
-/// `false`, jamais de panique dans `attempt`). Au retour, un u128 >
-/// i128::MAX est inconvertible cote routeur -> `false` ; l'erreur typee
-/// `AmountConversion` sur ce chemin de retour arrive en Task 6, `attempt`
-/// rendant `bool` dans cette tache, le mapping est documente ici.
+/// Conversions aux bornes via `venues::convert` (helpers purs, testes aux
+/// bornes) : le routeur garantit deja la positivite, mais le module doit
+/// etre sur par lui-meme (negatif -> `false`, jamais de panique dans
+/// `attempt`). Au retour, un u128 > i128::MAX est inconvertible -> `false`,
+/// le fallback decide ; pas d'erreur typee dediee, l'architecture
+/// attempt-bool route ce chemin vers `AllVenuesFailed` (cf. `RouterError`).
 pub fn attempt(
     env: &Env,
     router: &Address,
@@ -49,11 +50,12 @@ pub fn attempt(
     user: &Address,
     pool_hash: &BytesN<32>,
 ) -> bool {
-    if amount_in < 0 || min_out < 0 {
+    let (Some(in_amount), Some(out_min)) = (
+        convert::u128_from_i128(amount_in),
+        convert::u128_from_i128(min_out),
+    ) else {
         return false;
-    }
-    let in_amount = amount_in as u128;
-    let out_min = min_out as u128;
+    };
 
     // Paire TRIEE par ordre d'adresse (convention du router Aqua, cf.
     // adapter de reference) ; le token_out du maillon reste le vrai token_out.
@@ -72,7 +74,7 @@ pub fn attempt(
         &out_min,
     );
     match result {
-        Ok(Ok(out)) => out <= i128::MAX as u128,
+        Ok(Ok(out)) => convert::i128_from_u128(out).is_some(),
         _ => false,
     }
 }

@@ -9,4 +9,5 @@
 //! venue.
 
 pub mod aqua;
+pub mod convert;
 pub mod soroswap;

@@ -162,3 +162,23 @@ Aqua de référence) avant l'écriture du plan d'implémentation :
   provenance et hashes consignés au vendoring).
 
 Plan d'exécution : [2026-07-22-d4-swap-router-implementation.md](2026-07-22-d4-swap-router-implementation.md).
+
+## Amendement du 22/07 (implémentation, tâche 6)
+
+L'architecture `attempt -> bool` retenue à l'implémentation rend deux erreurs
+typées du design sans surface d'émission ; elles sont RETIRÉES de l'enum
+(codes figés avec trous : 1-4, 6, 7, 9, 10) :
+
+- `AquaPoolNotSet` : « pool non configuré » est un état statique, observable
+  avant l'appel via le getter public `aqua_pool_of(token_a, token_b) ->
+  Option<pool_hash>` ; au swap, la venue est traversée par le fallback et le
+  client ne distingue que slippage (`SlippageExceeded`) et panne de venue
+  (`AllVenuesFailed`), distinction suffisante opérationnellement.
+- `AmountConversion` : côté entrée la positivité est garantie par les gardes
+  de `swap_exact_in` avant toute venue ; côté retour le succès est jugé sur
+  delta de solde et un retour inconvertible dégrade en fallback puis revert
+  intégral (témoin de test dédié).
+
+Limitation assumée du registre Aqua : pas de suppression d'entrée (le flux
+nominal de re-seed après reset écrase avec le hash frais) ; un hash périmé
+fait échouer la venue puis traverser le fallback, sans risque de fonds.

@@ -375,6 +375,12 @@ fee, min_out. Proptest (motif `contracts/vault/src/test_props.rs`) :
 pour toute séquence de swaps mockés, solde du routeur nul dans les deux
 tokens après chaque appel, et stats = somme exacte des swaps servis.
 
+Suivis de revue (Task 6) à traiter ici :
+- Event `aqua_pool_set` sur `set_aqua_pool` (changement de config admin
+  auditable on-chain, posture D6a).
+- Garde `token_a == token_b` → `SameToken` dans `set_aqua_pool` (entrée
+  dégénérée sans voie de suppression sinon), testée.
+
 **Step 2-4 :** rouge → implémentation `#[contractevent]` struct `SwapEvent`
 → vert.
 
@@ -477,7 +483,9 @@ dans l'évidence.
 Soroswap et router Aquarius testnet (adresses relues des registres/spike),
 `soroswap_fee_bps=30`, `aquarius_fee_bps` = frais du pool créé ;
 `set_aqua_pool` avec le hash de Task 13. Contract ID + hashes consignés
-le jour même dans `docs/evidence/d4-dex-routing.md`.
+le jour même dans `docs/evidence/d4-dex-routing.md`. Note ops (revue Task 6) :
+aucun `extend_ttl` dans le contrat (posture repo) ; surveiller l'archivage
+des entrées instance/persistent côté ops et documenter la restauration.
 
 ### Task 15 : démo best-execution + rebalance + fallback
 

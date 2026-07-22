@@ -13,7 +13,11 @@
 //!   simple identifiant de pool ; sans entree, la venue Aquarius echoue en
 //!   `AquaPoolNotSet` et le fallback la traverse ;
 //! - invariant : solde du routeur nul hors transaction (le produit du swap
-//!   est integralement reverse a l'appelant dans la meme invocation).
+//!   est integralement reverse a l'appelant dans la meme invocation) ;
+//! - modele de confiance des tokens : SAC/SEP-41 supposes sans frais de
+//!   transfert ni hooks (le montant transfere est le montant recu, le
+//!   jugement par delta de solde y suffit) ; un token menteur ne nuit qu'a
+//!   son propre appelant, le routeur ne detenant rien entre transactions.
 //!
 //! Hors scope D4 : multi-hop (pas de `path` expose), setters de venues,
 //! frais preleves par le routeur (fee_bps = comptabilite, pas prelevement).
@@ -143,9 +147,9 @@ impl SwapRouter {
 
     /// Echange `amount_in` de `token_in` contre au moins `min_out` de
     /// `token_out`, servi a `from`. `preferred` fixe l'ordre d'essai des
-    /// venues ; la venue de secours prend le relais dans la MEME transaction
-    /// (matrice complete de fallback : Task 5). Panique en `AllVenuesFailed`
-    /// si aucune venue ne sert : le revert integral protege les fonds.
+    /// venues ; la venue de secours prend le relais dans la MEME transaction.
+    /// Panique en `AllVenuesFailed` si aucune venue ne sert : le revert
+    /// integral protege les fonds.
     pub fn swap_exact_in(
         env: Env,
         from: Address,
@@ -201,8 +205,6 @@ impl SwapRouter {
         let (venue, amount_out) =
             venue_used.unwrap_or_else(|| panic_with_error!(&env, RouterError::AllVenuesFailed));
 
-        out_token.transfer(&this, &from, &amount_out);
-
         // Frais COMPTABLES uniquement : rien n'est preleve sur amount_out,
         // la commission de la venue est deja incorporee au prix servi.
         // `fee` alimente le SwapResult et les stats (dashboard D6c).
@@ -211,7 +213,13 @@ impl SwapRouter {
             .unwrap_or_else(|| panic_with_error!(&env, RouterError::MathOverflow))
             / BPS_DENOMINATOR;
 
+        // Convention maison (vault D1) : ETAT D'ABORD, TRANSFERT ENSUITE.
+        // amount_out est deja juge : les stats s'ecrivent avant le transfert
+        // sortant, aucun appel externe ne s'intercale entre le jugement et
+        // l'ecriture d'etat (CEI).
         Self::record_swap(&env, &token_in, &token_out, amount_in, amount_out, fee);
+
+        out_token.transfer(&this, &from, &amount_out);
 
         // Event de swap : Task 7 (schema d'events du deliverable).
         SwapResult {

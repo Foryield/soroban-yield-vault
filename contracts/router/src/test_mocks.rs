@@ -31,6 +31,10 @@ pub enum MockBehavior {
     Serve(i128),
     /// Panique (venue en panne) : le `try_` de l'appelant doit l'absorber.
     Panic,
+    /// Venue MENTEUSE : sert ce montant en ignorant le minimum demande.
+    /// Seule maniere d'atteindre la branche SlippageExceeded du routeur
+    /// (defense en profondeur : jugement sur delta de solde).
+    ServeIgnoringMin(i128),
 }
 
 /// Marqueur d'invocation : pose en tete de la fonction de swap. Un appel
@@ -66,6 +70,7 @@ fn serve_amount(env: &Env, min_required: i128) -> i128 {
             }
             amount
         }
+        MockBehavior::ServeIgnoringMin(amount) => amount,
     }
 }
 

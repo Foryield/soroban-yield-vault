@@ -297,6 +297,17 @@ Suivi de revue (Task 2) : ajouter à l'`initialize` la garde
 `fee_bps <= 10_000` pour les deux venues (nouvelle erreur `InvalidFeeBps = 10`),
 testée, maintenant que `fee` est calculé.
 
+Suivis de revue (Task 3) :
+- Invariant à écrire en commentaire ET à tester : le chemin « toutes venues
+  false » DOIT paniquer (`AllVenuesFailed`), jamais retourner — c'est lui qui
+  garantit le revert intégral quand une venue a exécuté mais que `attempt` a
+  rendu false (retour indécodable, conversion) : les fonds sont protégés par
+  l'atomicité, pas par le jugement local.
+- Les tests sous `mock_all_auths` n'exercent PAS `authorize_as_current_contract`
+  (l'auth mockée auto-approuve aussi le routeur) : ajouter au moins un test qui
+  asserte le contenu de `env.auths()` enregistré, pour qu'une pré-autorisation
+  manquante échoue en local et pas seulement contre la stack réelle.
+
 **Step 4 :** vert. **Step 5 : Commit** `feat(router): swap_exact_in - chemin nominal Soroswap`
 
 ### Task 5 : matrice de fallback (TDD)
@@ -378,7 +389,9 @@ Soroswap : déployer aussi l'aggregator réel si son wasm est constructible
 (sinon le documenter et tester la venue Soroswap contre le router via un
 adapter de test, décision consignée). Spike time-boxé à une demi-journée.
 **Step 2 :** test : swap réel via `swap_exact_in`, montant sorti cohérent
-avec x*y=k et 0,3 %, auth imbriquée validée (`env.auths()`).
+avec x*y=k et 0,3 %, auth imbriquée validée (`env.auths()`). Vérifier aussi
+le sens de comparaison du deadline réel (`now == deadline` doit passer :
+notre `deadline = timestamp()` en dépend — suivi de revue Task 3).
 **Step 3 : Commit** `test(router): integration stack Soroswap reelle`
 
 ### Task 11 : fixture Aqua réelle (spike time-boxé)

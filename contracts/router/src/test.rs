@@ -147,6 +147,12 @@ fn fund(f: &VenueFixture, holder: &Address, amount: i128) {
     StellarAssetClient::new(&f.env, &f.token_out.address).mint(holder, &amount);
 }
 
+/// Pool hash Aqua arbitraire des tests : la valeur n'a aucun sens on-chain,
+/// seuls comptent sa presence (registre alimente) et son transport.
+fn pool_hash(env: &Env) -> BytesN<32> {
+    BytesN::from_array(env, &[7u8; 32])
+}
+
 #[test]
 fn soroswap_attempt_against_mock_moves_real_tokens() {
     let f = venue_setup();
@@ -181,7 +187,7 @@ fn aqua_attempt_against_mock_moves_real_tokens() {
     let mock = f.env.register(MockAqua, ());
     MockAquaClient::new(&f.env, &mock).set_behavior(&MockBehavior::Serve(SERVED_OUT));
     fund(&f, &mock, SERVED_OUT);
-    let pool_hash = BytesN::from_array(&f.env, &[7u8; 32]);
+    let pool_hash = pool_hash(&f.env);
 
     let ok = venues::aqua::attempt(
         &f.env,
@@ -231,7 +237,7 @@ fn aqua_attempt_panicking_mock_returns_false() {
     let f = venue_setup();
     let mock = f.env.register(MockAqua, ());
     MockAquaClient::new(&f.env, &mock).set_behavior(&MockBehavior::Panic);
-    let pool_hash = BytesN::from_array(&f.env, &[7u8; 32]);
+    let pool_hash = pool_hash(&f.env);
 
     let ok = venues::aqua::attempt(
         &f.env,
@@ -254,7 +260,7 @@ fn aqua_attempt_returns_false_on_negative_amounts_without_calling_venue() {
     let mock = f.env.register(MockAqua, ());
     MockAquaClient::new(&f.env, &mock).set_behavior(&MockBehavior::Serve(SERVED_OUT));
     fund(&f, &mock, SERVED_OUT);
-    let pool_hash = BytesN::from_array(&f.env, &[7u8; 32]);
+    let pool_hash = pool_hash(&f.env);
 
     for (amount_in, min_out) in [(-1_i128, MIN_OUT), (AMOUNT_IN, -1_i128)] {
         let ok = venues::aqua::attempt(
@@ -501,7 +507,7 @@ fn fallback_preferred_soroswap_panics_aqua_serves() {
     MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Panic);
     MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
     StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
-    set_aqua_registry(&f, &BytesN::from_array(&f.env, &[7u8; 32]));
+    set_aqua_registry(&f, &pool_hash(&f.env));
 
     let result = f.router.swap_exact_in(
         &f.user,
@@ -546,7 +552,7 @@ fn fallback_preferred_serves_under_min_aqua_serves() {
     MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(MIN_OUT - 1));
     MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
     StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
-    set_aqua_registry(&f, &BytesN::from_array(&f.env, &[7u8; 32]));
+    set_aqua_registry(&f, &pool_hash(&f.env));
 
     let result = f.router.swap_exact_in(
         &f.user,
@@ -569,9 +575,13 @@ fn fallback_preferred_serves_under_min_aqua_serves() {
     assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
     assert_eq!(
         f.router
-            .pair_stats(&f.token_in.address, &f.token_out.address)
-            .fees,
-        AQUARIUS_FEE
+            .pair_stats(&f.token_in.address, &f.token_out.address),
+        PairStats {
+            volume_in: AMOUNT_IN,
+            volume_out: SERVED_OUT,
+            fees: AQUARIUS_FEE,
+            swaps: 1,
+        }
     );
 }
 
@@ -582,7 +592,7 @@ fn both_venues_present_and_panicking_reverts_funds() {
     let f = swap_setup();
     MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Panic);
     MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Panic);
-    set_aqua_registry(&f, &BytesN::from_array(&f.env, &[7u8; 32]));
+    set_aqua_registry(&f, &pool_hash(&f.env));
 
     let result = f.router.try_swap_exact_in(
         &f.user,
@@ -634,9 +644,13 @@ fn preferred_aqua_without_registry_falls_back_to_soroswap() {
     assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
     assert_eq!(
         f.router
-            .pair_stats(&f.token_in.address, &f.token_out.address)
-            .fees,
-        SOROSWAP_FEE
+            .pair_stats(&f.token_in.address, &f.token_out.address),
+        PairStats {
+            volume_in: AMOUNT_IN,
+            volume_out: SERVED_OUT,
+            fees: SOROSWAP_FEE,
+            swaps: 1,
+        }
     );
     assert!(!MockAquaClient::new(&f.env, &f.aquarius).was_called());
 }
@@ -648,7 +662,7 @@ fn preferred_aqua_nominal_serves_with_registry() {
     let f = swap_setup();
     MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
     StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
-    set_aqua_registry(&f, &BytesN::from_array(&f.env, &[7u8; 32]));
+    set_aqua_registry(&f, &pool_hash(&f.env));
 
     let result = f.router.swap_exact_in(
         &f.user,
@@ -683,6 +697,46 @@ fn preferred_aqua_nominal_serves_with_registry() {
     );
     // La preferee a servi : le secours n'a pas ete invoque.
     assert!(!MockAggregatorClient::new(&f.env, &f.soroswap).was_called());
+}
+
+// Borne EXACTE du jugement min-out : servir exactement min_out est un succes
+// (received >= min_out, inclusif). Fige la frontiere entre swap servi et
+// SlippageExceeded : une mutation >= -> > tue ce test.
+#[test]
+fn swap_serving_exactly_min_out_succeeds() {
+    let f = swap_setup();
+    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(MIN_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &MIN_OUT);
+
+    let result = f.router.swap_exact_in(
+        &f.user,
+        &f.token_in.address,
+        &f.token_out.address,
+        &AMOUNT_IN,
+        &MIN_OUT,
+        &Venue::SoroswapAggregator,
+    );
+
+    assert_eq!(
+        result,
+        SwapResult {
+            amount_out: MIN_OUT,
+            venue: Venue::SoroswapAggregator,
+            fee: SOROSWAP_FEE,
+        }
+    );
+    assert_eq!(f.token_in.balance(&f.user), 0);
+    assert_eq!(f.token_out.balance(&f.user), MIN_OUT);
+    assert_eq!(
+        f.router
+            .pair_stats(&f.token_in.address, &f.token_out.address),
+        PairStats {
+            volume_in: AMOUNT_IN,
+            volume_out: MIN_OUT,
+            fees: SOROSWAP_FEE,
+            swaps: 1,
+        }
+    );
 }
 
 // Suivi de revue Task 4 : la branche SlippageExceeded etait inatteignable

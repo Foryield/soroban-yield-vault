@@ -82,3 +82,92 @@ USDC<->EURC rebalance demonstration + hashes + video.
   "pool fee=30 deja existant, creation sautee", deposit replayed),
   simulation-first so the AQUA fee question is answered before any
   submission.
+
+## 2026-07-22 — SwapRouter deployed to testnet
+
+- **What it proves**: the D4 routing contract is live on testnet with a
+  verifiable address, initialized against the two real venues (Soroswap
+  aggregator, Aquarius router) and configured with the Aquarius pool
+  seeded above.
+- **Contract ID**: `CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK`
+  ([explorer](https://stellar.expert/explorer/testnet/contract/CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK)),
+  wasm hash `44b5c2c5517a21cb76fdd86923d00df5e15bdd0d51ca6bed7120895bdae920b2`,
+  built from commit b2d7887. Admin = ops key `d1-ops`
+  (`GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG`).
+- **Transactions** (`scripts/deploy_swap_router.sh`, one run):
+  - wasm upload:
+    [965082deeffd3cf782264327f83894ed4c51a157b84764e439cb46cb8fd3ea2f](https://stellar.expert/explorer/testnet/tx/965082deeffd3cf782264327f83894ed4c51a157b84764e439cb46cb8fd3ea2f)
+  - deploy (createContract):
+    [e093d47cac83ee67d77e63eaab36b85efe4338a38ef0b7c297b323cf36c46077](https://stellar.expert/explorer/testnet/tx/e093d47cac83ee67d77e63eaab36b85efe4338a38ef0b7c297b323cf36c46077)
+  - `initialize` (aggregator + Aqua router, fee bps 30/30 — Soroswap LP
+    fee 0.3%, Aqua pool created at the 30 bps tier):
+    [7a830ab14dd99d8b8317534cc21b29ac51d78de02b00c7351569172b1c8fc597](https://stellar.expert/explorer/testnet/tx/7a830ab14dd99d8b8317534cc21b29ac51d78de02b00c7351569172b1c8fc597)
+  - `set_aqua_pool` (pool hash of 2026-07-22 seed, `aqua_pool_set` event
+    emitted with the sorted pair, USDC first):
+    [ad717b4a5488cec26b76187d6fea39fe2e48183d504d2afa60f4dcae629eb60f](https://stellar.expert/explorer/testnet/tx/ad717b4a5488cec26b76187d6fea39fe2e48183d504d2afa60f4dcae629eb60f)
+- **Anti-front-run posture** (review follow-up, Task 2): `deploy` and
+  `initialize` are chained back-to-back in the same script run — an
+  adversarial `initialize` on the fresh contract would fix arbitrary
+  venues, a more profitable target than the vault where the posture comes
+  from. The stellar CLI only passes deployment arguments to
+  `__constructor` contracts; ours exposes `initialize`, so the window
+  cannot be closed to zero without a constructor refactor. Observed
+  window this run: one ledger (deploy in 3743227, initialize in 3743228,
+  5 seconds). Accepted for testnet; a mainnet deployment should move
+  initialization into `__constructor` or deploy from a source with
+  simulation pre-signed.
+- **Aggregator address source (posture upgrade)**: a canonical registry
+  DOES exist for the aggregator —
+  `soroswap/aggregator` `public/testnet.contracts.json`, key
+  `ids.aggregator` = `CC74XDT7UVLUZCELKBIYXFYIX6A6LGPWURJVUXGRPQO745RWX7WEURMA`
+  (same address the S1 spike had found). The deploy script re-reads it at
+  run time, same posture as the Soroswap router/Blend USDC addresses;
+  `AQUA_ROUTER` remains an env default with spike provenance (no Aquarius
+  registry known, unchanged).
+- **Deployed aggregator pre-flight** (read-only `get_adapters`
+  simulation, closing the deployed-vs-pinned gap left open in PR B): the
+  deployed aggregator decodes cleanly with our replicated `Adapter` type
+  and returns three adapters, all unpaused:
+  `[{protocol_id: 0 (Soroswap), router: CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD},
+  {protocol_id: 1 (Phoenix), router: CBAMPJTMNDXBBYYQ77C7WX2MTBR3XZHERDJ7NQMXLEZHMWUFQBQMFTOC},
+  {protocol_id: 2 (Aqua), router: CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD}]`.
+  Two findings: (1) the Soroswap adapter's router equals the core
+  registry router, and `router_pair_for(USDC, EURC)` on it returns
+  exactly the pair seeded on 2026-07-21
+  (`CAKF65K72WQ5N3LOSDX3GRLZQPN5D2MJVTXJBF4J3EZNLH4GTX4PKEIW`) — our
+  `pull_auth_entries` discovery path works against the real deployment;
+  (2) CONTRARY to the working assumption, the deployed aggregator DOES
+  expose an Aqua adapter (protocol_id 2, the very router our fallback
+  venue calls directly). The direct-Aquarius venue therefore is not the
+  only path to Aqua liquidity; it remains justified as a fallback that
+  does not depend on the aggregator being live, unpaused, and correctly
+  adapted (single point of failure the fallback exists to route around),
+  but the earlier "no Aqua adapter" justification is corrected here.
+- **Post-deploy read-only verification** (all simulated, nothing
+  submitted):
+  - `aqua_pool_of(USDC, EURC)` =
+    `9ac7a9cde23ac2ada11105eeaa42e43c2ea8332ca0aa8f41f58d7160274d718e`
+    (the Task 13 seed hash);
+  - `pair_stats(USDC, EURC)` =
+    `{volume_in: 0, volume_out: 0, fees: 0, swaps: 0}`;
+  - a second `initialize` fails in simulation with
+    `Error(Contract, #1)` = `AlreadyInitialized` — the guard is proven
+    without submitting anything.
+- **TTL / archival ops note** (review follow-up, Task 6): the contract
+  contains no `extend_ttl` calls (repo posture, same as the vault). The
+  instance entries (admin, venues, fee bps, Aqua pool registry) live and
+  archive together with the contract instance; the per-pair `Stats`
+  entries are persistent with their own TTL. Ops must monitor
+  liveUntilLedger on the instance and the stats keys
+  (`stellar contract extend --id <contract> --ledgers-to-extend <n>` to
+  push them forward). After archival, restoration is permissionless:
+  `stellar contract restore --id CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK --network testnet`
+  (add `--key <DataKey>` for an archived persistent stats entry). State
+  is preserved across archival/restore; nothing is lost, only
+  temporarily inaccessible.
+- **Redeploy script** (testnet resets 2-4x/year):
+  `scripts/deploy_swap_router.sh <key> <aqua_pool_hash>` — rebuilds the
+  wasm, re-reads the aggregator and token addresses from their canonical
+  registries, chains deploy + initialize, registers the Aqua pool hash
+  printed by `seed_aquarius_pool.sh`, and prints the `aqua_pool_of`
+  verification.

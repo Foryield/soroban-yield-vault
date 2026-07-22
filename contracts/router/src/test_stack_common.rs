@@ -118,6 +118,24 @@ pub fn init_router<'a>(
     router
 }
 
+/// Reordonne un couple de reserves (reserve_0, reserve_1), rendu dans
+/// l'ordre des tokens TRIES par adresse (convention commune au pair Soroswap
+/// et au router Aqua), vers l'ordre fixe (usdc, eurc). L'ordre trie n'est
+/// pas deterministe entre deux runs (adresses generees) : les trois lecteurs
+/// de reserves des fixtures passent par ce helper (suivi de revue Task 11).
+pub fn order_usdc_eurc(
+    usdc: &Address,
+    eurc: &Address,
+    reserve_0: i128,
+    reserve_1: i128,
+) -> (i128, i128) {
+    if usdc < eurc {
+        (reserve_0, reserve_1)
+    } else {
+        (reserve_1, reserve_0)
+    }
+}
+
 pub struct SoroswapStack<'a> {
     pub aggregator: Address,
     pub router: router_wasm::Client<'a>,
@@ -179,13 +197,48 @@ pub fn deploy_soroswap_stack<'a>(base: &BaseFixture) -> SoroswapStack<'a> {
     }
 }
 
-/// Garde anti-derive du wasm aggregator construit localement (suivi de revue
-/// Task 10) : hors SHA256SUMS, seul ce test detecte un binaire regenere sans
-/// mise a jour du README (ou altere). SHA-256 via le host crypto de l'env de
-/// test : aucune dependance ajoutee. L'empreinte attendue est decodee depuis
-/// la chaine hex consignee, identique caractere pour caractere au README.
-#[test]
-fn locally_built_aggregator_wasm_matches_recorded_sha256() {
+/// Octets embarques des 8 wasm re-telechargeables, indexes par nom de
+/// fichier : la garde vendored_wasms_match_sha256sums confronte chaque
+/// entree de SHA256SUMS a ces octets. include_bytes! plutot que les WASM
+/// des contractimport! : la garde couvre les fichiers du manifeste,
+/// independamment de ce que les fixtures importent.
+const VENDORED_WASMS: [(&str, &[u8]); 8] = [
+    (
+        "soroban_liquidity_pool_contract.wasm",
+        include_bytes!("../test_wasms/soroban_liquidity_pool_contract.wasm"),
+    ),
+    (
+        "soroban_liquidity_pool_liquidity_calculator_contract.wasm",
+        include_bytes!("../test_wasms/soroban_liquidity_pool_liquidity_calculator_contract.wasm"),
+    ),
+    (
+        "soroban_liquidity_pool_plane_contract.wasm",
+        include_bytes!("../test_wasms/soroban_liquidity_pool_plane_contract.wasm"),
+    ),
+    (
+        "soroban_liquidity_pool_router_contract.wasm",
+        include_bytes!("../test_wasms/soroban_liquidity_pool_router_contract.wasm"),
+    ),
+    (
+        "soroban_token_contract.wasm",
+        include_bytes!("../test_wasms/soroban_token_contract.wasm"),
+    ),
+    (
+        "soroswap_factory.wasm",
+        include_bytes!("../test_wasms/soroswap_factory.wasm"),
+    ),
+    (
+        "soroswap_pair.wasm",
+        include_bytes!("../test_wasms/soroswap_pair.wasm"),
+    ),
+    (
+        "soroswap_router.wasm",
+        include_bytes!("../test_wasms/soroswap_router.wasm"),
+    ),
+];
+
+/// Decode une empreinte SHA-256 hexadecimale (64 caracteres, minuscules).
+fn sha256_from_hex(hex: &str) -> [u8; 32] {
     fn nibble(c: u8) -> u8 {
         match c {
             b'0'..=b'9' => c - b'0',
@@ -193,16 +246,63 @@ fn locally_built_aggregator_wasm_matches_recorded_sha256() {
             _ => panic!("hex invalide dans l'empreinte consignee"),
         }
     }
-    let hex = AGGREGATOR_WASM_SHA256_HEX.as_bytes();
+    let hex = hex.as_bytes();
     assert_eq!(hex.len(), 64);
-    let mut expected = [0_u8; 32];
-    for (i, byte) in expected.iter_mut().enumerate() {
+    let mut out = [0_u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
         *byte = (nibble(hex[2 * i]) << 4) | nibble(hex[2 * i + 1]);
     }
+    out
+}
 
+fn sha256_of(env: &Env, wasm: &[u8]) -> [u8; 32] {
+    env.crypto()
+        .sha256(&Bytes::from_slice(env, wasm))
+        .to_array()
+}
+
+/// Garde anti-derive du wasm aggregator construit localement (suivi de revue
+/// Task 10) : hors SHA256SUMS, seul ce test detecte un binaire regenere sans
+/// mise a jour du README (ou altere). SHA-256 via le host crypto de l'env de
+/// test : aucune dependance ajoutee. L'empreinte attendue est decodee depuis
+/// la chaine hex consignee, identique caractere pour caractere au README.
+#[test]
+fn locally_built_aggregator_wasm_matches_recorded_sha256() {
     let env = Env::default();
-    let digest = env
-        .crypto()
-        .sha256(&Bytes::from_slice(&env, aggregator_wasm::WASM));
-    assert_eq!(digest.to_array(), expected);
+    assert_eq!(
+        sha256_of(&env, aggregator_wasm::WASM),
+        sha256_from_hex(AGGREGATOR_WASM_SHA256_HEX)
+    );
+}
+
+/// Garde anti-derive des 8 wasm re-telechargeables (suivi de revue Task 11,
+/// durcissement supply-chain du repo public) : SHA256SUMS est parse au
+/// moment du test et chaque entree confrontee aux octets reellement presents
+/// sur le disque. Complement du script fetch (qui ne verifie qu'au
+/// re-telechargement) : ici la verification court a chaque run de tests.
+#[test]
+fn vendored_wasms_match_sha256sums() {
+    let manifest = include_str!("../test_wasms/SHA256SUMS");
+    let env = Env::default();
+    let mut checked = 0_usize;
+    for line in manifest.lines().filter(|line| !line.trim().is_empty()) {
+        let (hex, name) = line
+            .split_once("  ")
+            .expect("ligne SHA256SUMS invalide (attendu : empreinte, deux espaces, nom)");
+        let (_, wasm) = VENDORED_WASMS
+            .iter()
+            .find(|(entry, _)| *entry == name)
+            .unwrap_or_else(|| panic!("wasm absent de VENDORED_WASMS : {name}"));
+        assert_eq!(
+            sha256_of(&env, wasm),
+            sha256_from_hex(hex),
+            "empreinte divergente pour {name}"
+        );
+        checked += 1;
+    }
+    assert_eq!(
+        checked,
+        VENDORED_WASMS.len(),
+        "SHA256SUMS doit lister les 8 wasm vendorises"
+    );
 }

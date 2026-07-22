@@ -29,8 +29,9 @@
 //! Ce que ce fichier prouve : la chaine d'init Aqua complete depuis les wasm,
 //! la math constant-product avec fee 0,3 % SUR LA SORTIE du pool reel, la
 //! convention d'appel de notre client swap_chained contre l'ABI reelle, la
-//! topologie d'auth reelle de la venue (escrow transfer(user -> router Aqua),
-//! couverte par la pre-autorisation generique authorize_venue_pull), et le
+//! topologie d'auth reelle de la venue (escrow transfer(routeur ForYield ->
+//! router Aqua), couverte par la pre-autorisation generique
+//! authorize_venue_pull), et le
 //! fallback REEL pool Aqua vide -> bascule Soroswap (les deux stacks reels
 //! dans la meme fixture). Reste couvert par la demo testnet PR C : le
 //! comportement du router Aquarius DEPLOYE (versions on-chain vs vendorees).
@@ -251,19 +252,16 @@ fn setup_fallback_fixture<'a>() -> (AquaFixture<'a>, common::SoroswapStack<'a>) 
 }
 
 /// Reserves du pool Aqua reordonnees en (usdc, eurc) : get_reserves suit
-/// l'ordre des tokens TRIES par adresse, non deterministe entre deux runs.
+/// l'ordre des tokens TRIES par adresse, cf. common::order_usdc_eurc.
 fn aqua_reserves_usdc_eurc(f: &AquaFixture) -> (i128, i128) {
     let tokens = sorted_pair_vec(&f.env, &f.usdc.address, &f.eurc.address);
     let reserves = f.aqua.router.get_reserves(&tokens, &f.aqua.pool_index);
-    let (reserve_0, reserve_1) = (
+    common::order_usdc_eurc(
+        &f.usdc.address,
+        &f.eurc.address,
         reserves.get(0).unwrap() as i128,
         reserves.get(1).unwrap() as i128,
-    );
-    if f.usdc.address < f.eurc.address {
-        (reserve_0, reserve_1)
-    } else {
-        (reserve_1, reserve_0)
-    }
+    )
 }
 
 #[test]
@@ -353,11 +351,12 @@ fn real_fallback_empty_aqua_pool_served_by_soroswap() {
     // Le pool Aqua vide n'a pas bouge ; la paire Soroswap a servi.
     assert_eq!(aqua_reserves_usdc_eurc(&f), (0, 0));
     let (pair_reserve_0, pair_reserve_1) = soroswap.pair.get_reserves();
-    let pair_reserves = if f.usdc.address < f.eurc.address {
-        (pair_reserve_0, pair_reserve_1)
-    } else {
-        (pair_reserve_1, pair_reserve_0)
-    };
+    let pair_reserves = common::order_usdc_eurc(
+        &f.usdc.address,
+        &f.eurc.address,
+        pair_reserve_0,
+        pair_reserve_1,
+    );
     assert_eq!(
         pair_reserves,
         (RESERVE + AMOUNT_IN, RESERVE - EXPECTED_OUT_SOROSWAP)
@@ -375,11 +374,13 @@ fn real_fallback_empty_aqua_pool_served_by_soroswap() {
 }
 
 /// Arbre d'auth contre le stack Aqua REEL. Topologie etablie sur le miroir
-/// des sources (contract.rs, fn swap_chained) et prouvee par ce happy path :
-/// le router Aqua fait user.require_auth() dans SA frame (couvert par l'auth
-/// d'invocateur DIRECT : notre routeur l'appelle sans intermediaire,
-/// contrairement a Soroswap ou l'aggregator s'interpose devant le router)
-/// puis ESCROW transfer(user -> router Aqua, in_amount) dans la frame du
+/// des sources (contract.rs, fn swap_chained) et prouvee par ce happy path.
+/// Le `user` de swap_chained est NOTRE routeur (lib.rs lui passe sa propre
+/// adresse), pas l'utilisateur final : le router Aqua fait
+/// user.require_auth() dans SA frame (couvert par l'auth d'invocateur
+/// DIRECT : notre routeur l'appelle sans intermediaire, contrairement a
+/// Soroswap ou l'aggregator s'interpose devant le router) puis ESCROW
+/// transfer(routeur ForYield -> router Aqua, in_amount) dans la frame du
 /// token -- exactement l'entree generique de authorize_venue_pull. Sans
 /// elle, ce transfert echouerait et le swap tomberait en fallback : le happy
 /// path est le fil-piege (verifie par experience controlee : pre-autorisation

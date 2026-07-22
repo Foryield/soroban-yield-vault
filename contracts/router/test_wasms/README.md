@@ -33,6 +33,34 @@ sont la référence vivante des deux venues : ce sont ceux contre lesquels
 l'agrégateur Soroswap teste ses propres adapters. Le commit épinglé est
 celui dont les sources des adapters ont été vérifiées le 2026-07-22.
 
+## Sources miroir (sémantique Aqua)
+
+Le dépôt canonique d'Aqua (`AquaToken/soroban-amm`) étant en 404, la
+sémantique des wasm Aqua vendorisés a été établie sur un miroir des
+sources :
+
+- Dépôt : [`calc1f4r/soroban-amm`](https://github.com/calc1f4r/soroban-amm)
+- Commit : `f9d4a5e0`
+- Génération : la même que les wasm vendorisés (rssdkver 22.0.6 dans la
+  méta des wasm)
+- Date de vérification : 2026-07-22
+
+Ce miroir est ce qui a établi :
+
+- la sémantique de `get_amount_out` : fee prélevée sur la sortie, arrondi
+  plafond (base de la dérivation de `EXPECTED_OUT_AQUA` dans
+  `src/test_aqua_stack.rs`) ;
+- les étapes obligatoires de la chaîne d'init du router Aqua
+  (`init_standard_pool` lit token hash, reward token, boost config, plane
+  et config de paiement sans garde : `StorageError` 501 si une étape
+  manque) ;
+- la topologie d'auth de `swap_chained` : `user.require_auth()` dans sa
+  frame puis escrow `transfer(user -> router Aqua)` (le `user` de
+  `swap_chained` étant l'appelant direct, notre routeur).
+
+Une copie durable du miroir (fork sous l'org Foryield) est recommandée,
+décision en attente.
+
 ## Wasm de l'agrégateur : construit localement (hors SHA256SUMS)
 
 Aucun wasm précompilé du contrat agrégateur lui-même n'existe dans le

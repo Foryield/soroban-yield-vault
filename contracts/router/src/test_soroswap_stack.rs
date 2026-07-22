@@ -85,15 +85,10 @@ fn setup_stack<'a>() -> StackFixture<'a> {
 }
 
 /// Reserves du pair reordonnees en (usdc, eurc) : le pair stocke (token_0,
-/// token_1) tries par adresse, ordre non deterministe entre deux runs
-/// (adresses generees).
+/// token_1) tries par adresse, cf. common::order_usdc_eurc.
 fn reserves_usdc_eurc(f: &StackFixture) -> (i128, i128) {
     let (reserve_0, reserve_1) = f.pair.get_reserves();
-    if f.usdc.address < f.eurc.address {
-        (reserve_0, reserve_1)
-    } else {
-        (reserve_1, reserve_0)
-    }
+    common::order_usdc_eurc(&f.usdc.address, &f.eurc.address, reserve_0, reserve_1)
 }
 
 #[test]

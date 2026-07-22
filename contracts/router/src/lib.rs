@@ -423,9 +423,11 @@ impl SwapRouter {
     ///
     /// Topologie REELLE verifiee (task 11, stack Aqua depuis les wasm
     /// vendorises + miroir des sources, cf. test_aqua_stack.rs) : c'est bien
-    /// l'arbre exact. swap_chained fait user.require_auth() dans SA frame
-    /// (couvert par l'auth d'invocateur direct, notre routeur l'appelant sans
-    /// intermediaire) puis un ESCROW transfer(user -> router Aqua, in_amount)
+    /// l'arbre exact. Le `user` de swap_chained est NOTRE routeur, pas
+    /// l'utilisateur final : swap_chained fait user.require_auth() dans SA
+    /// frame (couvert par l'auth d'invocateur direct, notre routeur
+    /// l'appelant sans intermediaire) puis un ESCROW transfer(routeur
+    /// ForYield -> router Aqua, in_amount)
     /// -- precisement cette entree ; les transferts internes vers les pools
     /// sont pre-autorises par le router Aqua lui-meme. Contrairement a
     /// Soroswap, aucune construction dediee n'est requise : la venue Soroswap

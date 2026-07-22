@@ -1,12 +1,14 @@
 #![cfg(test)]
+extern crate std;
+
 use super::test_mocks::{
     MockAggregator, MockAggregatorClient, MockAqua, MockAquaClient, MockBehavior,
 };
-use super::{venues, PairStats, RouterError, SwapRouter, SwapRouterClient, Venue};
+use super::{venues, PairStats, RouterError, SwapResult, SwapRouter, SwapRouterClient, Venue};
 use soroban_sdk::{
-    testutils::Address as _,
+    testutils::{Address as _, AuthorizedFunction, AuthorizedInvocation},
     token::{StellarAssetClient, TokenClient},
-    Address, BytesN, Env,
+    Address, BytesN, Env, IntoVal, Symbol,
 };
 
 struct Fixture<'a> {
@@ -274,6 +276,285 @@ fn aqua_attempt_returns_false_on_negative_amounts_without_calling_venue() {
     // arrive en Task 6, via un helper de conversion pur teste aux bornes.
     assert!(!MockAquaClient::new(&f.env, &mock).was_called());
     assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
+}
+
+// --- swap_exact_in (Task 4) : gardes typees, chemin nominal Soroswap,
+// invariant AllVenuesFailed, garde fee_bps, observation des auths.
+
+/// Frais comptables attendus sur le chemin Soroswap :
+/// amount_in x fee_bps / 10 000.
+const SOROSWAP_FEE: i128 = AMOUNT_IN * SOROSWAP_FEE_BPS as i128 / 10_000;
+
+struct SwapFixture<'a> {
+    env: Env,
+    user: Address,
+    /// Adresse du MockAggregator, branche comme venue Soroswap du routeur.
+    soroswap: Address,
+    router: SwapRouterClient<'a>,
+    token_in: TokenClient<'a>,
+    token_out: TokenClient<'a>,
+}
+
+/// Routeur branche sur les MOCKS de venues, deux tokens reels, `user`
+/// finance en token_in. Auth mockee NON permissive (mock_all_auths simple,
+/// non-root interdit) : une pre-autorisation authorize_as_current_contract
+/// manquante cote routeur fait ECHOUER le swap ici meme, pas seulement
+/// contre la stack reelle (cf. test des auths).
+fn swap_setup<'a>() -> SwapFixture<'a> {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let token_in = TokenClient::new(
+        &env,
+        &env.register_stellar_asset_contract_v2(issuer.clone())
+            .address(),
+    );
+    let token_out = TokenClient::new(
+        &env,
+        &env.register_stellar_asset_contract_v2(issuer).address(),
+    );
+    StellarAssetClient::new(&env, &token_in.address).mint(&user, &AMOUNT_IN);
+
+    let soroswap = env.register(MockAggregator, ());
+    let aquarius = env.register(MockAqua, ());
+    let router = SwapRouterClient::new(&env, &env.register(SwapRouter, ()));
+    router.initialize(
+        &admin,
+        &soroswap,
+        &aquarius,
+        &SOROSWAP_FEE_BPS,
+        &AQUARIUS_FEE_BPS,
+    );
+
+    SwapFixture {
+        env,
+        user,
+        soroswap,
+        router,
+        token_in,
+        token_out,
+    }
+}
+
+#[test]
+fn swap_exact_in_rejects_non_positive_amount_in() {
+    let f = swap_setup();
+
+    for amount_in in [0_i128, -1] {
+        let result = f.router.try_swap_exact_in(
+            &f.user,
+            &f.token_in.address,
+            &f.token_out.address,
+            &amount_in,
+            &MIN_OUT,
+            &Venue::SoroswapAggregator,
+        );
+        assert_eq!(result, Err(Ok(RouterError::AmountMustBePositive.into())));
+    }
+}
+
+#[test]
+fn swap_exact_in_rejects_non_positive_min_out() {
+    let f = swap_setup();
+
+    for min_out in [0_i128, -1] {
+        let result = f.router.try_swap_exact_in(
+            &f.user,
+            &f.token_in.address,
+            &f.token_out.address,
+            &AMOUNT_IN,
+            &min_out,
+            &Venue::SoroswapAggregator,
+        );
+        assert_eq!(result, Err(Ok(RouterError::MinOutMustBePositive.into())));
+    }
+}
+
+#[test]
+fn swap_exact_in_rejects_same_token() {
+    let f = swap_setup();
+
+    let result = f.router.try_swap_exact_in(
+        &f.user,
+        &f.token_in.address,
+        &f.token_in.address,
+        &AMOUNT_IN,
+        &MIN_OUT,
+        &Venue::SoroswapAggregator,
+    );
+
+    assert_eq!(result, Err(Ok(RouterError::SameToken.into())));
+}
+
+#[test]
+fn swap_exact_in_serves_via_preferred_soroswap() {
+    let f = swap_setup();
+    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &SERVED_OUT);
+
+    let result = f.router.swap_exact_in(
+        &f.user,
+        &f.token_in.address,
+        &f.token_out.address,
+        &AMOUNT_IN,
+        &MIN_OUT,
+        &Venue::SoroswapAggregator,
+    );
+
+    assert_eq!(
+        result,
+        SwapResult {
+            amount_out: SERVED_OUT,
+            venue: Venue::SoroswapAggregator,
+            fee: SOROSWAP_FEE,
+        }
+    );
+    // `from` debite de amount_in, credite du produit du swap.
+    assert_eq!(f.token_in.balance(&f.user), 0);
+    assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
+    // Invariant : solde du routeur NUL hors transaction.
+    assert_eq!(f.token_in.balance(&f.router.address), 0);
+    assert_eq!(f.token_out.balance(&f.router.address), 0);
+    // Stats de la paire ordonnee incrementees.
+    assert_eq!(
+        f.router
+            .pair_stats(&f.token_in.address, &f.token_out.address),
+        PairStats {
+            volume_in: AMOUNT_IN,
+            volume_out: SERVED_OUT,
+            fees: SOROSWAP_FEE,
+            swaps: 1,
+        }
+    );
+}
+
+// INVARIANT (suivi de revue Task 3) : le chemin « toutes venues false » DOIT
+// paniquer (AllVenuesFailed), jamais retourner. C'est lui qui garantit le
+// revert INTEGRAL quand une venue a execute mais que `attempt` a rendu false
+// (retour indecodable, conversion) : les fonds sont proteges par l'atomicite
+// de la transaction, pas par le jugement local.
+#[test]
+fn all_venues_failing_panics_and_reverts_funds() {
+    let f = swap_setup();
+    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Panic);
+    // Registre Aqua vide : la venue Aquarius rend false sans etre appelee.
+
+    let result = f.router.try_swap_exact_in(
+        &f.user,
+        &f.token_in.address,
+        &f.token_out.address,
+        &AMOUNT_IN,
+        &MIN_OUT,
+        &Venue::SoroswapAggregator,
+    );
+
+    assert_eq!(result, Err(Ok(RouterError::AllVenuesFailed.into())));
+    // Atomicite : le transfert entrant (from -> routeur) a eu lieu AVANT la
+    // panique, il est integralement annule avec elle.
+    assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
+    assert_eq!(f.token_in.balance(&f.router.address), 0);
+}
+
+#[test]
+fn initialize_rejects_fee_bps_above_100_percent() {
+    // La garde couvre chacune des deux venues independamment.
+    for (soroswap_bps, aquarius_bps) in [(10_001_u32, AQUARIUS_FEE_BPS), (SOROSWAP_FEE_BPS, 10_001)]
+    {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let soroswap = Address::generate(&env);
+        let aquarius = Address::generate(&env);
+        let router = SwapRouterClient::new(&env, &env.register(SwapRouter, ()));
+
+        let result =
+            router.try_initialize(&admin, &soroswap, &aquarius, &soroswap_bps, &aquarius_bps);
+
+        assert_eq!(result, Err(Ok(RouterError::InvalidFeeBps.into())));
+    }
+}
+
+#[test]
+fn initialize_accepts_fee_bps_at_100_percent() {
+    // Borne incluse : 10 000 bps = 100 %, valide.
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let soroswap = Address::generate(&env);
+    let aquarius = Address::generate(&env);
+    let router = SwapRouterClient::new(&env, &env.register(SwapRouter, ()));
+
+    router.initialize(&admin, &soroswap, &aquarius, &10_000, &10_000);
+}
+
+/// Suivi de revue Task 3 : observation des auths enregistrees.
+///
+/// env.auths() ne restitue que les account trackers (require_auth satisfaits
+/// par une entree d'auth d'adresse) : les pre-autorisations
+/// authorize_as_current_contract vivent dans les invoker trackers, invisibles
+/// ici PAR CONSTRUCTION (soroban-env-host 25, get_authenticated_authorizations
+/// ne parcourt que account_trackers). L'observation probante est donc double :
+/// 1) sous mock_all_auths simple (non-root interdit), une pre-autorisation
+///    manquante fait ECHOUER le swap avec « make sure that you have called
+///    authorize_as_current_contract() » (require_auth_recording, env-host) :
+///    le happy path est deja un fil-piege ;
+/// 2) l'arbre enregistre ne contient QUE l'auth de `from` : si l'adresse du
+///    routeur y figurait, son transfert vers la venue aurait ete servi par
+///    l'auth mockee (recording) et non par la pre-autorisation (les invoker
+///    trackers sont verifies AVANT le mode recording, require_auth_internal).
+#[test]
+fn swap_records_only_user_auth_venue_pull_preauthorized() {
+    let f = swap_setup();
+    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &SERVED_OUT);
+
+    f.router.swap_exact_in(
+        &f.user,
+        &f.token_in.address,
+        &f.token_out.address,
+        &AMOUNT_IN,
+        &MIN_OUT,
+        &Venue::SoroswapAggregator,
+    );
+
+    let auths = f.env.auths();
+    // Le routeur n'apparait dans AUCUNE auth enregistree : ses transferts
+    // sortants sont couverts par la pre-autorisation, pas par le mock.
+    assert!(auths.iter().all(|(addr, _)| addr != &f.router.address));
+    // Seule auth enregistree : `from`, racine swap_exact_in, avec le
+    // transfert entrant (from -> routeur) en sous-invocation.
+    assert_eq!(
+        auths,
+        std::vec![(
+            f.user.clone(),
+            AuthorizedInvocation {
+                function: AuthorizedFunction::Contract((
+                    f.router.address.clone(),
+                    Symbol::new(&f.env, "swap_exact_in"),
+                    (
+                        f.user.clone(),
+                        f.token_in.address.clone(),
+                        f.token_out.address.clone(),
+                        AMOUNT_IN,
+                        MIN_OUT,
+                        Venue::SoroswapAggregator,
+                    )
+                        .into_val(&f.env),
+                )),
+                sub_invocations: std::vec![AuthorizedInvocation {
+                    function: AuthorizedFunction::Contract((
+                        f.token_in.address.clone(),
+                        Symbol::new(&f.env, "transfer"),
+                        (f.user.clone(), f.router.address.clone(), AMOUNT_IN).into_val(&f.env),
+                    )),
+                    sub_invocations: std::vec![],
+                }],
+            }
+        )]
+    );
 }
 
 #[test]

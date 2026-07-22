@@ -32,6 +32,9 @@ pub struct DexDistribution {
     pub bytes: Option<Vec<BytesN<32>>>,
 }
 
+// Le trait ne sert qu'a generer le client (`contractclient`) : il n'est
+// jamais implemente ni appele directement, seul le client l'est.
+#[allow(dead_code)]
 #[contractclient(name = "SoroswapAggregatorClient")]
 pub trait SoroswapAggregator {
     fn swap_exact_tokens_for_tokens(

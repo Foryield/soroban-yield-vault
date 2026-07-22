@@ -13,6 +13,9 @@
 
 use soroban_sdk::{contractclient, vec, Address, BytesN, Env, Vec};
 
+// Le trait ne sert qu'a generer le client (`contractclient`) : il n'est
+// jamais implemente ni appele directement, seul le client l'est.
+#[allow(dead_code)]
 #[contractclient(name = "AquaRouterClient")]
 pub trait AquaRouter {
     fn swap_chained(

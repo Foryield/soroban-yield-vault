@@ -341,6 +341,15 @@ Suivis de revue (Task 4) à traiter ici :
 clé = paire TRIÉE par adresse (un pool sert les deux sens) ; conversion
 retour u128 > i128::MAX → `AmountConversion`.
 
+Suivis de revue (Task 5) :
+- Témoin du scénario « venue a exécuté mais attempt a rendu false » : variant
+  de mock `ServeReturningHuge` (retour u128 > i128::MAX après avoir vraiment
+  déplacé les tokens) → la 2e venue échoue sur solde vidé → `AllVenuesFailed`
+  → revert intégral. C'est le scénario exact que l'invariant de panique
+  protège : lui donner un test.
+- Aligner le doc de module (lib.rs:13-14) : `AquaPoolNotSet` et le setter y
+  sont décrits au présent alors qu'ils n'existent qu'à partir de cette tâche.
+
 Suivi de revue (Task 4) : registre `AquaPool` en storage INSTANCE, décision
 confirmée en revue (un pool persistent expiré redeviendrait silencieusement
 « registre vide » : dégradation de routage sans signal ; en instance, le

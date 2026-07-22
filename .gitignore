@@ -6,5 +6,7 @@ Cargo.lock.bak
 .DS_Store
 *.wasm
 !*.optimized.wasm
+# Wasm de venues vendorises pour les tests d'integration (provenance epinglee).
+!contracts/router/test_wasms/*.wasm
 .soroban/
 .stellar/

@@ -445,6 +445,18 @@ notre `deadline = timestamp()` en dépend — suivi de revue Task 3).
 **Files:**
 - Create: `contracts/router/src/test_aqua_stack.rs`
 
+Suivis de revue (Task 10) à traiter ici :
+- `deadline(env)` calculé indépendamment dans `pull_auth_entries` et
+  `attempt` : rendre l'invariant explicite (valeur passée aux deux, ou
+  commentaire « même valeur exigée, timestamp constant dans la tx »).
+  Idem, plus faible, pour le `path` construit deux fois.
+- Garde anti-dérive du wasm agrégateur construit localement (hors
+  SHA256SUMS) : un test qui hache le fichier contre la valeur consignée.
+- Factoriser le socle commun de fixture (env + tokens + financement +
+  init routeur) partagé avec la fixture Soroswap au moment d'écrire celle
+  d'Aqua, pas en copier-coller.
+- Commentaire « inerte ici » sur `AQUARIUS_FEE_BPS` de la fixture Soroswap.
+
 **Step 1 :** chaîne d'init Aqua depuis les wasm (router + plane +
 calculator + pool hash + `init_standard_pool` + `deposit`) : l'interface
 d'init se lit dans le spec embarqué des wasm (`stellar contract info
@@ -456,6 +468,19 @@ Soroswap) + swap Aqua nominal.
 **Step 3 : Commit** `test(router): integration stack Aqua reelle` (ou doc du repli)
 
 ### Task 12 : clôture PR B
+
+Suivis de revue (Task 11) à traiter ici :
+- Section « Sources miroir » dans `test_wasms/README.md` : le miroir
+  `calc1f4r/soroban-amm@f9d4a5e0` fonde la sémantique Aqua (fee sur la
+  sortie, chaîne d'init, topologie d'auth) alors que le canonique est en
+  404 ; consigner repo, commit, date de vérification, ce qui a été établi.
+  Copie durable (fork sous l'org Foryield) : décision Pierrick.
+- Désambiguïser « user » dans les commentaires d'auth Aqua (le `user` de
+  `swap_chained` = notre routeur, pas l'utilisateur final).
+- Helper commun `order_usdc_eurc` pour les trois réordonnancements de
+  réserves (la copie inline est fragile).
+- Étendre la garde anti-dérive aux 8 wasm de SHA256SUMS (durcissement
+  supply-chain du repo public, même boucle de hachage).
 
 Couverture workspace ≥ 90 % maintenue, relecture diff, push Pierrick,
 PR « test(router): fixtures d'integration venues reelles », revue, merge.

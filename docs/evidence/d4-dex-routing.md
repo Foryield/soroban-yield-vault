@@ -341,5 +341,16 @@ on-chain hash:
   [30afee28…](https://stellar.expert/explorer/testnet/tx/30afee289178c6962a793805ce4f19e568d2c940bbce3f55a9e7e852a056146b),
   D3 EURC vault `deposit`
   [cb38a0ed…](https://stellar.expert/explorer/testnet/tx/cb38a0ed8510f313d67d1d314b1bb7a5077e237ede747d1368b582952fdaf04f).
+  Tests (added 2026-07-27, `contracts/router/src/test_rebalance.rs`): the
+  same three-link chain replayed in one test env against the vendored
+  Soroswap stack —
+  `rebalance_moves_the_whole_position_from_usdc_vault_to_eurc_vault`
+  asserts the value leaving the USDC vault arrives whole in the EURC
+  vault (market price aside) with the router holding neither asset, and
+  `failed_swap_leaves_the_position_recoverable_and_the_router_empty`
+  asserts that a swap failing on `min_out` strands nothing in the router
+  and leaves the position rebuildable. Until then this chain was proven
+  by the three hashes alone: no test crossed the boundary between the two
+  contracts.
 
 Outside this evidence pack: the video walkthrough, recorded separately.

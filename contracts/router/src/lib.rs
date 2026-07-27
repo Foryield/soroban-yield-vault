@@ -534,6 +534,8 @@ mod test_mocks;
 #[cfg(test)]
 mod test_props;
 #[cfg(test)]
+mod test_rebalance;
+#[cfg(test)]
 mod test_soroswap_stack;
 #[cfg(test)]
 mod test_stack_common;

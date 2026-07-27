@@ -16,3 +16,8 @@ soroban-sdk = "25"
 [dev-dependencies]
 proptest = "1"
 soroban-sdk = { version = "25", features = ["testutils"] }
+# Contrepartie de la chaine de rebalance (test_rebalance.rs) : le vault D1/D3
+# est enregistre dans l'env de test au meme titre que les wasm de venues
+# vendorises. Dependance de DEVELOPPEMENT seule (rien n'entre dans le wasm du
+# routeur) et acyclique : le vault ne connait pas le routeur.
+yield-vault = { path = "../vault" }

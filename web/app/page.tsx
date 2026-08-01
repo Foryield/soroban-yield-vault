@@ -5,6 +5,7 @@ import {
   connectWallet,
   reconnectWallet,
   getNativeBalance,
+  getVaultPosition,
   deposit,
   fundTestnetAccount,
   friendlyError,
@@ -12,12 +13,19 @@ import {
   EXPLORER_TX,
   IS_TESTNET,
   NETWORK_LABEL,
+  type VaultPosition,
 } from "@/lib/stellar";
 
 type Phase = "idle" | "signing" | "success" | "error";
 
 function shorten(addr: string) {
   return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
+}
+
+function formatAmount(value: string, digits = 4) {
+  return Number(value).toLocaleString("en-US", {
+    maximumFractionDigits: digits,
+  });
 }
 
 export default function Home() {
@@ -29,6 +37,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [needsFunding, setNeedsFunding] = useState(false);
   const [funding, setFunding] = useState(false);
+  const [position, setPosition] = useState<VaultPosition | null>(null);
 
   // Restaure la session wallet persistee au chargement (silencieux : ni
   // erreur ni prompt si aucune session ou wallet indisponible).
@@ -43,6 +52,9 @@ export default function Home() {
         if (cancelled) return;
         setBalance(bal);
         setNeedsFunding(false);
+        const pos = await getVaultPosition(addr).catch(() => null);
+        if (cancelled) return;
+        setPosition(pos);
       } catch (e) {
         if (e instanceof AccountNotFundedError && !cancelled) {
           setBalance("0");
@@ -72,12 +84,19 @@ export default function Home() {
     }
   }
 
+  // Position dans le vault : lecture on-chain, silencieuse en cas d'echec.
+  // Ni le solde ni le depot ne doivent dependre de cet affichage.
+  async function refreshPosition(addr: string) {
+    setPosition(await getVaultPosition(addr).catch(() => null));
+  }
+
   async function handleConnect() {
     try {
       setError(null);
       const addr = await connectWallet();
       setAddress(addr);
       await refreshBalance(addr);
+      await refreshPosition(addr);
     } catch (e) {
       setError(friendlyError(e));
     }
@@ -107,6 +126,7 @@ export default function Home() {
       setTxHash(hash);
       setPhase("success");
       await refreshBalance(address);
+      await refreshPosition(address);
     } catch (e) {
       setError(friendlyError(e));
       setPhase("error");
@@ -175,13 +195,25 @@ export default function Home() {
             </div>
             <div className="row">
               <span className="label">XLM balance</span>
-              <span className="value">
-                {Number(balance).toLocaleString("en-US", {
-                  maximumFractionDigits: 4,
-                })}{" "}
-                XLM
-              </span>
+              <span className="value">{formatAmount(balance)} XLM</span>
             </div>
+
+            {position && (
+              <>
+                <div className="row">
+                  <span className="label">Your vault position</span>
+                  <span className="value">
+                    {formatAmount(position.value)} XLM
+                  </span>
+                </div>
+                <div className="row">
+                  <span className="label">Vault total</span>
+                  <span className="value">
+                    {formatAmount(position.totalAssets)} XLM
+                  </span>
+                </div>
+              </>
+            )}
 
             <label className="field">Amount to deposit</label>
             <div className="input-wrap">
@@ -210,7 +242,8 @@ export default function Home() {
 
         {phase === "success" && txHash && (
           <div className="status success">
-            Deposit confirmed on Stellar testnet.
+            Deposit confirmed on {NETWORK_LABEL}. Your vault position above is
+            up to date.
             <br />
             <a href={EXPLORER_TX(txHash)} target="_blank" rel="noreferrer">
               View on Stellar Expert &rarr;

@@ -2,8 +2,9 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { loadDotenv } from "../src/env.js";
+import { pathToFileURL, fileURLToPath } from "node:url";
+import { homedir } from "node:os";
+import { defaultEnvFile, loadDotenv } from "../src/env.js";
 
 // Every test passes an explicit temp path: the real onboarding/.env (default
 // parameter) is never read by this suite.
@@ -32,6 +33,27 @@ afterEach(() => {
   setKeys.length = 0;
   for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true });
   tmpDirs.length = 0;
+});
+
+describe("defaultEnvFile", () => {
+  // Regression guard for the whole point of this default: this repository is
+  // public, so the credential file must never resolve inside it.
+  it("never resolves inside the repository", () => {
+    const repoRoot = path.resolve(fileURLToPath(new URL("../..", import.meta.url)));
+    expect(path.resolve(defaultEnvFile()).startsWith(repoRoot + path.sep)).toBe(false);
+  });
+
+  it("defaults to the user config directory", () => {
+    expect(defaultEnvFile()).toBe(
+      path.join(homedir(), ".config", "foryield", "soroban-onboarding.env"),
+    );
+  });
+
+  it("honours ONBOARDING_ENV_FILE", () => {
+    track("ONBOARDING_ENV_FILE");
+    process.env.ONBOARDING_ENV_FILE = "/tmp/elsewhere.env";
+    expect(defaultEnvFile()).toBe("/tmp/elsewhere.env");
+  });
 });
 
 describe("loadDotenv", () => {

@@ -5,9 +5,11 @@ import {
   Networks,
   Address,
   nativeToScVal,
+  scValToNative,
   rpc,
   Horizon,
   NotFoundError,
+  xdr,
 } from "@stellar/stellar-sdk";
 import {
   StellarWalletsKit,
@@ -97,6 +99,10 @@ export async function fundTestnetAccount(address: string): Promise<void> {
 
 const WALLET_STORAGE_KEY = "foryield:walletId";
 
+// Wallet actif en memoire : le stockage local peut etre indisponible
+// (navigation privee) alors que la session, elle, est bien etablie.
+let activeWalletId: string | null = null;
+
 function storedWalletId(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -107,6 +113,7 @@ function storedWalletId(): string | null {
 }
 
 function storeWalletId(id: string | null): void {
+  activeWalletId = id;
   if (typeof window === "undefined") return;
   try {
     if (id) {
@@ -117,6 +124,11 @@ function storeWalletId(id: string | null): void {
   } catch {
     // stockage indisponible (navigation privee) : session non persistee
   }
+}
+
+// Wallet effectivement selectionne, avec la meme valeur de repli que le kit.
+function currentWalletId(): string {
+  return activeWalletId || storedWalletId() || FREIGHTER_ID;
 }
 
 let kit: StellarWalletsKit | null = null;
@@ -192,6 +204,7 @@ export async function reconnectWallet(): Promise<string | null> {
     const k = getKit();
     k.setWallet(id);
     const { address } = await k.getAddress();
+    activeWalletId = id;
     return address;
   } catch {
     storeWalletId(null);
@@ -234,16 +247,134 @@ function toStroops(amount: string): bigint {
   );
 }
 
-// Verifie que le wallet actif est toujours celui attendu juste avant de
-// signer. Le connect initial ne garantit pas une autorisation vivante au
-// moment de signer (cle en cache, allowlist revoquee, compte change).
+function fromStroops(value: bigint): string {
+  const unit = 10n ** BigInt(DECIMALS);
+  const negative = value < 0n;
+  const abs = negative ? -value : value;
+  const frac = (abs % unit).toString().padStart(DECIMALS, "0");
+  return `${negative ? "-" : ""}${abs / unit}.${frac}`;
+}
+
+// Position d'un compte dans le vault. `value` est la contrepartie en actif des
+// parts detenues : c'est ce qu'un retrait total rendrait aujourd'hui.
+export type VaultPosition = {
+  value: string;
+  totalAssets: string;
+};
+
+// Lecture seule : simuler un appel n'emet aucune transaction et ne coute rien.
+// Le compte source ne sert qu'a construire une enveloppe valide.
+async function simulateRead(
+  server: rpc.Server,
+  account: Awaited<ReturnType<rpc.Server["getAccount"]>>,
+  contract: Contract,
+  fn: string,
+  ...args: xdr.ScVal[]
+): Promise<bigint> {
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: PASSPHRASE,
+  })
+    .addOperation(contract.call(fn, ...args))
+    .setTimeout(30)
+    .build();
+
+  const sim = await server.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(sim)) {
+    throw new Error(`Vault read failed (${fn}): ${sim.error}`);
+  }
+  if (!sim.result) {
+    throw new Error(`Vault read returned nothing (${fn})`);
+  }
+  return BigInt(scValToNative(sim.result.retval));
+}
+
+export async function getVaultPosition(
+  address: string,
+): Promise<VaultPosition> {
+  const server = new rpc.Server(requireConfig(RPC_URL, "NEXT_PUBLIC_RPC_URL"));
+  const contract = new Contract(requireConfig(VAULT_ID, "NEXT_PUBLIC_VAULT_ID"));
+  const account = await server.getAccount(address);
+
+  const [shares, totalShares, totalAssets] = await Promise.all([
+    simulateRead(
+      server,
+      account,
+      contract,
+      "shares_of",
+      new Address(address).toScVal(),
+    ),
+    simulateRead(server, account, contract, "total_shares"),
+    simulateRead(server, account, contract, "total_assets"),
+  ]);
+
+  // Meme calcul tronque que le contrat au retrait : parts x actifs / total.
+  const value = totalShares > 0n ? (shares * totalAssets) / totalShares : 0n;
+
+  return {
+    value: fromStroops(value),
+    totalAssets: fromStroops(totalAssets),
+  };
+}
+
+// Freighter peut renvoyer une cle publique en cache sans autorisation vivante
+// ("<domaine> is not currently connected") : on redemande l'acces juste avant
+// de signer, et requestAccess revient sans prompt si le domaine est deja
+// autorise.
+//
+// Ce controle est volontairement limite a Freighter. Les wallets web (Albedo
+// et consorts) implementent getAddress par une fenetre popup : l'appeler ici
+// consomme l'activation utilisateur transitoire, le navigateur bloque alors la
+// popup de signature qui suit, et le SDK du wallet reste sans reponse - depot
+// impossible, aucune erreur remontee. Les wallets extension (Freighter, Hana)
+// n'ouvrent pas de fenetre et ne sont pas concernes.
 async function ensureWalletAccess(address: string): Promise<void> {
+  if (currentWalletId() !== FREIGHTER_ID) return;
   const k = getKit();
   const { address: active } = await k.getAddress();
   if (active !== address) {
     throw new Error(
       "Active wallet account changed. Reconnect your wallet and retry.",
     );
+  }
+}
+
+// Un wallet web signe dans une fenetre popup. Si le navigateur la bloque ou si
+// l'utilisateur la ferme, certains SDK ne rejettent jamais leur promesse :
+// sans borne, l'interface resterait en attente indefiniment sans rien
+// afficher. La borne reste inferieure au timebound de la transaction, donc
+// toute signature acceptee ici est encore soumissible.
+const SIGN_TIMEOUT_MS = 180_000;
+const TX_TIMEOUT_S = 300;
+
+async function signWithDeadline(
+  xdrToSign: string,
+  address: string,
+): Promise<string> {
+  const k = getKit();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            "No response from the wallet. If a signing window was blocked, allow pop-ups for this site, then try again.",
+          ),
+        ),
+      SIGN_TIMEOUT_MS,
+    );
+  });
+  try {
+    const { signedTxXdr } = await Promise.race([
+      k.signTransaction(xdrToSign, {
+        address,
+        networkPassphrase: PASSPHRASE,
+      }),
+      deadline,
+    ]);
+    return signedTxXdr;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -266,19 +397,17 @@ export async function deposit(
     networkPassphrase: PASSPHRASE,
   })
     .addOperation(op)
-    .setTimeout(60)
+    // Un wallet web demande de se connecter avant de signer : 60 s ne suffit
+    // pas et la transaction serait rejetee en txTooLate.
+    .setTimeout(TX_TIMEOUT_S)
     .build();
 
   const prepared = await server.prepareTransaction(built);
 
-  // Garantit une autorisation wallet vivante au moment de signer.
+  // Garantit une autorisation Freighter vivante au moment de signer.
   await ensureWalletAccess(address);
 
-  const k = getKit();
-  const { signedTxXdr } = await k.signTransaction(prepared.toXDR(), {
-    address,
-    networkPassphrase: PASSPHRASE,
-  });
+  const signedTxXdr = await signWithDeadline(prepared.toXDR(), address);
 
   const signed = TransactionBuilder.fromXDR(signedTxXdr, PASSPHRASE);
   const sent = await server.sendTransaction(signed);

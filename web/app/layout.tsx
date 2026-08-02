@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "ForYield x Stellar - Soroban Vault (Testnet)",
   description:
-    "MiCA-regulated DeFi yield vault on Stellar Soroban - testnet demo",
+    "DeFi yield vault built for EU regulatory requirements, on Stellar Soroban - testnet demo",
 };
 
 export default function RootLayout({

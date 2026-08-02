@@ -7,10 +7,14 @@ sur Stellar. Tout est sur **Testnet**, sans valeur, jetable.
 
 ## 1. En une phrase
 
-**ForYield** est le premier coffre de rendement DeFi régulé MiCA (France), déployé
-sur **Stellar / Soroban**. La démo montre le cœur on-chain — un `YieldVault` où un
-utilisateur dépose un actif et reçoit des parts — piloté depuis une UI web qui signe
-avec un wallet Stellar réel.
+**ForYield** est un coffre de rendement DeFi conçu pour les exigences
+réglementaires européennes, déployé sur **Stellar / Soroban**. La démo montre le
+cœur on-chain — un `YieldVault` où un utilisateur dépose un actif et reçoit des
+parts — piloté depuis une UI web qui signe avec un wallet Stellar réel.
+
+> **Statut réglementaire.** ForYield n'est pas prestataire de services sur
+> crypto-actifs agréé à ce jour. Ce dépôt et la démo ne constituent pas une offre
+> de service financier, et rien ici ne doit affirmer un statut non obtenu.
 
 Périmètre volontairement minimal (Tranche 1 / MVP) : **dépôt → émission de parts 1:1
 → retrait**, plus une **pause d'urgence** admin. Pas encore de stratégie de rendement
@@ -19,8 +23,8 @@ branchée (le ratio parts:actif reste 1:1).
 > **Alignement stratégique SDF.** *ForYield aligns with two SDF strategic priorities:
 > native EURC settlement and MiCA EU regulated DeFi access.* Le contrat est
 > asset-agnostique et cible un SAC **EURC** en production (règlement natif en euro sur
-> Stellar) ; l'enveloppe juridique est un coffre DeFi **régulé MiCA** ouvrant l'accès
-> au rendement on-chain à des opérateurs et investisseurs européens.
+> Stellar) ; l'enveloppe juridique **vise** le régime MiCA, pour ouvrir l'accès au
+> rendement on-chain à des opérateurs et investisseurs européens.
 
 ---
 
@@ -116,12 +120,12 @@ sont indexés par le ledger, **immuables et horodatés au bloc** — chaque mouv
 et chaque action admin laisse une trace cryptographiquement vérifiable, sans dépendre d'une
 base off-chain.
 
-C'est précisément ce qu'attend une **piste d'audit conforme AMF** (et l'art. de tenue de
-registres MiCA) : reconstituer qui a déposé/retiré quoi, quand, et qui a déclenché un
+C'est précisément ce qu'attendent les **obligations de tenue de registres** d'un opérateur
+européen : reconstituer qui a déposé/retiré quoi, quand, et qui a déclenché un
 coupe-circuit, à partir d'une source de vérité on-chain. Un opérateur régulé branche son
 reporting directement sur le flux d'events — pas de réconciliation manuelle, pas de registre
-falsifiable. **C'est notre différenciateur** face aux vaults non-régulés : la conformité est
-native au protocole, pas un sur-couche.
+falsifiable. **C'est notre différenciateur** : la traçabilité est native au protocole, pas
+une sur-couche.
 
 **Build & test :**
 

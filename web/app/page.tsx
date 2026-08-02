@@ -151,8 +151,8 @@ export default function Home() {
       <div className="card">
         <div className="title">YieldVault</div>
         <div className="subtitle">
-          Deposit XLM into the Soroban YieldVault. MiCA-regulated DeFi yield,
-          settled on Stellar in under five seconds.
+          Deposit XLM into the Soroban YieldVault. DeFi yield built for EU
+          regulatory requirements, settled on Stellar in under five seconds.
         </div>
 
         {!address ? (
@@ -256,6 +256,10 @@ export default function Home() {
 
       <div className="footer">
         Testnet demo - Stellar Community Fund Build - for-yield.com
+        <br />
+        Testnet tokens only, with no value. ForYield is not an authorised
+        crypto-asset service provider; this page is not an offer of a financial
+        service.
       </div>
     </div>
   );

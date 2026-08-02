@@ -19,3 +19,39 @@ services:
         value: https://soroban-testnet.stellar.org
       - key: NEXT_PUBLIC_HORIZON_URL
         value: https://horizon-testnet.stellar.org
+    # En-tetes de securite. Render ne servait que x-content-type-options ; une
+    # page dont l'action principale est « signez cette transaction » etait donc
+    # encadrable en iframe, ce qui est la mise en place classique d'un
+    # detournement de clic.
+    #
+    # Ce qui est POSE ici ne porte aucun risque fonctionnel : rien n'a vocation
+    # a encadrer cette page, a poser une base href, a soumettre un formulaire
+    # ailleurs, ni a charger un plugin.
+    #
+    # Ce qui n'est PAS pose, et pourquoi : ni `default-src`, ni `script-src`,
+    # ni `connect-src`. La page charge les modules de portefeuille du kit, et
+    # une extension qui injecte son script en monde principal se heurterait a
+    # `script-src`, tout comme un portefeuille qui appelle son propre point de
+    # terminaison se heurterait a `connect-src`. Les serrer sans les avoir
+    # essayes casserait la demo en silence, cote reviewer. A reprendre une fois
+    # la liste des portefeuilles rendue explicite, et seulement apres un essai
+    # manuel de connexion et de signature.
+    headers:
+      - path: /*
+        name: Content-Security-Policy
+        value: frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'
+      # Le pendant de frame-ancestors pour les navigateurs qui l'ignorent.
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=63072000; includeSubDomains
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      # Aucune de ces interfaces n'est utilisee par la demo. usb et hid ne sont
+      # PAS refuses : le module Ledger en depend.
+      - path: /*
+        name: Permissions-Policy
+        value: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=()

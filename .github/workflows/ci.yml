@@ -74,7 +74,8 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
       # 90% line-coverage gate, active since the Deliverable 1 test campaign
-      # (231 tests: unit, Blend integration, generated matrix, proptest).
+      # (234 tests: unit, Blend integration, generated matrix, proptest, plus
+      # the targeted mock_auths tests on the admin pause switch).
       #
       # Test modules are excluded from the measure. Soroban keeps tests in
       # `src/` (`#[cfg(test)] mod test`), so without this filter llvm-cov

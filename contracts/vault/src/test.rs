@@ -2,9 +2,9 @@
 use super::{YieldVault, YieldVaultClient};
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, Events, IssuerFlags},
+    testutils::{Address as _, Events, IssuerFlags, MockAuth, MockAuthInvoke},
     token::{StellarAssetClient, TokenClient},
-    vec, Address, Env, IntoVal,
+    vec, Address, Env, IntoVal, Vec,
 };
 
 struct Fixture<'a> {
@@ -329,4 +329,110 @@ fn dead_shares_keep_their_backing_after_full_exit() {
     assert_eq!(amount, 18_000); // 9 000 x 20 000 / 10 000
     assert_eq!(f.vault.total_shares(), 1_000); // parts mortes
     assert_eq!(f.vault.total_assets(), 2_000); // leur contre-valeur (avec rendement)
+}
+
+// --- Controle admin du coupe-circuit : auth CIBLEE, pas mock_all_auths.
+//
+// Tout le reste du fichier passe par setup(), qui appelle mock_all_auths() :
+// sous ce mode, TOUTE signature est reputee fournie, donc retirer les
+// `Self::admin(&env).require_auth()` de pause()/unpause() ne fait echouer aucun
+// test. Mesure faite : la suite reste integralement verte sans ces deux gardes.
+// Les tests ci-dessous sont les seuls a mordre - ils mockent nommement l'auth
+// d'une adresse et verifient qui peut, et qui ne peut pas, geler le vault.
+// Meme motif que `set_aqua_pool_rejects_non_admin` cote routeur.
+
+/// Vault sans mock_all_auths. `initialize` n'exige aucune auth, l'admin et
+/// l'actif sont donc poses sans qu'aucune signature soit mockee. L'actif est
+/// une adresse nue : pause/unpause ne touchent que le stockage d'instance.
+fn unmocked_vault<'a>() -> (Env, Address, Address, YieldVaultClient<'a>) {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let outsider = Address::generate(&env);
+    let vault = YieldVaultClient::new(&env, &env.register(YieldVault, ()));
+    vault.initialize(&admin, &Address::generate(&env), &None);
+    (env, admin, outsider, vault)
+}
+
+#[test]
+fn pause_rejects_non_admin() {
+    let (env, _admin, outsider, vault) = unmocked_vault();
+
+    // Seule l'auth de l'inconnu est mockee : le require_auth de l'admin, lui,
+    // n'a rien pour se satisfaire.
+    env.mock_auths(&[MockAuth {
+        address: &outsider,
+        invoke: &MockAuthInvoke {
+            contract: &vault.address,
+            fn_name: "pause",
+            args: Vec::new(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    // Echec d'auth = erreur HOTE, pas un VaultError. Si le require_auth
+    // disparaissait, l'appel reussirait et ce test echouerait.
+    assert!(vault.try_pause().is_err());
+    assert!(!vault.is_paused());
+}
+
+#[test]
+fn unpause_rejects_non_admin() {
+    let (env, admin, outsider, vault) = unmocked_vault();
+
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &vault.address,
+            fn_name: "pause",
+            args: Vec::new(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    vault.pause();
+
+    env.mock_auths(&[MockAuth {
+        address: &outsider,
+        invoke: &MockAuthInvoke {
+            contract: &vault.address,
+            fn_name: "unpause",
+            args: Vec::new(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    // Le pendant du test precedent : un inconnu ne peut pas non plus DEGELER
+    // le vault, ce qui compte autant que de ne pas pouvoir le geler.
+    assert!(vault.try_unpause().is_err());
+    assert!(vault.is_paused());
+}
+
+#[test]
+fn pause_and_unpause_accept_the_admin_alone() {
+    let (env, admin, _outsider, vault) = unmocked_vault();
+
+    // Contre-epreuve : sans elle, les deux tests ci-dessus passeraient aussi
+    // si pause() echouait pour TOUT LE MONDE, y compris l'admin.
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &vault.address,
+            fn_name: "pause",
+            args: Vec::new(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    vault.pause();
+    assert!(vault.is_paused());
+
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &vault.address,
+            fn_name: "unpause",
+            args: Vec::new(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    vault.unpause();
+    assert!(!vault.is_paused());
 }

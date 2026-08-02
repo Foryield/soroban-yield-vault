@@ -1,8 +1,28 @@
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
+
+// Where the credential file lives by default: OUTSIDE this repository.
+//
+// This repository is public and the DFNS values are a service-account token
+// and an Ed25519 signing key. A credential file inside the working tree is one
+// `git add -f`, one .gitignore regression, one directory archive away from
+// being published, and no local hook covers all three. Keeping it under the
+// user config directory removes the whole class of accident rather than
+// detecting it after the fact.
+//
+// Override with ONBOARDING_ENV_FILE. There is deliberately NO fallback to a
+// repository-local .env: a fallback would silently restore the risk.
+export function defaultEnvFile(): string {
+  return (
+    process.env.ONBOARDING_ENV_FILE ??
+    path.join(homedir(), ".config", "foryield", "soroban-onboarding.env")
+  );
+}
 
 // Minimal .env loader: no dependency, no logging of keys or values.
 // A real environment variable always wins over the file.
-export function loadDotenv(filePath: string | URL = new URL("../.env", import.meta.url)): void {
+export function loadDotenv(filePath: string | URL = defaultEnvFile()): void {
   let content: string;
   try {
     content = readFileSync(filePath, "utf8");

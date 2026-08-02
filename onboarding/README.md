@@ -10,17 +10,27 @@ prints a single JSON line to stdout (errors go to stderr).
 ## Setup
 
 ```bash
-cp .env.example .env    # .env is gitignored
+mkdir -p ~/.config/foryield
+cp .env.example ~/.config/foryield/soroban-onboarding.env
+chmod 600 ~/.config/foryield/soroban-onboarding.env
 npm install
 ```
 
-Fill the three `DFNS_*` values in `.env`: the service-account token
-(`DFNS_AUTH_TOKEN`), the credential id (`DFNS_CRED_ID`), and the Ed25519
-private key PEM (`DFNS_PRIVATE_KEY`). The Stellar testnet endpoints and the
-demo vault contract id have public defaults - no change needed.
+**The credential file lives outside this repository, on purpose.** This repo is
+public and the DFNS values are a service-account token and a signing key: a
+credential file inside the working tree is one `git add -f`, one `.gitignore`
+regression, or one directory archive away from being published. There is no
+fallback to a repository-local `.env`.
 
-The CLIs and the demo load `.env` automatically from the package root;
-environment variables already exported in your shell take precedence.
+Fill the three `DFNS_*` values: the service-account token (`DFNS_AUTH_TOKEN`),
+the credential id (`DFNS_CRED_ID`), and the Ed25519 private key PEM
+(`DFNS_PRIVATE_KEY`). Use a service account scoped to this project alone. The
+Stellar testnet endpoints and the demo vault contract id have public defaults -
+no change needed.
+
+The CLIs and the demo load that file automatically. Set `ONBOARDING_ENV_FILE`
+to read it from elsewhere; environment variables already exported in your shell
+take precedence over anything in the file.
 
 ## Bricks
 

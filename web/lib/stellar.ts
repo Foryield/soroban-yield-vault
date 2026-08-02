@@ -14,10 +14,13 @@ import {
 import {
   StellarWalletsKit,
   WalletNetwork,
-  allowAllModules,
   parseError,
   FREIGHTER_ID,
 } from "@creit.tech/stellar-wallets-kit";
+import { FreighterModule } from "@creit.tech/stellar-wallets-kit/modules/freighter.module";
+import { xBullModule } from "@creit.tech/stellar-wallets-kit/modules/xbull.module";
+import { AlbedoModule } from "@creit.tech/stellar-wallets-kit/modules/albedo.module";
+import { LobstrModule } from "@creit.tech/stellar-wallets-kit/modules/lobstr.module";
 import { LedgerModule } from "@creit.tech/stellar-wallets-kit/modules/ledger.module";
 
 // --- Configuration reseau ---------------------------------------------------
@@ -93,9 +96,30 @@ export async function fundTestnetAccount(address: string): Promise<void> {
 }
 
 // --- Wallet kit (multi-wallet + session) ------------------------------------
-// allowAllModules() charge les wallets sans configuration prealable
-// (Freighter, xBull, Albedo, Lobstr, Rabet, Hana, ...) ; Ledger exige un
-// module explicite (transport WebUSB) et est ajoute a part.
+// Les CINQ wallets sur lesquels le livrable D2 engage la demo (cf.
+// docs/evidence/d2-wallet-onboarding.md) sont charges nommement, et eux seuls.
+//
+// allowAllModules() en chargeait huit : Rabet, Hana, Klever et HotWallet en
+// plus, jamais promis a personne, et HotWallet embarque son propre SDK. Chaque
+// module retire est autant de code tiers qui ne s'execute plus dans le
+// navigateur d'un utilisateur venu signer une transaction.
+//
+// Deux attentes a ne PAS avoir, l'une et l'autre mesurees :
+//
+// - `npm audit` ne bouge pas d'un pouce. @trezor/connect-web, @walletconnect/*
+//   et @hot-wallet/sdk sont des dependances DURES du paquet du kit, donc
+//   installees quoi qu'on importe. Elles ne sont d'ailleurs PAS dans le bundle,
+//   ni avant ni apres : zero occurrence de trezor et de walletconnect dans les
+//   chunks servis, dans les deux etats.
+// - la taille servie ne bouge pas non plus : 2,506 Mo avant, 2,500 Mo apres.
+//   Les 2,5 Mo viennent de @stellar/stellar-sdk et de la pile @ledgerhq, pas
+//   des modules de portefeuille, qui pesent quelques kilo-octets chacun.
+//
+// Ce qui change reellement : quatre modules de moins a instancier, dont le seul
+// qui tirait un SDK tiers, et une liste qui correspond enfin a l'engagement D2
+// au lieu d'etre « ce que le kit expedie ce mois-ci ».
+//
+// Ledger exige un module explicite (transport WebUSB) et l'a toujours ete.
 
 const WALLET_STORAGE_KEY = "foryield:walletId";
 
@@ -138,7 +162,13 @@ function getKit(): StellarWalletsKit {
     kit = new StellarWalletsKit({
       network: IS_TESTNET ? WalletNetwork.TESTNET : WalletNetwork.PUBLIC,
       selectedWalletId: storedWalletId() || FREIGHTER_ID,
-      modules: [...allowAllModules(), new LedgerModule()],
+      modules: [
+        new FreighterModule(),
+        new xBullModule(),
+        new AlbedoModule(),
+        new LobstrModule(),
+        new LedgerModule(),
+      ],
     });
   }
   return kit;

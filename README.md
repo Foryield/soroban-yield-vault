@@ -1,8 +1,11 @@
 # ForYield Soroban YieldVault
 
-Open-source Soroban smart contract for **ForYield**, the first French MiCA-regulated
-DeFi yield vault on Stellar. This repository contains the core `YieldVault`
-contract submitted for the Stellar Community Fund (SCF) Build Award.
+Open-source Soroban smart contract for **ForYield**, a DeFi yield vault built for
+EU regulatory requirements, on Stellar. This repository contains the core
+`YieldVault` contract submitted for the Stellar Community Fund (SCF) Build Award.
+
+ForYield is not an authorised crypto-asset service provider. Nothing here is an
+offer of a financial service; the deployments below are testnet only.
 
 > **Scope (Tranche 1 / Deliverable 1).** Asset deposit with proportional share
 > minting (`shares = amount × total_shares / total_assets`, rounded in the vault's
@@ -81,8 +84,8 @@ demo vault. Evidence in
 | `pause()` / `unpause()` | Admin-only emergency switch. |
 | `is_paused() -> bool` | Pause state. |
 
-Every deposit and withdrawal emits a structured Soroban event (`deposit` / `withdraw`)
-for the AMF-compliant audit trail.
+Every deposit and withdrawal emits a structured Soroban event (`deposit` / `withdraw`),
+so the audit trail an EU operator has to keep is reconstructible from the ledger.
 
 ## Build & test
 

@@ -63,10 +63,9 @@ Everything above was recorded the day it was produced. This entry states what
 the repository proves today, so a reviewer re-running the commands gets the
 numbers they read here.
 
-- **Tests**: 280 workspace tests passing (234 vault, 46 router), up from 231 at
-  the D1 test campaign; the three added vault tests are the `mock_auths` checks
-  on the admin pause switch (PR #16, 2026-08-02).
-- **Coverage**: 95.45% lines on `contracts/vault/src/lib.rs`, 95.94% workspace,
+- **Tests**: 283 workspace tests passing (237 vault, 46 router), up from 231 at
+  the D1 test campaign.
+- **Coverage**: 95.77% lines on `contracts/vault/src/lib.rs`, 96.05% workspace,
   test modules excluded from the measure. CI gate `--fail-under-lines 90`
   active on every pull request. Reproduce with:
 
@@ -75,14 +74,31 @@ numbers they read here.
     --ignore-filename-regex '(^|/)test[^/]*\.rs$' --fail-under-lines 90
   ```
 
-- **Deployed code matches published code**: `contracts/vault/src/lib.rs` is
-  byte-identical between commit `7356136` (the build deployed as
-  `CC3AEKES…EC6C`) and `main`. On-chain wasm hash
-  `3a868b7186b47184d40caefe47009047da033068cb0da4cd355ecef8f09ebf25`.
 - **Hashes still resolve**: init, deposit and withdraw above re-queried on
   Horizon, all three `successful: true` (ledgers 3725768, 3725777, 3725780).
+- **Deployed instance**: `CC3AEKES…EC6C`, on-chain wasm hash
+  `3a868b7186b47184d40caefe47009047da033068cb0da4cd355ecef8f09ebf25`, built from
+  commit `7356136`. Its source was byte-identical to `main` until the two
+  hardening changes below, which are **source-only for now**: the evidence
+  instance predates them and is due for redeployment before submission, with
+  fresh init/deposit/withdraw hashes recorded here.
 
-D1 status: all Measures met (verifiable testnet address, 280 tests passing,
-95.45% coverage on the vault contract, merged PRs, deposit/withdraw hashes).
-Remaining before closing the deliverable: walkthrough/video packaging at
-reviewer submission.
+Two hardening changes to the contract source, not yet reflected on the evidence
+instance:
+
+- **Durability**: `deposit` and `withdraw` extend the TTL of the contract
+  instance, its code and the caller's share entry to 120 days whenever less than
+  30 days remain. Without it, entries fall back on the network default of about
+  seven days, after which the protocol restores them automatically at roughly
+  240 times the nominal resource fee. A compile-time assertion keeps the target
+  under the network cap of 3,110,400 ledgers.
+- **Misconfiguration**: `initialize` reads the reserve for the deposit asset
+  before accepting a Blend pool, and fails with `PoolReserveMissing` (#10) if
+  there is none. The pool being immutable and `initialize` one-shot, a wrong
+  pool used to leave the vault permanently unusable.
+
+D1 status: all Measures met (verifiable testnet address, 283 tests passing,
+95.77% coverage on the vault contract, merged PRs, deposit/withdraw hashes).
+Remaining before closing the deliverable: redeployment of the evidence instance
+on the hardened contract, and walkthrough/video packaging at reviewer
+submission.

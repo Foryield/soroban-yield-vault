@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
 # Redeploiement de l'instance d'evidence du Deliverable 1 sur testnet.
 #
-# Pourquoi : l'instance d'origine (CC3AEKES...) a ete construite avant que le
-# contrat sache prolonger sa propre duree de vie et refuser un pool sans
-# reserve. Le code publie et le code deploye divergent donc, et le premier
-# reflexe d'un reviewer est de comparer l'empreinte du wasm en ligne au depot.
-# Ce script produit une instance neuve issue du main courant, avec les trois
-# transactions de preuve exigees par la Measure : initialize, deposit, withdraw.
+# Pourquoi : le premier reflexe d'un reviewer technique est de comparer
+# l'empreinte du wasm en ligne au code du depot. Des que le contrat evolue,
+# l'instance d'evidence doit suivre, sinon la verification de dix secondes
+# devient un paragraphe de justification. Ce script produit une instance neuve
+# issue du main publie, avec les transactions de preuve exigees par la Measure :
+# initialize, deposit, withdraw.
 #
-# Rejouable apres chaque reset du testnet SDF (2-4x/an).
+# Rejouable apres chaque reset du testnet SDF (2-4x/an) et apres tout
+# changement du contrat.
 #
 # Usage : scripts/redeploy_d1_vault.sh <cle> [ancien_vault_id]
+#
+# `ancien_vault_id` vaut par defaut l'instance d'evidence COURANTE, celle que le
+# README et docs/evidence/d1-vault-mvp.md designent : c'est elle qu'il faut
+# vider, sous peine d'y laisser les fonds. Tenir cette valeur a jour a chaque
+# redeploiement, elle change a chaque fois.
 #
 # Variables d'environnement :
 #   SKIP_DRAIN=1     ne pas vider l'ancienne instance (deja fait, ou instance
@@ -28,7 +34,7 @@
 set -euo pipefail
 
 KEY="${1:?usage: redeploy_d1_vault.sh <cle> [ancien_vault_id]}"
-OLD_VAULT="${2:-CC3AEKESVOYLHAEBV3F3WOJP3JHF754ZEEXYG6XD3VQGI5YZEV2OEC6C}"
+OLD_VAULT="${2:-CCE5ITQQF4GWG5FA47D2XJBKXASWJ2E5V5AWW5U5BBAFWIXA77YYGWNI}"
 NETWORK=testnet
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEPOSIT_AMOUNT="${DEPOSIT_AMOUNT:-1000000000}"

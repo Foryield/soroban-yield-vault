@@ -26,14 +26,20 @@ instance):
 
 | Component | Contract ID |
 |---|---|
-| YieldVault (D1) | `CC3AEKESVOYLHAEBV3F3WOJP3JHF754ZEEXYG6XD3VQGI5YZEV2OEC6C` |
+| YieldVault (D1) | `CCE5ITQQF4GWG5FA47D2XJBKXASWJ2E5V5AWW5U5BBAFWIXA77YYGWNI` |
 | Deposit asset - Blend testnet USDC (SAC) | `CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU` |
 | Allocation target - Blend v2 TestnetV2 pool | `CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF` |
 
-Every deposit is supplied to the Blend pool in the same transaction; the vault
-holds no idle assets. Evidence transactions (init, deposit, withdraw) are logged
-in [docs/evidence/d1-vault-mvp.md](./docs/evidence/d1-vault-mvp.md).
-[Explore the D1 vault](https://stellar.expert/explorer/testnet/contract/CC3AEKESVOYLHAEBV3F3WOJP3JHF754ZEEXYG6XD3VQGI5YZEV2OEC6C).
+Every deposit is supplied to the Blend pool in the same transaction, so the vault
+holds no idle assets beyond what a direct donation would leave. Evidence
+transactions (deploy, init, deposit, withdraw) are logged in
+[docs/evidence/d1-vault-mvp.md](./docs/evidence/d1-vault-mvp.md).
+[Explore the D1 vault](https://stellar.expert/explorer/testnet/contract/CCE5ITQQF4GWG5FA47D2XJBKXASWJ2E5V5AWW5U5BBAFWIXA77YYGWNI).
+The instance is redeployed from `main` with
+[`scripts/redeploy_d1_vault.sh`](./scripts/redeploy_d1_vault.sh), which is also
+the runbook for SDF testnet resets; the predecessor instance
+`CC3AEKES…EC6C` stays online and its July evidence remains valid as a dated
+record.
 
 **Deliverable 3 instance — EURC via its SAC wrapper** (pure holding,
 `pool: None`; Circle's official testnet EURC):

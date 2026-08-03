@@ -76,15 +76,11 @@ numbers they read here.
 
 - **Hashes still resolve**: init, deposit and withdraw above re-queried on
   Horizon, all three `successful: true` (ledgers 3725768, 3725777, 3725780).
-- **Deployed instance**: `CC3AEKES…EC6C`, on-chain wasm hash
-  `3a868b7186b47184d40caefe47009047da033068cb0da4cd355ecef8f09ebf25`, built from
-  commit `7356136`. Its source was byte-identical to `main` until the two
-  hardening changes below, which are **source-only for now**: the evidence
-  instance predates them and is due for redeployment before submission, with
-  fresh init/deposit/withdraw hashes recorded here.
+- **Deployed instance at the time of this entry**: `CC3AEKES…EC6C`, on-chain
+  wasm hash `3a868b71…`, built from commit `7356136`. Superseded the same day,
+  see the redeployment entry below.
 
-Two hardening changes to the contract source, not yet reflected on the evidence
-instance:
+Two hardening changes to the contract source, deployed the same day:
 
 - **Durability**: `deposit` and `withdraw` extend the TTL of the contract
   instance, its code and the caller's share entry to 120 days whenever less than
@@ -97,8 +93,56 @@ instance:
   there is none. The pool being immutable and `initialize` one-shot, a wrong
   pool used to leave the vault permanently unusable.
 
+## 2026-08-03 — Evidence instance redeployed on the hardened contract
+
+- **What it proves**: the whole D1 Measure again, on a contract whose on-chain
+  wasm matches the repository. The previous instance was built from `7356136`,
+  before the vault learned to extend its own TTL and to reject a Blend pool with
+  no reserve for the deposit asset; publishing a contract whose code no longer
+  matched the repository would have turned a ten-second check by a reviewer into
+  a paragraph of explanation.
+- **Contract ID**: `CCE5ITQQF4GWG5FA47D2XJBKXASWJ2E5V5AWW5U5BBAFWIXA77YYGWNI`
+  ([explorer](https://stellar.expert/explorer/testnet/contract/CCE5ITQQF4GWG5FA47D2XJBKXASWJ2E5V5AWW5U5BBAFWIXA77YYGWNI)),
+  on-chain wasm hash
+  `5d5001e32dc23273dff3cc4aa4f10e7fe639fddabfab9d2ea9d9ed93dbb78bba`, built from
+  `main` at `6c3dc88`. Same deposit asset and same Blend v2 TestnetV2 pool as
+  before, both read from the canonical `blend-capital/blend-utils` registry at
+  run time rather than hard-coded.
+- **Deploy**:
+  [ccfe40ee…9fcb4](https://stellar.expert/explorer/testnet/tx/ccfe40eefd64ba244978c4f7d9d059e51915c02bf7c026941d5d31bf0a19fcb4)
+  (ledger 3954411)
+- **Initialize**:
+  [dec088c4…15c0](https://stellar.expert/explorer/testnet/tx/dec088c4952d2dbd42a87053e4a1662109f0e230fd98303f578a921b99d015c0)
+  (ledger 3954850)
+- **Deposit 100 USDC** (999,999,000 shares minted, 1,000 dead shares locked;
+  supplied to Blend in the same transaction):
+  [301cca6e…a705](https://stellar.expert/explorer/testnet/tx/301cca6e9a62aa6dd3f4349ae83e072bbafa51a00d9938cc7982c5dcd8aba705)
+  (ledger 3954851)
+- **Withdraw 399,999,600 shares** (399,999,599 units returned, truncation in the
+  vault's favor; shortfall pulled back from Blend):
+  [a57b0414…0770](https://stellar.expert/explorer/testnet/tx/a57b04147c4b7a99e9aa800a936085527fc89c6a327867673ba2ec028d4e0770)
+  (ledger 3954852)
+- **Post-state read on-chain**: `total_assets = 600000403` for
+  `total_shares = 600000400`, zero idle balance on the vault. Assets already sit
+  above shares: Blend interest accrues into the share price with no action from
+  the vault.
+- **TTL set by the contract itself, measured not assumed**: the instance entry
+  and the holder's share entry both live until ledger 6,028,451, that is 120
+  days out, written by `deposit` and `withdraw` themselves. A simulated deposit
+  reports `ext: "v0"` (no archived entry) and a `minResourceFee` of 49,908
+  stroops.
+- **Front-run window**: `deploy` and `initialize` were 37 minutes apart on this
+  run, a tooling failure between the two steps, instead of the intended few
+  seconds. The contract was verified uninitialised by simulation before
+  `initialize` was submitted. The window exists at all because the contract has
+  no `__constructor`; it is accepted on testnet and recorded here.
+- The predecessor instance `CC3AEKES…EC6C` stays online with its 1,000 dead
+  shares and their backing. The July entries above remain accurate as dated
+  records of that instance.
+- Reproducible with `scripts/redeploy_d1_vault.sh`, which is also the runbook
+  for the next SDF testnet reset.
+
 D1 status: all Measures met (verifiable testnet address, 283 tests passing,
-95.77% coverage on the vault contract, merged PRs, deposit/withdraw hashes).
-Remaining before closing the deliverable: redeployment of the evidence instance
-on the hardened contract, and walkthrough/video packaging at reviewer
-submission.
+95.77% coverage on the vault contract, merged PRs, deposit/withdraw hashes), on
+an instance running the current published code. Remaining before closing the
+deliverable: walkthrough/video packaging at reviewer submission.

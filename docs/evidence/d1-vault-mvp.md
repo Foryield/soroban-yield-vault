@@ -57,6 +57,32 @@
 - The test USDC was borrowed from the TestnetV2 pool itself by the ops
   account (XLM collateral, USDC borrow) — no faucet dependency.
 
-D1 status: all Measures met (verifiable testnet address, 231 tests passing,
-92.4% coverage, merged PRs, deposit/withdraw hashes). Remaining before
-closing the deliverable: walkthrough/video packaging at reviewer submission.
+## 2026-08-03 — Re-verification against the Measure, current figures
+
+Everything above was recorded the day it was produced. This entry states what
+the repository proves today, so a reviewer re-running the commands gets the
+numbers they read here.
+
+- **Tests**: 280 workspace tests passing (234 vault, 46 router), up from 231 at
+  the D1 test campaign; the three added vault tests are the `mock_auths` checks
+  on the admin pause switch (PR #16, 2026-08-02).
+- **Coverage**: 95.45% lines on `contracts/vault/src/lib.rs`, 95.94% workspace,
+  test modules excluded from the measure. CI gate `--fail-under-lines 90`
+  active on every pull request. Reproduce with:
+
+  ```bash
+  cargo llvm-cov --workspace --summary-only \
+    --ignore-filename-regex '(^|/)test[^/]*\.rs$' --fail-under-lines 90
+  ```
+
+- **Deployed code matches published code**: `contracts/vault/src/lib.rs` is
+  byte-identical between commit `7356136` (the build deployed as
+  `CC3AEKES…EC6C`) and `main`. On-chain wasm hash
+  `3a868b7186b47184d40caefe47009047da033068cb0da4cd355ecef8f09ebf25`.
+- **Hashes still resolve**: init, deposit and withdraw above re-queried on
+  Horizon, all three `successful: true` (ledgers 3725768, 3725777, 3725780).
+
+D1 status: all Measures met (verifiable testnet address, 280 tests passing,
+95.45% coverage on the vault contract, merged PRs, deposit/withdraw hashes).
+Remaining before closing the deliverable: walkthrough/video packaging at
+reviewer submission.

@@ -1,6 +1,6 @@
 [package]
 name = "yield-vault"
-description = "ForYield Soroban YieldVault (MVP): USDC deposit/withdraw, 1:1 shares"
+description = "ForYield Soroban YieldVault (MVP): USDC deposit/withdraw, proportional shares, Blend v2 allocation"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

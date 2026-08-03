@@ -12,10 +12,12 @@ offer of a financial service; the deployments below are testnet only.
 > favor), pro-rata withdrawal, a 1,000 dead-share lock on the first deposit
 > (first-depositor inflation protection, Uniswap V2 / DeFindex model), and an admin
 > emergency pause. The vault is asset-agnostic - the deposit asset is set once at
-> `initialize`, so USDC/EURC StellarAssetContracts plug in unchanged. In progress
-> for Deliverable 1: Blend v2 USDC allocation. Multi-protocol allocation, DeFindex
-> routing, the performance-fee module with high-water mark, and transferable SEP-41
-> shares ship in Tranches 2 and 3.
+> `initialize`, so USDC/EURC StellarAssetContracts plug in unchanged. Allocation to
+> a single Blend v2 lending pool is delivered: the pool is set once at `initialize`
+> and every deposit is supplied to it in the same transaction. Multi-protocol
+> allocation, DeFindex routing, the performance-fee module with high-water mark,
+> transferable SEP-41 shares, and the admin surface beyond the pause (key rotation,
+> contract upgrade, emergency divest) ship in Tranches 2 and 3.
 
 ## Testnet deployments
 
@@ -78,7 +80,7 @@ demo vault. Evidence in
 | `initialize(admin, asset, pool)` | Set the admin, deposit asset and optional Blend pool (one-shot, immutable). |
 | `deposit(from, amount) -> shares` | Pull `amount` of the asset and mint proportional shares. |
 | `withdraw(from, shares) -> amount` | Burn shares and return the asset pro-rata. |
-| `total_assets() -> i128` | Asset held by the vault (on-chain token balance). |
+| `total_assets() -> i128` | Asset under management: idle token balance plus the Blend position valued at bTokens x b_rate. |
 | `shares_of(owner) -> i128` | Shares held by an address. |
 | `total_shares() -> i128` | Total shares issued. |
 | `pause()` / `unpause()` | Admin-only emergency switch. |
@@ -106,6 +108,17 @@ stellar contract deploy \
 #   stellar contract id asset --asset native --network testnet
 stellar contract invoke --id <VAULT_ID> --source deployer --network testnet \
   -- initialize --admin <ADMIN_G_ADDR> --asset <NATIVE_SAC_ID>
+```
+
+`--pool` is optional and immutable once set. Omitted, as above, the vault is pure
+custody with no strategy (the demo and D3 instances). The Deliverable 1 instance is
+initialised with it, which is what routes every deposit to Blend:
+
+```bash
+stellar contract invoke --id <VAULT_ID> --source deployer --network testnet \
+  -- initialize --admin <ADMIN_G_ADDR> \
+  --asset CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU \
+  --pool CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF
 ```
 
 ## Roadmap

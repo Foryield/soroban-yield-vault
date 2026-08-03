@@ -13,7 +13,10 @@
 //!   fourni au pool de lending, tout retrait en est servi, et total_assets
 //!   valorise la position (bTokens x b_rate) - l'interet accru fait monter le
 //!   prix de la part sans aucune action du vault ;
-//! - pause d'urgence (admin).
+//! - pause d'urgence (admin) ;
+//! - prolongation de la duree de vie a chaque depot et retrait : l'instance,
+//!   le code et l'entree de parts du porteur, sans quoi ils s'archivent au bout
+//!   de la duree par defaut du reseau, environ sept jours.
 //!
 //! RISQUE ACCEPTE (perimetre D1) : le pool est immuable et il n'existe aucune
 //! fonction de desallocation d'urgence. `pause()` bloque les nouvelles
@@ -48,6 +51,7 @@ pub enum VaultError {
     VaultInsolvent = 7,
     ContractPaused = 8,
     MathOverflow = 9,
+    PoolReserveMissing = 10,
 }
 
 contractmeta!(
@@ -80,6 +84,26 @@ const BLEND_REQUEST_WITHDRAW: u32 = 1;
 /// Le b_rate Blend est un fixed-point 12 decimales.
 const SCALAR_12: i128 = 1_000_000_000_000;
 
+/// Ledgers par jour, fermeture nominale a 5 secondes.
+const LEDGERS_PER_DAY: u32 = 17_280;
+
+/// Plafond reseau d'une duree de vie d'entree (`max_entry_ttl`), soit environ
+/// 180 jours, identique sur testnet et sur mainnet.
+const MAX_ENTRY_TTL: u32 = 3_110_400;
+
+/// En dessous de 30 jours restants, on prolonge.
+pub(crate) const TTL_THRESHOLD: u32 = 30 * LEDGERS_PER_DAY;
+
+/// Cible de prolongation : 120 jours, largement sous le plafond reseau.
+pub(crate) const TTL_EXTEND_TO: u32 = 120 * LEDGERS_PER_DAY;
+
+// Viser au-dessus du plafond reseau fait echouer la transaction entiere, et une
+// cible sous le seuil ne prolongerait jamais rien. Verifie en conditions
+// reelles : une prolongation posee pile sur la borne est rejetee, d'ou la
+// comparaison stricte. La garde est ici plutot que dans un test, pour qu'un
+// relevement des constantes casse la compilation et jamais le reseau.
+const _: () = assert!(TTL_THRESHOLD < TTL_EXTEND_TO && TTL_EXTEND_TO < MAX_ENTRY_TTL);
+
 #[contract]
 pub struct YieldVault;
 
@@ -96,6 +120,16 @@ impl YieldVault {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Asset, &asset);
         if let Some(pool) = pool {
+            // Un pool sans reserve pour cet actif rendrait strategy_assets
+            // impossible, donc total_assets, deposit et withdraw avec lui. Le
+            // pool etant immuable et initialize a un coup, le vault serait mort
+            // sans recours. Echouer ici est la seule occasion de le dire.
+            if blend::Client::new(&env, &pool)
+                .try_get_reserve(&asset)
+                .is_err()
+            {
+                panic_with_error!(&env, VaultError::PoolReserveMissing);
+            }
             env.storage().instance().set(&DataKey::Pool, &pool);
         }
         env.storage().instance().set(&DataKey::Paused, &false);
@@ -156,6 +190,7 @@ impl YieldVault {
         let prev: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         env.storage().persistent().set(&key, &(prev + shares));
         env.storage().instance().set(&DataKey::TotalShares, &total);
+        Self::extend_ttls(&env, &key);
 
         token.transfer(&from, env.current_contract_address(), &amount);
 
@@ -208,6 +243,7 @@ impl YieldVault {
         env.storage()
             .instance()
             .set(&DataKey::TotalShares, &(total_before - shares));
+        Self::extend_ttls(&env, &key);
 
         // Desallocation : la part du retrait que le solde oisif ne couvre pas
         // est retiree du pool Blend avant de servir le client.
@@ -342,6 +378,21 @@ impl YieldVault {
                 },
             ],
         );
+    }
+
+    /// Repousse l'archivage de tout ce que l'operation vient de toucher :
+    /// l'instance et le code (un seul appel couvre les deux), et l'entree de
+    /// parts du porteur. Sans cela, la duree par defaut du reseau est d'environ
+    /// sept jours et les entrees s'archivent en silence : la restauration est
+    /// permissionless donc rien n'est perdu, mais elle est payante et elle
+    /// surprend celui qui la declenche.
+    fn extend_ttls(env: &Env, holder: &DataKey) {
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .persistent()
+            .extend_ttl(holder, TTL_THRESHOLD, TTL_EXTEND_TO);
     }
 
     fn require_not_paused(env: &Env) {

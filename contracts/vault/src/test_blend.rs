@@ -253,6 +253,29 @@ fn withdraw_blocked_by_pool_utilization_reverts_atomically() {
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #10)")]
+fn initialize_with_a_pool_missing_the_reserve_fails_fast() {
+    let b = setup_blend(1_000_0000000);
+
+    // Actif jamais declare en reserve dans ce pool. Sans garde, l'initialize
+    // reussit et le vault est mort : le pool est immuable, et get_reserve
+    // panique ensuite dans total_assets, deposit et withdraw, donc pour
+    // toujours. La contre-epreuve est setup_blend lui-meme, qui initialise le
+    // meme pool sur l'USDC, qui a bien une reserve.
+    let orphan = b
+        .env
+        .register_stellar_asset_contract_v2(Address::generate(&b.env))
+        .address();
+    let vault = YieldVaultClient::new(&b.env, &b.env.register(YieldVault, ()));
+
+    vault.initialize(
+        &Address::generate(&b.env),
+        &orphan,
+        &Some(b.pool.address.clone()),
+    );
+}
+
+#[test]
 fn blend_interest_accrues_into_total_assets_and_share_price() {
     let b = setup_blend(100_000_0000000);
     b.vault.deposit(&b.user, &10_000_0000000);

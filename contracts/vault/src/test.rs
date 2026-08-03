@@ -1,8 +1,11 @@
 #![cfg(test)]
-use super::{YieldVault, YieldVaultClient};
+use super::{DataKey, YieldVault, YieldVaultClient, TTL_EXTEND_TO, TTL_THRESHOLD};
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, Events, IssuerFlags, MockAuth, MockAuthInvoke},
+    testutils::{
+        storage::Instance as _, storage::Persistent as _, Address as _, Events, IssuerFlags,
+        Ledger as _, MockAuth, MockAuthInvoke,
+    },
     token::{StellarAssetClient, TokenClient},
     vec, Address, Env, IntoVal, Vec,
 };
@@ -330,6 +333,63 @@ fn dead_shares_keep_their_backing_after_full_exit() {
     assert_eq!(f.vault.total_shares(), 1_000); // parts mortes
     assert_eq!(f.vault.total_assets(), 2_000); // leur contre-valeur (avec rendement)
 }
+
+// --- Duree de vie des entrees (archivage)
+//
+// Sans prolongation, l'instance et les parts d'un porteur s'archivent a leur
+// echeance : la duree par defaut du reseau est de 120 960 ledgers, soit environ
+// sept jours. Passee l'echeance, le protocole restaure automatiquement, donc
+// rien n'est perdu, mais l'operation qui declenche la restauration coute
+// environ 240 fois le tarif nominal (mesure sur une instance de ce contrat :
+// 22 920 895 stroops contre 96 282 une fois les entrees vivantes).
+// Les tests ci-dessous mordent : sans les appels a extend_ttl, la TTL reste a
+// la valeur par defaut de l'environnement de test.
+
+/// TTL courantes de l'instance et de l'entree de parts d'un porteur.
+fn ttls(f: &Fixture, holder: &Address) -> (u32, u32) {
+    f.env.as_contract(&f.vault.address, || {
+        (
+            f.env.storage().instance().get_ttl(),
+            f.env
+                .storage()
+                .persistent()
+                .get_ttl(&DataKey::Shares(holder.clone())),
+        )
+    })
+}
+
+#[test]
+fn deposit_extends_instance_and_holder_ttl() {
+    let f = setup(100_000);
+
+    f.vault.deposit(&f.user, &10_000);
+
+    let (instance, holder) = ttls(&f, &f.user);
+    assert!(instance >= TTL_EXTEND_TO - 1, "instance ttl = {instance}");
+    assert!(holder >= TTL_EXTEND_TO - 1, "holder ttl = {holder}");
+}
+
+#[test]
+fn withdraw_extends_instance_and_holder_ttl() {
+    let f = setup(100_000);
+    f.vault.deposit(&f.user, &10_000);
+
+    // On repart d'une TTL erodee : sans prolongation au retrait, un porteur qui
+    // ne fait que sortir verrait ses parts s'archiver.
+    f.env
+        .ledger()
+        .with_mut(|li| li.sequence_number += TTL_EXTEND_TO - TTL_THRESHOLD + 1);
+
+    f.vault.withdraw(&f.user, &4_000);
+
+    let (instance, holder) = ttls(&f, &f.user);
+    assert!(instance >= TTL_EXTEND_TO - 1, "instance ttl = {instance}");
+    assert!(holder >= TTL_EXTEND_TO - 1, "holder ttl = {holder}");
+}
+
+// Les bornes des constantes de TTL ne sont pas testees ici mais verifiees a la
+// compilation, par un `const _: () = assert!(...)` dans lib.rs : un relevement
+// hors plafond reseau casse le build plutot qu'un test.
 
 // --- Controle admin du coupe-circuit : auth CIBLEE, pas mock_all_auths.
 //

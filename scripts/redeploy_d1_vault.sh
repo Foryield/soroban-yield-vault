@@ -15,6 +15,11 @@
 # Variables d'environnement :
 #   SKIP_DRAIN=1     ne pas vider l'ancienne instance (deja fait, ou instance
 #                    absente apres un reset du testnet)
+#   REUSE_VAULT=C... reprendre sur un contrat DEJA deploye et non initialise,
+#                    au lieu d'en deployer un neuf. Sert quand l'execution a
+#                    casse entre le deploy et l'initialize : la fenetre de
+#                    front-run reste ouverte tant que l'initialize n'est pas
+#                    passe, donc on reprend, on ne redeploie pas.
 #   DEPOSIT_AMOUNT   montant du depot de preuve, en unites brutes 7 decimales
 #                    (defaut 1000000000 = 100 USDC, comme l'evidence de juillet)
 #   ALLOW_DIRTY=1    autoriser un arbre de travail sale ou une branche autre que
@@ -116,9 +121,19 @@ echo "wasm sha256 local : $(shasum -a 256 "$WASM" | cut -d' ' -f1)"
 # quelques secondes, il ne la ferme pas : accepte sur testnet et consigne dans
 # l'evidence. Depuis le durcissement du 03/08, un initialize adverse pose sur un
 # pool sans reserve pour l'actif echoue au lieu de briquer l'adresse.
-VAULT=$(stellar contract deploy --wasm "$WASM" --source "$KEY" --network $NETWORK)
+#
+# `pool` est un Option<Address> : depuis la CLI 27, un argument optionnel se
+# passe en JSON, donc entre guillemets DANS la valeur. La forme brute, acceptee
+# par la CLI 26, rend « Invalid JSON in argument 'pool' » et laisse le contrat
+# deploye sans administrateur, fenetre grande ouverte. Ne pas simplifier.
+if [ -n "${REUSE_VAULT:-}" ]; then
+  VAULT="$REUSE_VAULT"
+  echo "reprise sur un contrat deja deploye : $VAULT"
+else
+  VAULT=$(stellar contract deploy --wasm "$WASM" --source "$KEY" --network $NETWORK)
+fi
 invoke "initialize" --id "$VAULT" --source "$KEY" --network $NETWORK -- \
-  initialize --admin "$ADDR" --asset "$USDC" --pool "$POOL" >/dev/null
+  initialize --admin "$ADDR" --asset "$USDC" --pool "\"$POOL\"" >/dev/null
 # --- Fin de la fenetre : admin, actif et pool sont fixes, immuables. --------
 
 echo "nouveau vault : $VAULT"

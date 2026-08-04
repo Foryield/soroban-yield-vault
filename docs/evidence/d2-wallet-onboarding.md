@@ -55,3 +55,48 @@ separately (walkthrough video at closure).
 
 Still open for D2-DFNS: onboarding walkthrough video (filmed on the local demo
 page, `npm run demo`), recorded here at closure.
+
+## 2026-08-04 — Demo instance redeployed on the published contract
+
+- **What it proves**: that the vault a reviewer actually deposits into, when
+  following either wallet path, is the contract this repository publishes. Until
+  today it was not. The instance behind vault.for-yield.com dated from June:
+  its `initialize` took `(admin, asset)` with no pool, it exposed no typed
+  errors, and it minted shares 1:1 — it predated the proportional share math,
+  the first-deposit inflation lock and the Blend allocation. A reviewer
+  exercising Deliverable 2 was depositing into a contract that did not do what
+  Deliverable 1 claims. Found by fetching the deployed bytecode and comparing it
+  to `main`, not by reading the code.
+- **Contract ID**: `CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN`
+  ([explorer](https://stellar.expert/explorer/testnet/contract/CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN)),
+  on-chain wasm hash
+  `5d5001e32dc23273dff3cc4aa4f10e7fe639fddabfab9d2ea9d9ed93dbb78bba`, built from
+  `main` at `e6e34fc` — the same bytecode as the D1 and D3 instances. Deposit
+  asset: native XLM through its SAC
+  (`CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC`), `pool: None`, so
+  any Friendbot-funded account can still deposit with no faucet.
+- **Deploy**:
+  [`d8e7c74a…bb32`](https://stellar.expert/explorer/testnet/tx/d8e7c74a7464b7e9d529b41b0732a2093783e8d5fe3aa11c54ec6e8f4e70bb32)
+  (ledger 3965145)
+- **Initialize**:
+  [`9816d172…b7c8`](https://stellar.expert/explorer/testnet/tx/9816d1726c0b6eeeef6e503542414c84fa37297264bdc26db887623a87dfb7c8)
+  (ledger 3965146)
+- **Deposit 1 XLM** (9,999,000 shares minted, 1,000 dead shares locked — the
+  proportional math the June instance did not have):
+  [`92302abb…a1fa`](https://stellar.expert/explorer/testnet/tx/92302abbdd7dcb71b83f00eb92be14708ccaa76b270a258f3b64e279a50aa1fa)
+  (ledger 3965147)
+- **Withdraw 3,999,600 shares** (3,999,600 units returned):
+  [`625a1351…ad4a`](https://stellar.expert/explorer/testnet/tx/625a13516adf9bf5151f5c3658129a81c23416e199d5079dce2ea106e681ad4a)
+  (ledger 3965148)
+- **Post-state read on chain**: `total_assets = 6000400` for
+  `total_shares = 6000400`, all idle.
+- **Frontend repointed**: `NEXT_PUBLIC_VAULT_ID` in `render.yaml` and the
+  testnet default in `web/lib/stellar.ts`. Both had to move: the environment
+  variable drives the deployed site, the default drives any local run without an
+  environment, and leaving them apart is how a stale contract ID survives.
+- Positions opened by third parties on the June instance stay on it; it remains
+  online for them. That is the accepted cost of redeploying a public demo.
+- Reproducible with `VAULT_PROFILE=demo scripts/redeploy_vault.sh`.
+
+Still open for D2-SWK: per-wallet connection screenshots, and the walkthrough
+videos for both paths.

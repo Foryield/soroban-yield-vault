@@ -139,8 +139,8 @@ Two hardening changes to the contract source, deployed the same day:
 - The predecessor instance `CC3AEKES…EC6C` stays online with its 1,000 dead
   shares and their backing. The July entries above remain accurate as dated
   records of that instance.
-- Reproducible with `scripts/redeploy_d1_vault.sh`, which is also the runbook
-  for the next SDF testnet reset.
+- Reproducible with `scripts/redeploy_vault.sh` (profile `d1`, the default),
+  which is also the runbook for the next SDF testnet reset.
 
 D1 status: all Measures met (verifiable testnet address, 283 tests passing,
 95.77% coverage on the vault contract, merged PRs, deposit/withdraw hashes), on

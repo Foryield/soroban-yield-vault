@@ -25,5 +25,50 @@
   holder trustline back to 17 EURC (20 faucet − 5 deposited + 2 redeemed).
 - Test EURC obtained from Circle's official faucet (faucet.circle.com).
 
+## 2026-08-04 — Instance redeployed on the published contract
+
+- **What it proves**: the whole D3 Measure again, on an instance whose on-chain
+  wasm matches the repository. The July instance was built before the vault
+  learned to extend its own lifetime and to reject a Blend pool with no reserve
+  (nine error codes instead of ten); a reviewer hashing its bytecode would have
+  found code that no longer exists in `main`. Left alone, it would also have
+  archived itself silently after about seven days.
+- **Contract ID**: `CDZR2IY4V3GXUONLTVXJNCMTIR2LLFC55ZRPPEHCTI4RM7LVF25UKG5K`
+  ([explorer](https://stellar.expert/explorer/testnet/contract/CDZR2IY4V3GXUONLTVXJNCMTIR2LLFC55ZRPPEHCTI4RM7LVF25UKG5K)),
+  on-chain wasm hash
+  `5d5001e32dc23273dff3cc4aa4f10e7fe639fddabfab9d2ea9d9ed93dbb78bba`, built from
+  `main` at `e6e34fc` — the same bytecode as the D1 and demo instances. Same
+  EURC SAC wrapper as before, `pool: None`.
+- **Drain of the predecessor** (3.8797634 EURC returned to the ops account, the
+  1,000 dead shares and their backing staying locked in the old instance
+  forever, as designed):
+  [`102be116…5945`](https://stellar.expert/explorer/testnet/tx/102be11641b2cbec7c045ae81936232f55b90dce271b4cbc7ed34425aa3b5945)
+  (ledger 3965154)
+- **Deploy**:
+  [`aee03de6…2882`](https://stellar.expert/explorer/testnet/tx/aee03de63020e0773824cad37ed8c4592de0098e343b835b1832e33299652882)
+  (ledger 3965156)
+- **Initialize**:
+  [`fd508914…3185`](https://stellar.expert/explorer/testnet/tx/fd5089140589bdce18eb933087b7827a99984f875eb0fa4c4cf7185d904d3185)
+  (ledger 3965158)
+- **Deposit 3 EURC** (29,999,000 shares minted, 1,000 dead shares locked; the
+  SAC wrapper `transfer` moving the Classic asset into the contract):
+  [`b1b64ade…54ca`](https://stellar.expert/explorer/testnet/tx/b1b64ade8867556ea1300d8b2b2e505e96c1b2ec8c0a2d2f30bb4ed2132a54ca)
+  (ledger 3965159)
+- **Redeem 11,999,600 shares into 1.19996 EURC** (SAC wrapper emitting the
+  Classic asset back to the holder's trustline):
+  [`abc06ea0…7c26`](https://stellar.expert/explorer/testnet/tx/abc06ea0843ce132461f9225a954d59a8e7617a3e5309a22a85f68af2baf7c26)
+  (ledger 3965160)
+- **Post-state read on chain**: `total_assets = 18000400` for
+  `total_shares = 18000400`, all of it idle (no pool attached, so no strategy
+  position to value).
+- **Front-run window**: deploy and initialize were two ledgers apart, roughly
+  ten seconds, against the 37 minutes of the D1 redeployment on 2026-08-03. The
+  window is not closed — the contract has no `__constructor` — but the
+  redeployment script now chains the two steps with nothing between them.
+- The predecessor instance `CAA4MCRS…MM7H` stays online with its dead shares.
+  The July entries above remain accurate as dated records of that instance.
+- Reproducible with `VAULT_PROFILE=eurc scripts/redeploy_vault.sh`.
+
 D3 status: Measure met (deposit + redemption with the SAC wrapper invoked,
-verifiable contract ID). Remaining: walkthrough video at reviewer submission.
+verifiable contract ID), on an instance running the current published code.
+Remaining: walkthrough video at reviewer submission.

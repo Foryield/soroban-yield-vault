@@ -36,8 +36,9 @@ transactions (deploy, init, deposit, withdraw) are logged in
 [docs/evidence/d1-vault-mvp.md](./docs/evidence/d1-vault-mvp.md).
 [Explore the D1 vault](https://stellar.expert/explorer/testnet/contract/CCE5ITQQF4GWG5FA47D2XJBKXASWJ2E5V5AWW5U5BBAFWIXA77YYGWNI).
 The instance is redeployed from `main` with
-[`scripts/redeploy_d1_vault.sh`](./scripts/redeploy_d1_vault.sh), which is also
-the runbook for SDF testnet resets; the predecessor instance
+[`scripts/redeploy_vault.sh`](./scripts/redeploy_vault.sh), which carries one
+profile per instance (`VAULT_PROFILE=d1|eurc|demo`) and is also the runbook for
+SDF testnet resets; the predecessor instance
 `CC3AEKES…EC6C` stays online and its July evidence remains valid as a dated
 record.
 
@@ -46,7 +47,7 @@ record.
 
 | Component | Contract ID |
 |---|---|
-| YieldVault (D3) | `CAA4MCRSKZ53KUE6L4SIWWRWRF3BGCSFKQKZJVEZSDPXTHYPGHUCMM7H` |
+| YieldVault (D3) | `CDZR2IY4V3GXUONLTVXJNCMTIR2LLFC55ZRPPEHCTI4RM7LVF25UKG5K` |
 | Deposit asset - EURC SAC wrapper | `CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ` |
 
 Evidence transactions in [docs/evidence/d3-eurc-sac.md](./docs/evidence/d3-eurc-sac.md).
@@ -68,10 +69,20 @@ Friendbot-funded account can deposit with no faucet):
 
 | Component | Contract ID |
 |---|---|
-| YieldVault (demo) | `CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6` |
+| YieldVault (demo) | `CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN` |
 | Deposit asset - native XLM (SAC) | `CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC` |
 
 Network: Stellar **Testnet** (`Test SDF Network ; September 2015`).
+
+All three YieldVault instances run the same published bytecode, wasm hash
+`5d5001e32dc23273dff3cc4aa4f10e7fe639fddabfab9d2ea9d9ed93dbb78bba`, built from
+`main`. They differ only by the asset they hold and by whether a Blend pool is
+attached. Check any of them without trusting this file:
+
+```bash
+stellar contract fetch --id <VAULT_ID> --network testnet --out-file onchain.wasm
+shasum -a 256 onchain.wasm
+```
 
 **Deliverable 2 — wallet onboarding**: the [`onboarding/`](./onboarding/)
 package provisions a Soroban-compatible wallet through the DFNS API from an

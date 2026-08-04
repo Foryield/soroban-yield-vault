@@ -14,7 +14,7 @@ services:
     # Actif du vault : XLM natif (tout compte finance par Friendbot peut deposer).
     envVars:
       - key: NEXT_PUBLIC_VAULT_ID
-        value: CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6
+        value: CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN
       - key: NEXT_PUBLIC_RPC_URL
         value: https://soroban-testnet.stellar.org
       - key: NEXT_PUBLIC_HORIZON_URL

@@ -34,7 +34,11 @@ try {
     submit: (walletId, hex) => submitViaDfns(client, walletId, hex),
     waitForInclusion: (txHash) => waitForInclusion(cfg.horizonUrl, txHash),
   });
-  console.log(JSON.stringify(summary));
+  // The targeted vault belongs in the result: without it, a deposit that landed
+  // on a superseded instance still reads `successful: true` and only shows up by
+  // decoding the transaction. Printed here rather than returned by the
+  // orchestrator, which has no business knowing which contract it is aimed at.
+  console.log(JSON.stringify({ ...summary, vaultContractId: cfg.vaultContractId }));
   if (!summary.successful) {
     console.error(`transaction ${summary.txHash} included in ledger ${summary.ledger} but failed on-chain`);
     process.exit(2);

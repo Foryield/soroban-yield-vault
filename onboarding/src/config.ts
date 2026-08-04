@@ -25,7 +25,7 @@ export function loadConfig(env: Env = process.env): Config {
     dfnsPrivateKey: required(env, "DFNS_PRIVATE_KEY"),
     rpcUrl: env.STELLAR_RPC_URL ?? "https://soroban-testnet.stellar.org",
     horizonUrl: env.STELLAR_HORIZON_URL ?? "https://horizon-testnet.stellar.org",
-    vaultContractId: env.VAULT_CONTRACT_ID ?? "CCKW7NFKDCOTOVUODLJ6K734ZEYT4TZLQGLIVFZZR6DLUHO6UOTENWQ6",
+    vaultContractId: env.VAULT_CONTRACT_ID ?? "CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN",
     network: "StellarTestnet",
   };
 }

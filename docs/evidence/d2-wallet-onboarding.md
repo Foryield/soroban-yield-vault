@@ -98,5 +98,28 @@ page, `npm run demo`), recorded here at closure.
   online for them. That is the accepted cost of redeploying a public demo.
 - Reproducible with `VAULT_PROFILE=demo scripts/redeploy_vault.sh`.
 
+## 2026-08-04 — DFNS onboarding replayed against the redeployed demo vault
+
+- **What it proves**: the D2 Measure on the *current* published contract. The
+  July run proved the signing chain, but against the June instance; this one
+  lands on `CCP3EJYJ…MCHN`, whose bytecode is the repository's.
+- **Wallet**: `wa-01jv6-ctatu-e85q09ak5h87j0m8`
+  (`GBWG3X6DEJLV3D33MITVYIHJ7AAM47PBRGG64BDGSY3XEW37JML3YAWV`), provisioned from
+  an email address, funded by Friendbot.
+- **Transaction**: `deposit` of 0.1 XLM —
+  [`7594a12c…635c`](https://stellar.expert/explorer/testnet/tx/7594a12c7894ba5eb8395a07284e5fc9f9c5c0baca5e2204dcdc3668d242635c),
+  ledger 3965499, successful. `shares_of(GBWG…3YAWV)` reads `1000000` after the
+  call, and the contract address decoded from the transaction is
+  `CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN`.
+- **A first attempt landed on the old instance** (`e9472c9e…c203`, ledger
+  3965435). It reported `successful: true` like any other run: the deposit was
+  valid, only the target was stale. The pointer came from a local credential
+  file outside the repository, which still carried `VAULT_CONTRACT_ID` for the
+  June vault and won over the corrected default in `src/config.ts`. Two fixes
+  followed, both in this commit: `VAULT_CONTRACT_ID` is gone from
+  `.env.example`, so the code default is the single source; and the onboarding
+  result now prints `vaultContractId`, so a run against the wrong vault is
+  visible in its own output instead of requiring the transaction to be decoded.
+
 Still open for D2-SWK: per-wallet connection screenshots, and the walkthrough
 videos for both paths.

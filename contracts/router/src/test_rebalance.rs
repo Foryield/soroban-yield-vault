@@ -4,7 +4,7 @@
 // milliers, comme dans test_blend.rs du vault.
 #![allow(clippy::inconsistent_digit_grouping, clippy::zero_prefixed_literal)]
 //! Chaine de rebalance COMPLETE dans un seul env : retrait du vault USDC (D1),
-//! swap par le routeur (D4) contre le stack Soroswap reel, depot dans le vault
+//! swap par le routeur (D4) contre le stack Aquarius reel, depot dans le vault
 //! EURC (D3). C'est le scenario metier du livrable D4, jusqu'ici prouve par les
 //! seuls trois hashes testnet de docs/evidence/d4-dex-routing.md : aucun test
 //! ne traversait la frontiere entre les deux contrats.
@@ -20,15 +20,15 @@
 //! entiere. C'est precisement ce que le test de l'echec verifie.
 //!
 //! Le vault est ici une contrepartie de plus dans les fixtures du routeur (au
-//! meme titre que le stack Soroswap vendorise), branche en dependance de
+//! meme titre que le stack Aquarius vendorise), branche en dependance de
 //! developpement : le socle common est sous #[cfg(test)], donc inaccessible
 //! depuis un crate tiers, et la dependance vault -> routeur n'existe pas
 //! (aucun cycle).
 
-use super::test_soroswap_stack::EXPECTED_OUT as SPOT_OUT;
-use super::test_stack_common::{self as common, AMOUNT_IN, SOROSWAP_FEE_BPS};
-use super::{PairStats, RouterError, SwapResult, SwapRouterClient, Venue};
-use soroban_sdk::{testutils::Address as _, token::TokenClient, Address};
+use super::test_aqua_stack::EXPECTED_OUT_AQUA as SPOT_OUT;
+use super::test_stack_common::{self as common, AMOUNT_IN, AQUARIUS_FEE_BPS};
+use super::{PairStats, RouterError, SwapResult, SwapRouterClient};
+use soroban_sdk::{token::TokenClient, Address};
 use yield_vault::{YieldVault, YieldVaultClient};
 
 /// Parts mortes verrouillees au premier depot (MINIMUM_LIQUIDITY du vault,
@@ -41,25 +41,25 @@ const DEAD_SHARES: i128 = 1_000;
 /// d'actif (ratio parts:actif de 1 tant que la valorisation n'a pas bouge).
 const REBALANCED_IN: i128 = AMOUNT_IN - DEAD_SHARES;
 
-/// Montant sorti attendu, meme derivation que test_soroswap_stack.rs
-/// (soroswap/core, get_amount_out), sur REBALANCED_IN au lieu de AMOUNT_IN :
+/// Montant sorti attendu, meme derivation que test_aqua_stack.rs (fee 0,3 %
+/// sur la SORTIE, arrondi plafond), sur REBALANCED_IN au lieu de AMOUNT_IN :
 ///
-///   fee        = ceil(49_999_000 * 3 / 1000) = 149_997              (0,3 %)
-///   in_net     = 49_999_000 - 149_997 = 49_849_003
-///   amount_out = floor(49_849_003 * 10_000_000_000 / 10_049_849_003)
-///              = 49_601_743
+///   out_brut   = floor(49_999_000 * 10_000_000_000 / 10_049_999_000)
+///              = 49_750_253
+///   fee        = ceil(49_750_253 * 30 / 10_000) = 149_251
+///   amount_out = 49_750_253 - 149_251 = 49_601_002
 ///
 /// Strictement inferieur au SPOT_OUT du swap de 5,0 USDC de
-/// test_soroswap_stack.rs : les parts mortes retiennent DEAD_SHARES d'actif
-/// dans le vault de depart, et cette retenue se voit jusqu'au bout de la chaine
+/// test_aqua_stack.rs : les parts mortes retiennent DEAD_SHARES d'actif dans
+/// le vault de depart, et cette retenue se voit jusqu'au bout de la chaine
 /// (la frontiere entre les contrats ne fabrique pas de valeur). Rapport fige a
 /// la COMPILATION ci-dessous : les deux montants sont des constantes derivees
 /// de la meme source, un runtime assert n'y prouverait rien.
-const EXPECTED_OUT: i128 = 4_9601743;
+const EXPECTED_OUT: i128 = 4_9601002;
 const _: () = assert!(EXPECTED_OUT < SPOT_OUT);
 
-/// Frais COMPTABLES du routeur : REBALANCED_IN x 30 bps / 10 000.
-const FEE: i128 = REBALANCED_IN * SOROSWAP_FEE_BPS as i128 / 10_000;
+/// Frais COMPTABLES du routeur : REBALANCED_IN x 10 bps / 10 000.
+const FEE: i128 = REBALANCED_IN * AQUARIUS_FEE_BPS as i128 / 10_000;
 
 /// min_out du rebalance : cotation moins 1 %, la marge exacte employee pour la
 /// demonstration testnet (docs/evidence/d4-dex-routing.md). Nom distinct du
@@ -75,14 +75,14 @@ struct RebalanceFixture<'a> {
     router: SwapRouterClient<'a>,
 }
 
-/// Socle commun + stack Soroswap reel + routeur ForYield + les DEUX vaults,
+/// Socle commun + stack Aquarius reel + routeur ForYield + les DEUX vaults,
 /// chacun initialise sans pool (`None`) : la valorisation Blend est hors sujet
-/// ici, le vault D3 EURC tourne d'ailleurs en garde pure sur testnet. La venue
-/// Aquarius est une adresse sans contrat (registre vide, la venue rend false).
+/// ici, le vault D3 EURC tourne d'ailleurs en garde pure sur testnet.
 fn setup_rebalance<'a>() -> RebalanceFixture<'a> {
     let base = common::setup_base();
-    let stack = common::deploy_soroswap_stack(&base);
-    let router = common::init_router(&base, &stack.aggregator, &Address::generate(&base.env));
+    let stack = common::deploy_aqua_stack(&base, true);
+    let router = common::init_router(&base, &stack.router.address);
+    router.set_aqua_pool(&base.usdc.address, &base.eurc.address, &stack.pool_index);
 
     let vault_usdc = YieldVaultClient::new(&base.env, &base.env.register(YieldVault, ()));
     vault_usdc.initialize(&base.admin, &base.usdc.address, &None);
@@ -132,13 +132,11 @@ fn rebalance_moves_the_whole_position_from_usdc_vault_to_eurc_vault() {
         &f.eurc.address,
         &withdrawn,
         &REBALANCE_MIN_OUT,
-        &Venue::SoroswapAggregator,
     );
     assert_eq!(
         swap,
         SwapResult {
             amount_out: EXPECTED_OUT,
-            venue: Venue::SoroswapAggregator,
             fee: FEE,
         }
     );
@@ -187,12 +185,10 @@ fn failed_swap_leaves_the_position_recoverable_and_the_router_empty() {
         &f.eurc.address,
         &withdrawn,
         &(EXPECTED_OUT + 1),
-        &Venue::SoroswapAggregator,
     );
 
-    // Soroswap refuse le prix, Aquarius a un registre vide : les deux venues
-    // echouent, tout revert.
-    assert_eq!(failed, Err(Ok(RouterError::AllVenuesFailed.into())));
+    // Le pool Aqua refuse le prix demande : la venue echoue, tout revert.
+    assert_eq!(failed, Err(Ok(RouterError::VenueFailed.into())));
     assert_eq!(f.usdc.balance(&f.user), withdrawn);
     assert_eq!(f.usdc.balance(&f.router.address), 0);
     assert_eq!(f.eurc.balance(&f.router.address), 0);

@@ -8,7 +8,7 @@ not reconstructed at submission time.
 | `d1-vault-mvp.md` | Soroban YieldVault (USDC, Blend v2, 200+ tests) |
 | `d2-wallet-onboarding.md` | SWK multi-wallet + DFNS embedded wallet |
 | `d3-eurc-sac.md` | EURC SAC wrapper |
-| `d4-dex-routing.md` | Soroswap + Aquarius routing |
+| `d4-dex-routing.md` | Aquarius routing (Soroswap removed 2026-08-28) |
 | `d5-defindex-allocator.md` | Multi-protocol allocator |
 | `d6-fees-audit-trail.md` | Performance fees + compliance events |
 

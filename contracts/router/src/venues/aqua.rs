@@ -37,9 +37,9 @@ pub trait AquaRouter {
 /// Conversions aux bornes via `venues::convert` (helpers purs, testes aux
 /// bornes) : le routeur garantit deja la positivite, mais le module doit
 /// etre sur par lui-meme (negatif -> `false`, jamais de panique dans
-/// `attempt`). Au retour, un u128 > i128::MAX est inconvertible -> `false`,
-/// le fallback decide ; pas d'erreur typee dediee, l'architecture
-/// attempt-bool route ce chemin vers `AllVenuesFailed` (cf. `RouterError`).
+/// `attempt`). Au retour, un u128 > i128::MAX est inconvertible -> `false` ;
+/// pas d'erreur typee dediee, l'architecture attempt-bool route ce chemin
+/// vers `VenueFailed` (cf. `RouterError`).
 pub fn attempt(
     env: &Env,
     router: &Address,

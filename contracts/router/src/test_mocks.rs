@@ -16,10 +16,9 @@
 //! plus proche de la realite qu'un mint (une venue reelle n'est pas admin du
 //! token) et sans droit d'admin a accorder au mock.
 
-use crate::venues::soroswap::DexDistribution;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token::TokenClient, vec, Address, BytesN,
-    Env, Vec,
+    contract, contractimpl, contracttype, symbol_short, token::TokenClient, Address, BytesN, Env,
+    Vec,
 };
 
 /// Comportement pilotable d'un mock de venue.
@@ -78,42 +77,6 @@ fn serve_amount(env: &Env, min_required: i128) -> i128 {
             amount
         }
         MockBehavior::ServeIgnoringMin(amount) | MockBehavior::ServeReturningHuge(amount) => amount,
-    }
-}
-
-/// Mock de l'aggregator Soroswap (trait `venues::soroswap::SoroswapAggregator`).
-#[contract]
-pub struct MockAggregator;
-
-#[contractimpl]
-impl MockAggregator {
-    pub fn set_behavior(env: Env, behavior: MockBehavior) {
-        env.storage()
-            .instance()
-            .set(&symbol_short!("behavior"), &behavior);
-    }
-
-    pub fn was_called(env: Env) -> bool {
-        was_called(&env)
-    }
-
-    pub fn swap_exact_tokens_for_tokens(
-        env: Env,
-        token_in: Address,
-        token_out: Address,
-        amount_in: i128,
-        amount_out_min: i128,
-        _distribution: Vec<DexDistribution>,
-        to: Address,
-        _deadline: u64,
-    ) -> Vec<Vec<i128>> {
-        mark_called(&env);
-        let served = serve_amount(&env, amount_out_min);
-        let this = env.current_contract_address();
-        TokenClient::new(&env, &token_in).transfer(&to, &this, &amount_in);
-        TokenClient::new(&env, &token_out).transfer(&this, &to, &served);
-        // Forme du retour de l'aggregator reel : montants par distribution.
-        vec![&env, vec![&env, amount_in, served]]
     }
 }
 

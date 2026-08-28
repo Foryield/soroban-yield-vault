@@ -52,17 +52,29 @@ record.
 
 Evidence transactions in [docs/evidence/d3-eurc-sac.md](./docs/evidence/d3-eurc-sac.md).
 
-**Deliverable 4 instance — SwapRouter, DEX routing (Soroswap + Aquarius)**:
+**Deliverable 4 instance — SwapRouter, DEX routing (Aquarius)**:
 
 | Component | Contract ID |
 |---|---|
-| SwapRouter (D4) | `CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK` |
+| SwapRouter (D4) | `CCQJWT73HTZUVLM2UUPUA5VR53Z5MTHCRZDVF5RODH3ORMVALNQQY6EA` |
 
-Routes USDC<->EURC through the Soroswap aggregator (primary) with an atomic
-Aquarius fallback, min-out slippage protection and per-pair swap-fee accounting.
-Evidence (venue seeds, deployment, quotes, 3-hash rebalance, on-chain fallback
-proof) in [docs/evidence/d4-dex-routing.md](./docs/evidence/d4-dex-routing.md).
-[Explore the D4 router](https://stellar.expert/explorer/testnet/contract/CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK).
+Routes USDC<->EURC through the Aquarius router, with min-out slippage
+protection and per-pair swap-fee accounting.
+[Explore the D4 router](https://stellar.expert/explorer/testnet/contract/CCQJWT73HTZUVLM2UUPUA5VR53Z5MTHCRZDVF5RODH3ORMVALNQQY6EA).
+
+The Soroswap venue was **removed on 2026-08-28** after Soroswap was reported
+compromised. The router is now single-venue: the atomic fallback is gone, and
+Aquarius is a single point of failure. That trade-off is deliberate and
+documented, along with the reasons Phoenix was not adopted as a replacement, in
+[the removal plan](./docs/plans/2026-08-28-retrait-soroswap-aquarius-seul.md).
+
+The previous instance
+[`CC25CDFP…DAKK`](https://stellar.expert/explorer/testnet/contract/CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK)
+is **deprecated and must not be called**: it still routes to the compromised
+aggregator, and it cannot be neutralised on-chain (venues are immutable, there
+is no pause). Its July evidence remains valid as a dated record.
+
+Evidence in [docs/evidence/d4-dex-routing.md](./docs/evidence/d4-dex-routing.md).
 
 **Demo instance — native XLM, no strategy** (behind vault.for-yield.com, so any
 Friendbot-funded account can deposit with no faucet):
@@ -141,7 +153,7 @@ stellar contract invoke --id <VAULT_ID> --source deployer --network testnet \
 ## Roadmap
 
 - **Tranche 1 (MVP)** - this contract, wallet onboarding, EURC SAC wrapper.
-- **Tranche 2 (Testnet)** - DEX routing (Soroswap + Aquarius), DeFindex allocator,
+- **Tranche 2 (Testnet)** - DEX routing (Aquarius), DeFindex allocator,
   performance-fee module + compliance event schema.
 - **Tranche 3 (Mainnet)** - Certora audit, mainnet deployment, cross-chain onboarding,
   investor dashboard.

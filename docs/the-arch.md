@@ -55,7 +55,7 @@ Amounts are raw units with 7 decimals (`0.1 XLM = 1000000`).
 | YieldVault, Deliverable 1 | `CCE5ITQQF4GWG5FA47D2XJBKXASWJ2E5V5AWW5U5BBAFWIXA77YYGWNI` | Blend testnet USDC (SAC) | Blend v2 TestnetV2 pool |
 | YieldVault, Deliverable 3 | `CDZR2IY4V3GXUONLTVXJNCMTIR2LLFC55ZRPPEHCTI4RM7LVF25UKG5K` | Circle EURC via SAC wrapper | none (pure custody) |
 | YieldVault, public demo | `CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN` | native XLM (SAC) | none (pure custody) |
-| SwapRouter, Deliverable 4 | `CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK` | USDC / EURC | Soroswap primary, Aquarius fallback |
+| SwapRouter, Deliverable 4 | `CCQJWT73HTZUVLM2UUPUA5VR53Z5MTHCRZDVF5RODH3ORMVALNQQY6EA` | USDC / EURC | Aquarius, single venue |
 
 | Referenced contract | Address |
 |---|---|
@@ -260,18 +260,33 @@ than a swap module inside the vault: the vault stays free of any on-chain price
 source, which matches how ForYield already values positions and selects venues
 off-chain.
 
-Best execution is decided off-chain and passed in as a `preferred` venue. What
-the contract guarantees on-chain is a mandatory `min_out`, an atomic `try_`
-fallback to the other venue when the preferred one fails or underdelivers, and a
-re-check of `min_out` on the way back. Swap fees are accumulated per pair, which
-is the raw material of the Deliverable 6c dashboard. Events are emitted in the
-target `#[contractevent]` style and carry both the preferred venue and the one
-that actually executed, so a fallback is detectable from the event stream alone.
+What the contract guarantees on-chain is a mandatory `min_out`, re-checked on
+the way back and judged on the router's own balance delta rather than on what
+the venue claims to have served: a venue that lies about what it served does
+not fool the router. Quoting stays off-chain (`scripts/quote_aqua.sh`) and
+calibrates `min_out`. Swap fees are accumulated per pair, which is the raw
+material of the Deliverable 6c dashboard. Events are emitted in the target
+`#[contractevent]` style.
 
-Soroswap is the primary venue and Aquarius the fallback. Both were integrated
-against their real deployed bytecode, which surfaced two production bugs in our
-Soroswap adapter that mocks had hidden: a strictly enforced deadline, and the
-real shape of the authorisation tree for the aggregator.
+Aquarius is the only venue. Soroswap was removed on 2026-08-28 after being
+reported compromised, and no replacement was adopted: Phoenix, the obvious
+candidate, restricts pool creation to accounts whitelisted by its factory, so
+the USDC/EURC pair the router needs cannot be seeded there permissionlessly the
+way it was on Soroswap and Aquarius.
+
+The consequence is stated plainly rather than glossed over: the atomic fallback
+is gone, and Aquarius is now a single point of failure. If its router is
+unavailable, its pool empty, or the pool absent from the admin registry, the
+swap fails and everything reverts. The failure is typed (`AquaPoolNotSet`,
+`VenueFailed`) and the caller keeps the funds, but the swap does not happen.
+The empty-pool case is not theoretical: third parties drained the EURC side of
+our testnet Aquarius pool between July and August 2026.
+
+What survives from the two-venue design is what protects funds rather than what
+routed them: the min-out re-check, the balance-delta judgement, the atomic
+revert, and the narrow, transaction-scoped pre-authorisation of the venue's
+token pull. The venue was integrated against its real deployed bytecode, not a
+mock.
 
 ---
 
@@ -380,7 +395,7 @@ Points settled while building, worth knowing before repeating them.
 | Tranche | Content | State |
 |---|---|---|
 | **1, MVP** | Vault with proportional shares and Blend v2 allocation, wallet onboarding (Stellar Wallets Kit and DFNS), EURC SAC wrapper. | Delivered, evidenced on testnet. |
-| **2, Testnet** | DEX routing (Soroswap and Aquarius), DeFindex allocator, performance-fee module with high-water mark, compliance event schema, dashboard. | DEX routing delivered ahead of schedule; the rest in progress. |
+| **2, Testnet** | DEX routing (Aquarius), DeFindex allocator, performance-fee module with high-water mark, compliance event schema, dashboard. | DEX routing delivered ahead of schedule, then reduced to a single venue on 2026-08-28 after Soroswap was reported compromised; the rest in progress. |
 | **3, Mainnet** | Formal audit, mainnet deployment, cross-chain onboarding, investor dashboard. | Not started. |
 
 ### Integration list, and what testnet actually showed
@@ -393,12 +408,14 @@ per-protocol cap and an emergency withdrawal path.
 - **Blend v2, lending.** Already wired in Tranche 1: the asset is supplied to a
   lending pool and accrued interest raises `total_assets`, therefore the value
   of every share. Integrated against the real Blend wasm stack, not a mock.
-- **Soroswap, DEX routing.** Delivered as the primary venue of the SwapRouter,
-  used to convert between vault assets during a rebalance, with a bounded
-  slippage floor.
-- **Aquarius, liquidity.** Delivered as the atomic fallback venue. Its fee
-  semantics differ from Soroswap's, which is handled in the venue adapters
-  rather than left to the caller.
+- **Aquarius, DEX routing.** The SwapRouter's only venue, used to convert
+  between vault assets during a rebalance, with a bounded slippage floor. Its
+  fee semantics (fee on the output, rounded up) are handled in the venue
+  adapter rather than left to the caller.
+- **Soroswap, removed.** Delivered in July 2026 as the primary venue, removed
+  on 2026-08-28 after being reported compromised. A second venue remains
+  desirable, and the search for one is open: it must allow permissionless pool
+  creation for our pair, which is what ruled Phoenix out.
 - **DeFindex, allocator.** Tranche 2. The open decision is whether ForYield
   routes through DeFindex vaults or calls the underlying strategies directly;
   our testnet survey found DeFindex with Blend strategies deployed but not the

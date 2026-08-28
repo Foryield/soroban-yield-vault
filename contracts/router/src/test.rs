@@ -1,12 +1,10 @@
 #![cfg(test)]
 extern crate std;
 
-use super::test_mocks::{
-    MockAggregator, MockAggregatorClient, MockAqua, MockAquaClient, MockBehavior,
-};
+use super::test_mocks::{MockAqua, MockAquaClient, MockBehavior};
 use super::{
     venues, AquaPoolSetEvent, PairStats, RouterError, SwapEvent, SwapResult, SwapRouter,
-    SwapRouterClient, Venue,
+    SwapRouterClient,
 };
 use soroban_sdk::{
     testutils::{
@@ -20,12 +18,10 @@ use soroban_sdk::{
 struct Fixture<'a> {
     env: Env,
     admin: Address,
-    soroswap: Address,
     aquarius: Address,
     router: SwapRouterClient<'a>,
 }
 
-const SOROSWAP_FEE_BPS: u32 = 30;
 const AQUARIUS_FEE_BPS: u32 = 10;
 
 fn setup<'a>() -> Fixture<'a> {
@@ -33,52 +29,30 @@ fn setup<'a>() -> Fixture<'a> {
     env.mock_all_auths();
 
     let admin = Address::generate(&env);
-    let soroswap = Address::generate(&env);
     let aquarius = Address::generate(&env);
 
     let router_id = env.register(SwapRouter, ());
     let router = SwapRouterClient::new(&env, &router_id);
-    router.initialize(
-        &admin,
-        &soroswap,
-        &aquarius,
-        &SOROSWAP_FEE_BPS,
-        &AQUARIUS_FEE_BPS,
-    );
+    router.initialize(&admin, &aquarius, &AQUARIUS_FEE_BPS);
 
     Fixture {
         env,
         admin,
-        soroswap,
         aquarius,
         router,
     }
 }
 
 #[test]
-fn initialize_stores_admin_venues_and_fees() {
+fn initialize_stores_admin_venue_and_fee() {
     let f = setup();
 
-    // Les getters sont prives (aucune surface publique de lecture des venues
+    // Les getters sont prives (aucune surface publique de lecture de la venue
     // en D4) : on les exerce depuis le contexte du contrat.
     f.env.as_contract(&f.router.address, || {
         assert_eq!(SwapRouter::admin(&f.env), f.admin);
-        assert_eq!(
-            SwapRouter::venue_addr(&f.env, Venue::SoroswapAggregator),
-            f.soroswap
-        );
-        assert_eq!(
-            SwapRouter::venue_addr(&f.env, Venue::AquariusRouter),
-            f.aquarius
-        );
-        assert_eq!(
-            SwapRouter::fee_bps(&f.env, Venue::SoroswapAggregator),
-            SOROSWAP_FEE_BPS
-        );
-        assert_eq!(
-            SwapRouter::fee_bps(&f.env, Venue::AquariusRouter),
-            AQUARIUS_FEE_BPS
-        );
+        assert_eq!(SwapRouter::venue_addr(&f.env), f.aquarius);
+        assert_eq!(SwapRouter::fee_bps(&f.env), AQUARIUS_FEE_BPS);
     });
 }
 
@@ -86,22 +60,18 @@ fn initialize_stores_admin_venues_and_fees() {
 fn double_initialize_fails_with_already_initialized() {
     let f = setup();
 
-    let result = f.router.try_initialize(
-        &f.admin,
-        &f.soroswap,
-        &f.aquarius,
-        &SOROSWAP_FEE_BPS,
-        &AQUARIUS_FEE_BPS,
-    );
+    let result = f
+        .router
+        .try_initialize(&f.admin, &f.aquarius, &AQUARIUS_FEE_BPS);
 
     // initialize retourne () : le client try_ type l'erreur en
     // soroban_sdk::Error, la comparaison passe par la conversion contracterror.
     assert_eq!(result, Err(Ok(RouterError::AlreadyInitialized.into())));
 }
 
-// --- Fumee des clients de venues (Task 3) : mock repond, client try_ OK.
-// Le routage complet (fallback, min-out par delta de solde) est couvert par
-// les sections Tasks 4-5 ci-dessous.
+// --- Fumee du client de venue (Task 3) : mock repond, client try_ OK.
+// Le routage complet (min-out par delta de solde, erreurs typees) est couvert
+// par la section swap_exact_in ci-dessous.
 
 const AMOUNT_IN: i128 = 5_0000000;
 const SERVED_OUT: i128 = 4_9000000;
@@ -119,10 +89,10 @@ struct VenueFixture<'a> {
 /// cf. test_mocks).
 fn venue_setup<'a>() -> VenueFixture<'a> {
     let env = Env::default();
-    // Au niveau unitaire, le require_auth du transfert de `to`/`user` est
-    // imbrique sous l'appel de venue (non rattache a la racine) : la variante
-    // allowing_non_root_auth est necessaire. Dans le vrai flux (Task 4),
-    // c'est le ROUTEUR qui pre-autorise son propre transfert via
+    // Au niveau unitaire, le require_auth du transfert de `user` est imbrique
+    // sous l'appel de venue (non rattache a la racine) : la variante
+    // allowing_non_root_auth est necessaire. Dans le vrai flux, c'est le
+    // ROUTEUR qui pre-autorise son propre transfert via
     // authorize_as_current_contract, comme pool_supply du vault.
     env.mock_all_auths_allowing_non_root_auth();
 
@@ -158,34 +128,6 @@ fn pool_hash(env: &Env) -> BytesN<32> {
 }
 
 #[test]
-fn soroswap_attempt_against_mock_moves_real_tokens() {
-    let f = venue_setup();
-    let mock = f.env.register(MockAggregator, ());
-    MockAggregatorClient::new(&f.env, &mock).set_behavior(&MockBehavior::Serve(SERVED_OUT));
-    fund(&f, &mock, SERVED_OUT);
-
-    let ok = venues::soroswap::attempt(
-        &f.env,
-        &mock,
-        &f.token_in.address,
-        &f.token_out.address,
-        AMOUNT_IN,
-        MIN_OUT,
-        &f.user,
-    );
-
-    assert!(ok);
-    // Vrai flux de fonds : token_in tire depuis `to`, token_out servi a `to`.
-    assert_eq!(f.token_in.balance(&f.user), 0);
-    assert_eq!(f.token_in.balance(&mock), AMOUNT_IN);
-    assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
-    assert_eq!(f.token_out.balance(&mock), 0);
-    // Preuve que le marqueur d'invocation est vivant (il fonde le test de
-    // garde sur montants negatifs).
-    assert!(MockAggregatorClient::new(&f.env, &mock).was_called());
-}
-
-#[test]
 fn aqua_attempt_against_mock_moves_real_tokens() {
     let f = venue_setup();
     let mock = f.env.register(MockAqua, ());
@@ -205,39 +147,19 @@ fn aqua_attempt_against_mock_moves_real_tokens() {
     );
 
     assert!(ok);
+    // Vrai flux de fonds : token_in tire depuis `user`, token_out servi a
+    // `user`.
     assert_eq!(f.token_in.balance(&f.user), 0);
     assert_eq!(f.token_in.balance(&mock), AMOUNT_IN);
     assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
     assert_eq!(f.token_out.balance(&mock), 0);
-    // Meme preuve de vie du marqueur que cote aggregator.
+    // Preuve que le marqueur d'invocation est vivant (il fonde le test de
+    // garde sur montants negatifs).
     assert!(MockAquaClient::new(&f.env, &mock).was_called());
 }
 
 #[test]
-fn attempt_returns_false_when_venue_panics_and_rolls_back() {
-    let f = venue_setup();
-    let mock = f.env.register(MockAggregator, ());
-    MockAggregatorClient::new(&f.env, &mock).set_behavior(&MockBehavior::Panic);
-
-    let ok = venues::soroswap::attempt(
-        &f.env,
-        &mock,
-        &f.token_in.address,
-        &f.token_out.address,
-        AMOUNT_IN,
-        MIN_OUT,
-        &f.user,
-    );
-
-    // Le try_ absorbe la panne ET l'invocation ratee est annulee : aucun
-    // token n'a bouge.
-    assert!(!ok);
-    assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
-    assert_eq!(f.token_in.balance(&mock), 0);
-}
-
-#[test]
-fn aqua_attempt_panicking_mock_returns_false() {
+fn aqua_attempt_returns_false_when_venue_panics_and_rolls_back() {
     let f = venue_setup();
     let mock = f.env.register(MockAqua, ());
     MockAquaClient::new(&f.env, &mock).set_behavior(&MockBehavior::Panic);
@@ -254,8 +176,11 @@ fn aqua_attempt_panicking_mock_returns_false() {
         &pool_hash,
     );
 
+    // Le try_ absorbe la panne ET l'invocation ratee est annulee : aucun
+    // token n'a bouge, ni chez l'appelant ni chez la venue.
     assert!(!ok);
     assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
+    assert_eq!(f.token_in.balance(&mock), 0);
 }
 
 #[test]
@@ -290,30 +215,27 @@ fn aqua_attempt_returns_false_on_negative_amounts_without_calling_venue() {
     assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
 }
 
-// --- swap_exact_in (Task 4) : gardes typees, chemin nominal Soroswap,
-// invariant AllVenuesFailed, garde fee_bps, observation des auths.
+// --- swap_exact_in : gardes typees, chemin nominal, invariant VenueFailed,
+// registre vide, garde fee_bps, observation des auths.
 
-/// Frais comptables attendus par venue : amount_in x fee_bps / 10 000.
-const SOROSWAP_FEE: i128 = AMOUNT_IN * SOROSWAP_FEE_BPS as i128 / 10_000;
+/// Frais comptables attendus : amount_in x fee_bps / 10 000.
 const AQUARIUS_FEE: i128 = AMOUNT_IN * AQUARIUS_FEE_BPS as i128 / 10_000;
 
 struct SwapFixture<'a> {
     env: Env,
     user: Address,
-    /// Adresse du MockAggregator, branche comme venue Soroswap du routeur.
-    soroswap: Address,
-    /// Adresse du MockAqua, branche comme venue Aquarius du routeur.
+    /// Adresse du MockAqua, branche comme venue du routeur.
     aquarius: Address,
     router: SwapRouterClient<'a>,
     token_in: TokenClient<'a>,
     token_out: TokenClient<'a>,
 }
 
-/// Routeur branche sur les MOCKS de venues, deux tokens reels, `user`
-/// finance en token_in. Auth mockee NON permissive (mock_all_auths simple,
-/// non-root interdit) : une pre-autorisation authorize_as_current_contract
-/// manquante cote routeur fait ECHOUER le swap ici meme, pas seulement
-/// contre la stack reelle (cf. test des auths).
+/// Routeur branche sur le MOCK de venue, deux tokens reels, `user` finance en
+/// token_in. Auth mockee NON permissive (mock_all_auths simple, non-root
+/// interdit) : une pre-autorisation authorize_as_current_contract manquante
+/// cote routeur fait ECHOUER le swap ici meme, pas seulement contre la stack
+/// reelle (cf. test des auths).
 fn swap_setup<'a>() -> SwapFixture<'a> {
     let env = Env::default();
     env.mock_all_auths();
@@ -332,21 +254,13 @@ fn swap_setup<'a>() -> SwapFixture<'a> {
     );
     StellarAssetClient::new(&env, &token_in.address).mint(&user, &AMOUNT_IN);
 
-    let soroswap = env.register(MockAggregator, ());
     let aquarius = env.register(MockAqua, ());
     let router = SwapRouterClient::new(&env, &env.register(SwapRouter, ()));
-    router.initialize(
-        &admin,
-        &soroswap,
-        &aquarius,
-        &SOROSWAP_FEE_BPS,
-        &AQUARIUS_FEE_BPS,
-    );
+    router.initialize(&admin, &aquarius, &AQUARIUS_FEE_BPS);
 
     SwapFixture {
         env,
         user,
-        soroswap,
         aquarius,
         router,
         token_in,
@@ -355,7 +269,7 @@ fn swap_setup<'a>() -> SwapFixture<'a> {
 }
 
 /// Alimente le registre Aqua par le SETTER PUBLIC (auth admin mockee par la
-/// fixture) : les tests de la matrice traversent la meme surface que les ops.
+/// fixture) : les tests traversent la meme surface que les ops.
 fn set_aqua_registry(f: &SwapFixture, pool_hash: &BytesN<32>) {
     f.router
         .set_aqua_pool(&f.token_in.address, &f.token_out.address, pool_hash);
@@ -383,7 +297,6 @@ fn swap_exact_in_rejects_non_positive_amount_in() {
             &f.token_out.address,
             &amount_in,
             &MIN_OUT,
-            &Venue::SoroswapAggregator,
         );
         assert_eq!(result, Err(Ok(RouterError::AmountMustBePositive.into())));
     }
@@ -400,7 +313,6 @@ fn swap_exact_in_rejects_non_positive_min_out() {
             &f.token_out.address,
             &AMOUNT_IN,
             &min_out,
-            &Venue::SoroswapAggregator,
         );
         assert_eq!(result, Err(Ok(RouterError::MinOutMustBePositive.into())));
     }
@@ -416,17 +328,19 @@ fn swap_exact_in_rejects_same_token() {
         &f.token_in.address,
         &AMOUNT_IN,
         &MIN_OUT,
-        &Venue::SoroswapAggregator,
     );
 
     assert_eq!(result, Err(Ok(RouterError::SameToken.into())));
 }
 
+// Chemin nominal : valide de bout en bout, au niveau unitaire, la
+// pre-autorisation du tirage par Aqua et le trajet i128 -> u128 -> i128.
 #[test]
-fn swap_exact_in_serves_via_preferred_soroswap() {
+fn swap_exact_in_serves_via_aqua() {
     let f = swap_setup();
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(SERVED_OUT));
-    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &SERVED_OUT);
+    MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
+    set_aqua_registry(&f, &pool_hash(&f.env));
 
     let result = f.router.swap_exact_in(
         &f.user,
@@ -434,15 +348,13 @@ fn swap_exact_in_serves_via_preferred_soroswap() {
         &f.token_out.address,
         &AMOUNT_IN,
         &MIN_OUT,
-        &Venue::SoroswapAggregator,
     );
 
     assert_eq!(
         result,
         SwapResult {
             amount_out: SERVED_OUT,
-            venue: Venue::SoroswapAggregator,
-            fee: SOROSWAP_FEE,
+            fee: AQUARIUS_FEE,
         }
     );
     // `from` debite de amount_in, credite du produit du swap.
@@ -458,22 +370,23 @@ fn swap_exact_in_serves_via_preferred_soroswap() {
         PairStats {
             volume_in: AMOUNT_IN,
             volume_out: SERVED_OUT,
-            fees: SOROSWAP_FEE,
+            fees: AQUARIUS_FEE,
             swaps: 1,
         }
     );
 }
 
-// INVARIANT (suivi de revue Task 3) : le chemin « toutes venues false » DOIT
-// paniquer (AllVenuesFailed), jamais retourner. C'est lui qui garantit le
-// revert INTEGRAL quand une venue a execute mais que `attempt` a rendu false
-// (retour indecodable, conversion) : les fonds sont proteges par l'atomicite
-// de la transaction, pas par le jugement local.
+// Registre vide : depuis le passage mono-venue, c'est une ERREUR TYPEE et non
+// plus un `false` que le fallback traversait. Le client distingue ainsi une
+// condition d'ops (pool jamais enregistre, ou perdu a un re-seed testnet)
+// d'une panne de venue. La venue n'est PAS invoquee : le registre est lu
+// avant toute tentative.
 #[test]
-fn all_venues_failing_panics_and_reverts_funds() {
+fn swap_without_registered_pool_fails_with_aqua_pool_not_set() {
     let f = swap_setup();
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Panic);
-    // Registre Aqua vide : la venue Aquarius rend false sans etre appelee.
+    MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
+    // Registre Aqua VIDE, deliberement : set_aqua_registry n'est pas appele.
 
     let result = f.router.try_swap_exact_in(
         &f.user,
@@ -481,109 +394,29 @@ fn all_venues_failing_panics_and_reverts_funds() {
         &f.token_out.address,
         &AMOUNT_IN,
         &MIN_OUT,
-        &Venue::SoroswapAggregator,
     );
 
-    assert_eq!(result, Err(Ok(RouterError::AllVenuesFailed.into())));
-    // Atomicite : le transfert entrant (from -> routeur) a eu lieu AVANT la
-    // panique, il est integralement annule avec elle.
+    assert_eq!(result, Err(Ok(RouterError::AquaPoolNotSet.into())));
+    // Rien n'a bouge : `from` intact, routeur vide, venue jamais invoquee
+    // (elle etait pourtant PRETE a servir, ce qui rend l'assertion probante).
     assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
     assert_eq!(f.token_in.balance(&f.router.address), 0);
-}
-
-// --- Matrice de fallback (Task 5) : chaque test asserte la venue EFFECTIVE
-// dans SwapResult ET dans les stats, plus les soldes de `from`.
-
-#[test]
-fn fallback_preferred_soroswap_panics_aqua_serves() {
-    let f = swap_setup();
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Panic);
-    MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
-    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
-    set_aqua_registry(&f, &pool_hash(&f.env));
-
-    let result = f.router.swap_exact_in(
-        &f.user,
-        &f.token_in.address,
-        &f.token_out.address,
-        &AMOUNT_IN,
-        &MIN_OUT,
-        &Venue::SoroswapAggregator,
-    );
-
-    // Venue EFFECTIVE = secours ; frais comptes au bareme de la venue qui a
-    // SERVI (aquarius_fee_bps), pas de la preferee.
-    assert_eq!(
-        result,
-        SwapResult {
-            amount_out: SERVED_OUT,
-            venue: Venue::AquariusRouter,
-            fee: AQUARIUS_FEE,
-        }
-    );
-    assert_eq!(f.token_in.balance(&f.user), 0);
-    assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
-    assert_eq!(f.token_in.balance(&f.router.address), 0);
-    assert_eq!(f.token_out.balance(&f.router.address), 0);
+    assert!(!MockAquaClient::new(&f.env, &f.aquarius).was_called());
     assert_eq!(
         f.router
             .pair_stats(&f.token_in.address, &f.token_out.address),
-        PairStats {
-            volume_in: AMOUNT_IN,
-            volume_out: SERVED_OUT,
-            fees: AQUARIUS_FEE,
-            swaps: 1,
-        }
+        zero_stats()
     );
 }
 
+// INVARIANT : le chemin « attempt rend false » DOIT paniquer (VenueFailed),
+// jamais retourner. C'est lui qui garantit le revert INTEGRAL quand la venue
+// a execute mais que `attempt` a rendu false (retour indecodable,
+// conversion) : les fonds sont proteges par l'atomicite de la transaction,
+// pas par le jugement local.
 #[test]
-fn fallback_preferred_serves_under_min_aqua_serves() {
+fn venue_panicking_fails_with_venue_failed_and_reverts_funds() {
     let f = swap_setup();
-    // Serve sous min_out : le mock revert (min propage), comme une venue
-    // reelle ; le fallback doit traverser vers Aquarius.
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(MIN_OUT - 1));
-    MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
-    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
-    set_aqua_registry(&f, &pool_hash(&f.env));
-
-    let result = f.router.swap_exact_in(
-        &f.user,
-        &f.token_in.address,
-        &f.token_out.address,
-        &AMOUNT_IN,
-        &MIN_OUT,
-        &Venue::SoroswapAggregator,
-    );
-
-    assert_eq!(
-        result,
-        SwapResult {
-            amount_out: SERVED_OUT,
-            venue: Venue::AquariusRouter,
-            fee: AQUARIUS_FEE,
-        }
-    );
-    assert_eq!(f.token_in.balance(&f.user), 0);
-    assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
-    assert_eq!(
-        f.router
-            .pair_stats(&f.token_in.address, &f.token_out.address),
-        PairStats {
-            volume_in: AMOUNT_IN,
-            volume_out: SERVED_OUT,
-            fees: AQUARIUS_FEE,
-            swaps: 1,
-        }
-    );
-}
-
-// Complement du test Task 4 (Panic + registre vide) : ici les DEUX venues
-// sont presentes et executent, et les deux paniquent.
-#[test]
-fn both_venues_present_and_panicking_reverts_funds() {
-    let f = swap_setup();
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Panic);
     MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Panic);
     set_aqua_registry(&f, &pool_hash(&f.env));
 
@@ -593,11 +426,12 @@ fn both_venues_present_and_panicking_reverts_funds() {
         &f.token_out.address,
         &AMOUNT_IN,
         &MIN_OUT,
-        &Venue::SoroswapAggregator,
     );
 
-    assert_eq!(result, Err(Ok(RouterError::AllVenuesFailed.into())));
-    // Atomicite : `from` n'a rien perdu, sur AUCUN des deux tokens.
+    assert_eq!(result, Err(Ok(RouterError::VenueFailed.into())));
+    // Atomicite : le transfert entrant (from -> routeur) a eu lieu AVANT la
+    // panique, il est integralement annule avec elle. `from` n'a rien perdu,
+    // sur AUCUN des deux tokens.
     assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
     assert_eq!(f.token_out.balance(&f.user), 0);
     assert_eq!(f.token_in.balance(&f.router.address), 0);
@@ -608,53 +442,14 @@ fn both_venues_present_and_panicking_reverts_funds() {
     );
 }
 
+// Borne EXACTE du jugement min-out : servir exactement min_out est un succes
+// (amount_out >= min_out, inclusif). Fige la frontiere entre swap servi et
+// SlippageExceeded : une mutation >= -> > tue ce test.
 #[test]
-fn preferred_aqua_without_registry_falls_back_to_soroswap() {
+fn swap_serving_exactly_min_out_succeeds() {
     let f = swap_setup();
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(SERVED_OUT));
-    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &SERVED_OUT);
-    // Registre Aqua VIDE : la venue preferee rend false en interne, sans
-    // appel au mock (marqueur absent, cf. assertion finale).
-
-    let result = f.router.swap_exact_in(
-        &f.user,
-        &f.token_in.address,
-        &f.token_out.address,
-        &AMOUNT_IN,
-        &MIN_OUT,
-        &Venue::AquariusRouter,
-    );
-
-    assert_eq!(
-        result,
-        SwapResult {
-            amount_out: SERVED_OUT,
-            venue: Venue::SoroswapAggregator,
-            fee: SOROSWAP_FEE,
-        }
-    );
-    assert_eq!(f.token_in.balance(&f.user), 0);
-    assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
-    assert_eq!(
-        f.router
-            .pair_stats(&f.token_in.address, &f.token_out.address),
-        PairStats {
-            volume_in: AMOUNT_IN,
-            volume_out: SERVED_OUT,
-            fees: SOROSWAP_FEE,
-            swaps: 1,
-        }
-    );
-    assert!(!MockAquaClient::new(&f.env, &f.aquarius).was_called());
-}
-
-// Chemin nominal Aquarius : valide de bout en bout, au niveau unitaire, la
-// pre-autorisation du tirage par Aqua et le trajet i128 -> u128 -> i128.
-#[test]
-fn preferred_aqua_nominal_serves_with_registry() {
-    let f = swap_setup();
-    MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
-    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
+    MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(MIN_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &MIN_OUT);
     set_aqua_registry(&f, &pool_hash(&f.env));
 
     let result = f.router.swap_exact_in(
@@ -663,59 +458,13 @@ fn preferred_aqua_nominal_serves_with_registry() {
         &f.token_out.address,
         &AMOUNT_IN,
         &MIN_OUT,
-        &Venue::AquariusRouter,
-    );
-
-    assert_eq!(
-        result,
-        SwapResult {
-            amount_out: SERVED_OUT,
-            venue: Venue::AquariusRouter,
-            fee: AQUARIUS_FEE,
-        }
-    );
-    assert_eq!(f.token_in.balance(&f.user), 0);
-    assert_eq!(f.token_out.balance(&f.user), SERVED_OUT);
-    assert_eq!(f.token_in.balance(&f.router.address), 0);
-    assert_eq!(f.token_out.balance(&f.router.address), 0);
-    assert_eq!(
-        f.router
-            .pair_stats(&f.token_in.address, &f.token_out.address),
-        PairStats {
-            volume_in: AMOUNT_IN,
-            volume_out: SERVED_OUT,
-            fees: AQUARIUS_FEE,
-            swaps: 1,
-        }
-    );
-    // La preferee a servi : le secours n'a pas ete invoque.
-    assert!(!MockAggregatorClient::new(&f.env, &f.soroswap).was_called());
-}
-
-// Borne EXACTE du jugement min-out : servir exactement min_out est un succes
-// (received >= min_out, inclusif). Fige la frontiere entre swap servi et
-// SlippageExceeded : une mutation >= -> > tue ce test.
-#[test]
-fn swap_serving_exactly_min_out_succeeds() {
-    let f = swap_setup();
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(MIN_OUT));
-    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &MIN_OUT);
-
-    let result = f.router.swap_exact_in(
-        &f.user,
-        &f.token_in.address,
-        &f.token_out.address,
-        &AMOUNT_IN,
-        &MIN_OUT,
-        &Venue::SoroswapAggregator,
     );
 
     assert_eq!(
         result,
         SwapResult {
             amount_out: MIN_OUT,
-            venue: Venue::SoroswapAggregator,
-            fee: SOROSWAP_FEE,
+            fee: AQUARIUS_FEE,
         }
     );
     assert_eq!(f.token_in.balance(&f.user), 0);
@@ -726,22 +475,26 @@ fn swap_serving_exactly_min_out_succeeds() {
         PairStats {
             volume_in: AMOUNT_IN,
             volume_out: MIN_OUT,
-            fees: SOROSWAP_FEE,
+            fees: AQUARIUS_FEE,
             swaps: 1,
         }
     );
 }
 
-// Suivi de revue Task 4 : la branche SlippageExceeded etait inatteignable
-// avec Serve (le mock revert sous le min). ServeIgnoringMin incarne la venue
-// MENTEUSE : elle annonce succes en servant sous min_out ; la defense en
-// profondeur du routeur (jugement sur delta de solde) doit tout revert.
+// La branche SlippageExceeded est inatteignable avec Serve (le mock revert
+// sous le min). ServeIgnoringMin incarne la venue MENTEUSE : elle annonce
+// succes en servant sous min_out ; la defense en profondeur du routeur
+// (jugement sur delta de solde) doit tout revert. Ce controle prend de
+// l'importance depuis le passage mono-venue : il est desormais la SEULE
+// protection contre une venue qui se comporte mal, sans secours pour
+// rattraper.
 #[test]
 fn lying_venue_serving_under_min_hits_slippage_exceeded() {
     let f = swap_setup();
-    MockAggregatorClient::new(&f.env, &f.soroswap)
+    MockAquaClient::new(&f.env, &f.aquarius)
         .set_behavior(&MockBehavior::ServeIgnoringMin(MIN_OUT - 1));
-    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &(MIN_OUT - 1));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &(MIN_OUT - 1));
+    set_aqua_registry(&f, &pool_hash(&f.env));
 
     let result = f.router.try_swap_exact_in(
         &f.user,
@@ -749,7 +502,6 @@ fn lying_venue_serving_under_min_hits_slippage_exceeded() {
         &f.token_out.address,
         &AMOUNT_IN,
         &MIN_OUT,
-        &Venue::SoroswapAggregator,
     );
 
     assert_eq!(result, Err(Ok(RouterError::SlippageExceeded.into())));
@@ -764,25 +516,20 @@ fn lying_venue_serving_under_min_hits_slippage_exceeded() {
     );
 }
 
-// Temoin de l'invariant AllVenuesFailed (suivi de revue Task 5) : une venue
-// qui EXECUTE reellement (tire token_in du routeur, sert token_out) puis
-// retourne un montant inconvertible (> i128::MAX) rend attempt false AVANT
-// tout jugement de delta (aqua.rs : Ok(Ok(out)) inconvertible -> false).
-// Le solde token_in du routeur etant vide apres le tirage d'Aqua, le tirage
-// de la venue de secours echoue -> AllVenuesFailed -> revert INTEGRAL : les
-// fonds sont proteges par l'atomicite de la transaction, pas par le
-// jugement local (lib.rs, commentaire d'invariant).
+// Temoin de l'invariant VenueFailed : une venue qui EXECUTE reellement (tire
+// token_in du routeur, sert token_out) puis retourne un montant inconvertible
+// (> i128::MAX) rend attempt false AVANT tout jugement de delta (aqua.rs :
+// Ok(Ok(out)) inconvertible -> false). Le routeur panique alors sans regarder
+// son solde, et le revert INTEGRAL protege les fonds : c'est l'atomicite de
+// la transaction qui garantit la restitution, pas le jugement local. Sous
+// l'architecture a deux venues, ce chemin passait par un fallback qui
+// echouait a son tour ; il est desormais direct, le temoin reste le meme.
 #[test]
 fn venue_executing_but_returning_inconvertible_reverts_all() {
     let f = swap_setup();
     MockAquaClient::new(&f.env, &f.aquarius)
         .set_behavior(&MockBehavior::ServeReturningHuge(SERVED_OUT));
     StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
-    // Soroswap PRETE a servir : si le routeur jugeait le delta d'Aqua
-    // (SERVED_OUT >= MIN_OUT) ou si Soroswap pouvait tirer, le swap
-    // reussirait ; AllVenuesFailed prouve donc les deux mecanismes.
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(SERVED_OUT));
-    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &SERVED_OUT);
     set_aqua_registry(&f, &pool_hash(&f.env));
 
     let result = f.router.try_swap_exact_in(
@@ -791,12 +538,15 @@ fn venue_executing_but_returning_inconvertible_reverts_all() {
         &f.token_out.address,
         &AMOUNT_IN,
         &MIN_OUT,
-        &Venue::AquariusRouter,
     );
 
-    assert_eq!(result, Err(Ok(RouterError::AllVenuesFailed.into())));
-    // Revert integral : `from` intact sur les deux tokens, routeur vide,
-    // les mocks retrouvent leur pre-financement.
+    // Le delta de solde du routeur aurait pourtant satisfait min_out
+    // (SERVED_OUT >= MIN_OUT) : la panique prouve que le retour indecodable
+    // prime, et que le routeur ne rattrape pas une venue qui ment sur ce
+    // qu'elle a fait.
+    assert_eq!(result, Err(Ok(RouterError::VenueFailed.into())));
+    // Revert integral : `from` intact sur les deux tokens, routeur vide, le
+    // mock retrouve son pre-financement.
     assert_eq!(f.token_in.balance(&f.user), AMOUNT_IN);
     assert_eq!(f.token_out.balance(&f.user), 0);
     assert_eq!(f.token_in.balance(&f.router.address), 0);
@@ -812,21 +562,15 @@ fn venue_executing_but_returning_inconvertible_reverts_all() {
 
 #[test]
 fn initialize_rejects_fee_bps_above_100_percent() {
-    // La garde couvre chacune des deux venues independamment.
-    for (soroswap_bps, aquarius_bps) in [(10_001_u32, AQUARIUS_FEE_BPS), (SOROSWAP_FEE_BPS, 10_001)]
-    {
-        let env = Env::default();
-        env.mock_all_auths();
-        let admin = Address::generate(&env);
-        let soroswap = Address::generate(&env);
-        let aquarius = Address::generate(&env);
-        let router = SwapRouterClient::new(&env, &env.register(SwapRouter, ()));
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let aquarius = Address::generate(&env);
+    let router = SwapRouterClient::new(&env, &env.register(SwapRouter, ()));
 
-        let result =
-            router.try_initialize(&admin, &soroswap, &aquarius, &soroswap_bps, &aquarius_bps);
+    let result = router.try_initialize(&admin, &aquarius, &10_001);
 
-        assert_eq!(result, Err(Ok(RouterError::InvalidFeeBps.into())));
-    }
+    assert_eq!(result, Err(Ok(RouterError::InvalidFeeBps.into())));
 }
 
 #[test]
@@ -835,14 +579,13 @@ fn initialize_accepts_fee_bps_at_100_percent() {
     let env = Env::default();
     env.mock_all_auths();
     let admin = Address::generate(&env);
-    let soroswap = Address::generate(&env);
     let aquarius = Address::generate(&env);
     let router = SwapRouterClient::new(&env, &env.register(SwapRouter, ()));
 
-    router.initialize(&admin, &soroswap, &aquarius, &10_000, &10_000);
+    router.initialize(&admin, &aquarius, &10_000);
 }
 
-/// Suivi de revue Task 3 : observation des auths enregistrees.
+/// Observation des auths enregistrees.
 ///
 /// env.auths() ne restitue que les account trackers (require_auth satisfaits
 /// par une entree d'auth d'adresse) : les pre-autorisations
@@ -860,8 +603,9 @@ fn initialize_accepts_fee_bps_at_100_percent() {
 #[test]
 fn swap_records_only_user_auth_venue_pull_preauthorized() {
     let f = swap_setup();
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(SERVED_OUT));
-    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &SERVED_OUT);
+    MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
+    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
+    set_aqua_registry(&f, &pool_hash(&f.env));
 
     f.router.swap_exact_in(
         &f.user,
@@ -869,7 +613,6 @@ fn swap_records_only_user_auth_venue_pull_preauthorized() {
         &f.token_out.address,
         &AMOUNT_IN,
         &MIN_OUT,
-        &Venue::SoroswapAggregator,
     );
 
     let auths = f.env.auths();
@@ -892,7 +635,6 @@ fn swap_records_only_user_auth_venue_pull_preauthorized() {
                         f.token_out.address.clone(),
                         AMOUNT_IN,
                         MIN_OUT,
-                        Venue::SoroswapAggregator,
                     )
                         .into_val(&f.env),
                 )),
@@ -923,13 +665,7 @@ fn set_aqua_pool_rejects_non_admin() {
     let token_a = Address::generate(&env);
     let token_b = Address::generate(&env);
     let router = SwapRouterClient::new(&env, &env.register(SwapRouter, ()));
-    router.initialize(
-        &admin,
-        &Address::generate(&env),
-        &Address::generate(&env),
-        &SOROSWAP_FEE_BPS,
-        &AQUARIUS_FEE_BPS,
-    );
+    router.initialize(&admin, &Address::generate(&env), &AQUARIUS_FEE_BPS);
     let hash = pool_hash(&env);
 
     env.mock_auths(&[MockAuth {
@@ -983,7 +719,7 @@ fn pair_stats_defaults_to_zeros() {
     assert_eq!(f.router.pair_stats(&token_in, &token_out), zero_stats());
 }
 
-// --- Events #[contractevent] (Task 7) : schema D6a, venue EFFECTIVE.
+// --- Events #[contractevent] (Task 7) : schema D6a.
 //
 // Semantique de env.events().all() VERIFIEE dans soroban-sdk 25.3.2 : le test
 // Env active l'invocation metering (sdk env.rs, new_for_testutils), qui VIDE
@@ -994,50 +730,8 @@ fn pair_stats_defaults_to_zeros() {
 // immediatement apres l'appel sous test, comme le fait deja le vault.
 
 #[test]
-fn swap_emits_event_with_full_schema_and_effective_venue() {
+fn swap_emits_event_with_full_schema() {
     let f = swap_setup();
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Serve(SERVED_OUT));
-    StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.soroswap, &SERVED_OUT);
-
-    f.router.swap_exact_in(
-        &f.user,
-        &f.token_in.address,
-        &f.token_out.address,
-        &AMOUNT_IN,
-        &MIN_OUT,
-        &Venue::SoroswapAggregator,
-    );
-
-    // Comparaison XDR complete (topics ET data) via Event::to_xdr : le seul
-    // event du routeur dans l'invocation est `swap` (les transferts token
-    // sont emis par les contrats token, filtres par filter_by_contract).
-    assert_eq!(
-        f.env.events().all().filter_by_contract(&f.router.address),
-        [SwapEvent {
-            from: f.user.clone(),
-            token_in: f.token_in.address.clone(),
-            token_out: f.token_out.address.clone(),
-            amount_in: AMOUNT_IN,
-            amount_out: SERVED_OUT,
-            venue: Venue::SoroswapAggregator,
-            preferred: Venue::SoroswapAggregator,
-            fee: SOROSWAP_FEE,
-            min_out: MIN_OUT,
-        }
-        .to_xdr(&f.env, &f.router.address)]
-    );
-}
-
-// Cas fallback, LE cas discriminant du champ preferred : la preferee
-// (SoroswapAggregator) panique, le secours sert -> l'event porte a la fois
-// la venue EFFECTIVE (AquariusRouter, meme exigence que SwapResult et les
-// stats, fee au bareme de la venue qui a servi) et la venue PREFEREE :
-// preferred != venue signale le fallback au consommateur du seul flux
-// d'events.
-#[test]
-fn swap_event_carries_effective_venue_on_fallback() {
-    let f = swap_setup();
-    MockAggregatorClient::new(&f.env, &f.soroswap).set_behavior(&MockBehavior::Panic);
     MockAquaClient::new(&f.env, &f.aquarius).set_behavior(&MockBehavior::Serve(SERVED_OUT));
     StellarAssetClient::new(&f.env, &f.token_out.address).mint(&f.aquarius, &SERVED_OUT);
     set_aqua_registry(&f, &pool_hash(&f.env));
@@ -1048,9 +742,13 @@ fn swap_event_carries_effective_venue_on_fallback() {
         &f.token_out.address,
         &AMOUNT_IN,
         &MIN_OUT,
-        &Venue::SoroswapAggregator,
     );
 
+    // Comparaison XDR complete (topics ET data) via Event::to_xdr : le seul
+    // event du routeur dans l'invocation est `swap` (les transferts token
+    // sont emis par les contrats token, filtres par filter_by_contract).
+    // set_aqua_pool a eu lieu dans une invocation racine ANTERIEURE, son
+    // event ne figure donc pas ici (cf. semantique de all() ci-dessus).
     assert_eq!(
         f.env.events().all().filter_by_contract(&f.router.address),
         [SwapEvent {
@@ -1059,8 +757,6 @@ fn swap_event_carries_effective_venue_on_fallback() {
             token_out: f.token_out.address.clone(),
             amount_in: AMOUNT_IN,
             amount_out: SERVED_OUT,
-            venue: Venue::AquariusRouter,
-            preferred: Venue::SoroswapAggregator,
             fee: AQUARIUS_FEE,
             min_out: MIN_OUT,
         }
@@ -1099,8 +795,8 @@ fn set_aqua_pool_emits_event_with_sorted_pair() {
 }
 
 // Suivi de revue Task 6 : paire degeneree (token_a == token_b) rejetee en
-// erreur typee -- sans cette garde, l'entree n'aurait aucune voie de
-// suppression (pas de deleter en D4). Aucun event sur rejet.
+// erreur typee, sans cette garde l'entree n'aurait aucune voie de suppression
+// (pas de deleter en D4). Aucun event sur rejet.
 #[test]
 fn set_aqua_pool_rejects_same_token_without_event() {
     let f = setup();
@@ -1111,7 +807,7 @@ fn set_aqua_pool_rejects_same_token_without_event() {
 
     assert_eq!(result, Err(Ok(RouterError::SameToken.into())));
     // Absence d'event : l'invocation a echoue, all() ne restitue rien d'elle
-    // (events des appels echoues filtres) -- et le registre est intact.
+    // (events des appels echoues filtres), et le registre est intact.
     assert!(f
         .env
         .events()

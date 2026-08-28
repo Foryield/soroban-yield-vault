@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Seed (re-seed) du pool Aquarius testnet USDC-Blend / EURC-Circle.
 #
-# Miroir de seed_soroswap_pool.sh cote Aquarius : cree le pool standard
-# (constant product) via init_standard_pool puis le finance via deposit.
+# Cree le pool standard Aquarius (constant product) via init_standard_pool
+# puis le finance via deposit.
 # Affiche pool_hash et adresse du pool : le pool_hash est la valeur
 # attendue par set_aqua_pool sur notre SwapRouter.
 #
@@ -35,8 +35,7 @@ NETWORK=testnet
 AQUA_ROUTER="${AQUA_ROUTER:-CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD}"
 
 # fee_fraction en 1/10 000 : liste blanche du router [10, 30, 100]
-# (miroir, liquidity_pool_router/src/constants.rs). 30 = 0,3 %, meme taux
-# nominal que Soroswap.
+# (miroir, liquidity_pool_router/src/constants.rs). 30 = 0,3 %.
 FEE_FRACTION=30
 
 ADDR=$(stellar keys address "$KEY")
@@ -96,8 +95,7 @@ echo "pool_hash=$POOL_HASH"
 echo "pool_address=$POOL_ADDRESS"
 
 # Deposit : parts attendues lues en simulation, puis min_shares a 90 %
-# (meme tolerance que le script Soroswap ; premiere fourniture = prix
-# libre, re-seed = tolerance de 10 %).
+# (premiere fourniture = prix libre, re-seed = tolerance de 10 %).
 DESIRED="[\"$AMOUNT_0\",\"$AMOUNT_1\"]"
 SHARES=$(simulate deposit --user "$ADDR" --tokens "$TOKENS_JSON" --pool_index "$POOL_HASH" --desired_amounts "$DESIRED" --min_shares 0 | python3 -c "import json,sys; print(json.load(sys.stdin)[1])")
 stellar contract invoke --id "$AQUA_ROUTER" --source "$KEY" --network $NETWORK -- \

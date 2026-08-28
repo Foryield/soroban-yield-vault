@@ -1,6 +1,6 @@
 [package]
 name = "swap-router"
-description = "ForYield SwapRouter - best-execution Soroswap/Aquarius, min-out, fallback atomique"
+description = "ForYield SwapRouter - venue Aquarius, min-out, comptabilite de frais"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

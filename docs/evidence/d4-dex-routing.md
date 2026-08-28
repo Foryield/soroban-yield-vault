@@ -1,4 +1,11 @@
-# D4 — DEX Routing (Soroswap + Aquarius)
+# D4 — DEX Routing (Aquarius)
+
+> **Statut au 2026-08-28** : la venue Soroswap a ete retiree du projet suite a
+> sa compromission, et le routeur est devenu mono-venue. Les sections datees
+> de juillet 2026 ci-dessous restent telles quelles : elles decrivent ce qui a
+> ete fait a leur date et restent vraies comme releve historique. La section
+> du 2026-08-28, en fin de document, enonce l'incident, ce qui a ete retire et
+> ce qui le remplace.
 
 ## 2026-07-21 — Soroswap pair seeded (groundwork)
 
@@ -354,3 +361,168 @@ on-chain hash:
   contracts.
 
 Outside this evidence pack: the video walkthrough, recorded separately.
+
+## 2026-08-28 : Soroswap removed, router reduced to a single Aquarius venue
+
+- **What happened**: Soroswap was reported compromised. The report came from
+  ForYield's own smart contract developer and was confirmed by The Arch during
+  August 2026. No public source was found: searches on 2026-08-28 across
+  exploit trackers, 2026 DeFi incident coverage and Soroswap's own repositories
+  and documentation turned up nothing on an incident (only their published
+  OtterSec audit, which is an audit, not a breach). The exact scope was
+  therefore unknown, and the decision taken was the worst case: Soroswap is
+  treated as fully compromised and removed from the project.
+- **Exposure, measured before acting**: the deployed router
+  `CC25CDFP3L65HHHTTFTEYOCXAVQRDVXGG7RWN7EGYB3JMWTTXB2PDAKK` still routes to
+  the compromised aggregator and cannot be neutralised on-chain (venues are
+  immutable, there is no pause function: removing a venue means redeploying).
+  Exposure is nonetheless limited: no ForYield contract calls the SwapRouter
+  (the rebalance is a chain of three manual transactions), and neither `web/`
+  nor `onboarding/` references it. The only caller is the ops key. The contract
+  is **deprecated as of this date and must not be called**.
+- **Phoenix evaluated and ruled out** (the natural replacement, exposed as
+  `protocol_id 1` in the aggregator ABI): `create_liquidity_pool` on the
+  Phoenix factory requires the sender to be in `whitelisted_accounts` and
+  panics with `NotAuthorized` otherwise
+  (`contracts/factory/src/contract.rs:116-122` of
+  `Phoenix-Protocol-Group/phoenix-contracts`, verified 2026-08-28). Both our
+  existing pools were created **permissionlessly** by the ops key; the
+  USDC-Blend / EURC-Circle pair therefore cannot be seeded on Phoenix without
+  their team's intervention. Phoenix also publishes no testnet address registry
+  (repository root, `scripts/` and `docs/` all checked), and the only Phoenix
+  address we held came from `get_adapters` on the compromised aggregator, so it
+  is no longer a trusted source.
+- **Decision**: Aquarius only, no replacement venue. The atomic fallback is
+  gone and Aquarius becomes a single point of failure. This is an accepted
+  trade-off, recorded here rather than left implicit.
+- **What the contract still guarantees**: mandatory `min_out`, re-checked by
+  the router on its own balance delta (defence in depth against a venue that
+  misreports what it served), integral revert on any failure, per-pair swap-fee
+  accounting, the admin registry of Aqua pools, and a narrow
+  transaction-scoped pre-authorisation of the venue's token pull.
+- **Typed errors, changed deliberately**: code `5` (`AquaPoolNotSet`) is
+  reintroduced with its original meaning. It had been retired when the
+  two-venue architecture routed an empty registry into the fallback; without a
+  fallback to traverse, an unregistered pool is a clean ops condition the
+  client must be able to tell apart from a venue failure. Code `6`
+  (`AllVenuesFailed`) keeps its code and its meaning under the singular name
+  `VenueFailed`. Published codes never change meaning.
+- **API changed (breaking)**: `enum Venue`, the `preferred` parameter and the
+  `venue` / `preferred` fields of `SwapResult` and the `swap` event are
+  removed. A single-variant enum and a constant field teach a consumer nothing.
+- **Supply chain**: every vendored test wasm came from `soroswap/aggregator`,
+  including the five Aquarius binaries (the canonical `AquaToken/soroban-amm`
+  repository is 404). `scripts/fetch_test_wasms.sh` no longer downloads
+  anything; the Aquarius binaries are kept, pinned to commit `84de10e0` of
+  July 2026, which predates the reported incident, and their SHA-256 sums are
+  verified on every test run. Residual risk, stated rather than hidden: if the
+  compromise predated the pinned commit and touched the Aqua binaries
+  themselves, our test fixtures would reflect it. Nothing indicates it, and
+  these binaries are used for tests only, never for deployment.
+- **Test coverage after removal**: 34 router tests green, including three real
+  Aquarius stack fixtures. Two are worth naming, because they cover exactly
+  what the removal changed:
+  `real_empty_aqua_pool_fails_with_venue_failed_and_reverts_funds` proves the
+  new single-point-of-failure behaviour against the real stack, and
+  `swap_without_registered_pool_fails_with_aqua_pool_not_set` proves the
+  reintroduced error code. The vault-to-vault rebalance chain
+  (`test_rebalance.rs`) was rewired onto the Aquarius stack and still crosses
+  the boundary between the two contracts.
+
+### Requirement checklist, revised
+
+The closure checklist of 2026-07-22 above is superseded on two lines:
+
+- **"Soroswap aggregator as primary venue"**: now moot. The venue was removed
+  for the reason documented in this section. Recorded as a deliberate,
+  motivated withdrawal rather than an unmet requirement.
+- **"Aquarius router as fallback"**: now moot. There is no second venue to fall
+  back from, and no fallback mechanism remains in the contract.
+
+The other requirements stand: min-out slippage protection, swap-fee accounting
+and the USDC<->EURC rebalance are unchanged in substance and keep their proofs,
+with the tests rewired onto the Aquarius stack.
+
+## 2026-08-28 : pool re-seeded, single-venue router deployed, first Aquarius swap
+
+- **What it proves**: the single-venue D4 loop is live on testnet, and a swap
+  has been **served by Aquarius itself** for the first time in the project's
+  history. Until this date, every swap the router had ever served on-chain was
+  served by Soroswap: the two July swaps directly, and the single
+  `preferred = Aquarius` transaction by falling back. Aquarius execution had
+  only ever been proven against the vendored wasm. That gap is now closed.
+- **Pool drained, then rebuilt**: reserves read on 2026-08-28 were
+  `798917938 / 127208` (79.89 USDC / 0.0127 EURC), against 1.0 / 1.0 at the
+  July seed. This was NOT a compromise: third parties on testnet swapped
+  USDC for EURC against our deliberately shallow pool, which is what a
+  permissionless AMM is for. The invariant confirms it, the reserve product
+  rose from 1.000e14 to 1.016e14, the increase being the 0.3% fees collected
+  on the way. Nothing was taken; everything was exchanged.
+- **We were the sole liquidity provider**: `get_user_shares` returned
+  `10000000` against a `get_total_shares` of `10000000`, i.e. 100% of the
+  pool. The 79.89 USDC sitting in it were therefore ours, and the position had
+  been profitable in test terms. Rebalancing the pool by proportional deposit
+  was impossible (the 6280:1 ratio would have required ~24 255 USDC against
+  the 3.86 EURC available), so the liquidity was withdrawn in full and the
+  pool re-seeded from scratch. No pool creation fee was paid: the pool already
+  exists, only the deposit was replayed, and the `pool_hash` is unchanged.
+  - `withdraw` of all 10000000 shares, returning `798917938` USDC and `127208`
+    EURC, reserves back to zero (`min_amounts` tightened onto the simulated
+    figures rather than left at zero):
+    [80108d6337ebe436012c127208d25cb57dab442cccb23efc562927f1b4cebe9b](https://stellar.expert/explorer/testnet/tx/80108d6337ebe436012c127208d25cb57dab442cccb23efc562927f1b4cebe9b)
+  - re-seed at 1.5 USDC / 1.5 EURC via `scripts/seed_aquarius_pool.sh`
+    (creation skipped, deposit replayed, `15000000` LP shares minted):
+    [e435fa3410a2d86d8ed643aedbbb50641c46fa863223c732121a3eb12bf162af](https://stellar.expert/explorer/testnet/tx/e435fa3410a2d86d8ed643aedbbb50641c46fa863223c732121a3eb12bf162af)
+  - **Sizing, deliberate**: 1.5 / 1.5 rather than the whole 3.87 EURC
+    available. Deep enough for a demonstration swap, and it keeps roughly
+    2.3 EURC in reserve for the next re-seed. The pool WILL be drained of its
+    EURC again by the same buyers, on the same mechanism as above; expect to
+    re-seed shortly before any demonstration.
+- **SwapRouter redeployed** (single venue, contract rebuilt from the
+  mono-venue source):
+  - **Contract ID**: `CCQJWT73HTZUVLM2UUPUA5VR53Z5MTHCRZDVF5RODH3ORMVALNQQY6EA`
+    ([explorer](https://stellar.expert/explorer/testnet/contract/CCQJWT73HTZUVLM2UUPUA5VR53Z5MTHCRZDVF5RODH3ORMVALNQQY6EA)),
+    wasm hash
+    `6a8fe8c6bd9312759fe42b9da40ebe38043337a43d5404a0d71c337b03d3d82d`.
+    Admin = ops key `d1-ops`.
+  - wasm upload:
+    [46aaac1a545c92357499b0f29e87ceeb6b2cb2b401ba0c2c38e288b520d4101f](https://stellar.expert/explorer/testnet/tx/46aaac1a545c92357499b0f29e87ceeb6b2cb2b401ba0c2c38e288b520d4101f)
+  - deploy:
+    [abaded9ee980056de0df57595b2bf87169288735159a8dc44c06740f87a352f3](https://stellar.expert/explorer/testnet/tx/abaded9ee980056de0df57595b2bf87169288735159a8dc44c06740f87a352f3)
+  - `initialize` (Aquarius router only, fee bps 30, matching the pool's tier):
+    [de75c7d56da374f4aa5550d1b0c5b6f32371f5cae45f70a0461b466f54d61885](https://stellar.expert/explorer/testnet/tx/de75c7d56da374f4aa5550d1b0c5b6f32371f5cae45f70a0461b466f54d61885)
+  - `set_aqua_pool`:
+    [61f9e63bf4987c9831448b22afcc0c0aabf3e3695bcb2511dac654da8af03998](https://stellar.expert/explorer/testnet/tx/61f9e63bf4987c9831448b22afcc0c0aabf3e3695bcb2511dac654da8af03998)
+  - post-deploy `aqua_pool_of(USDC, EURC)` =
+    `9ac7a9cde23ac2ada11105eeaa42e43c2ea8332ca0aa8f41f58d7160274d718e`,
+    unchanged from the July seed.
+- **First swap actually served by Aquarius**: quoted by simulation
+  (`scripts/quote_aqua.sh`, `estimate_swap` = `1760032` for `2000000` in),
+  `min_out` calibrated at the quote minus a 1% margin (`1742431`). Served
+  `1760032` EURC, **exactly the quote, to the unit**:
+  [13b86dd9bbed50ae9968de434003cf4020951cc693c275fd9e4122455fffb81f](https://stellar.expert/explorer/testnet/tx/13b86dd9bbed50ae9968de434003cf4020951cc693c275fd9e4122455fffb81f)
+  - the decoded `swap` event carries the new schema, with no `venue` and no
+    `preferred` field: `from`, `token_in`, `token_out`, `amount_in: 2000000`,
+    `amount_out: 1760032`, `fee: 6000`, `min_out: 1742431` ;
+  - the transaction's committed events include the pool's own `trade` event
+    (`2000000` in, `1760032` out, LP fee `3000`) emitted by
+    `CDYPTHT6…QDJV`, which is what proves the execution went through the
+    Aquarius pool rather than through anything the router claims ;
+  - **sizing note**: 0.2 USDC rather than the 1.0 USDC of the July
+    demonstration. Against 1.5 / 1.5 reserves, 1.0 USDC would have taken a 40%
+    price impact; 0.2 keeps the impact representative.
+- **Post-swap verification** (read on-chain):
+  - `pair_stats(USDC, EURC)` = `{volume_in: 2000000, volume_out: 1760032,
+    fees: 6000, swaps: 1}`, exact to the unit, fee = `2000000 x 30 / 10000` ;
+  - router balances nil on both tokens, the invariant holds ;
+  - `swap_exact_in` on an UNREGISTERED pair fails in simulation with
+    `Error(Contract, #5)` = `AquaPoolNotSet`, proving the reintroduced error
+    code on the deployed contract, nothing submitted.
+
+### Still open
+
+- A second venue, if one can be found that allows permissionless pool creation
+  for our pair. Until then the router has no fallback, which is the accepted
+  trade-off documented in the section above.
+- Re-seeding the Aquarius pool before any demonstration, the drain being a
+  recurring condition rather than a one-off.

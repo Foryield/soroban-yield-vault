@@ -24,7 +24,7 @@
 //! gele la reserve, les retraits echouent atomiquement (aucune perte de parts)
 //! jusqu'au degel. Chemin de migration/divest : Tranche 2.
 //!
-//! Hors scope (Tranches 2-3) : routing Soroswap/Aquarius, DeFindex,
+//! Hors scope (Tranches 2-3) : routing Aquarius, DeFindex,
 //! frais high-water mark, parts SEP-41 transferables.
 
 use blend_contract_sdk::pool as blend;

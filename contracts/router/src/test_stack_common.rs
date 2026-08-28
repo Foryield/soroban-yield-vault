@@ -6,59 +6,37 @@
 // L'arite des clients generes par contractimport! est dictee par les ABI
 // externes (8-9 arguments), meme justification que dans venues/.
 #![allow(clippy::too_many_arguments)]
-//! Socle commun des fixtures « stack reelle » (tasks 10 et 11, suivi de revue
-//! Task 10) : env + budget, tokens SAC USDC/EURC, financement de
-//! l'utilisateur, routeur ForYield, deploiement du stack Soroswap complet,
-//! helper de reordonnancement des reserves et gardes anti-derive des wasm
-//! vendorises (aggregator local + manifeste SHA256SUMS).
-//! La fixture Aqua (test_aqua_stack.rs) reutilise ce socle ET le stack
-//! Soroswap pour le test de fallback reel ; la fixture Soroswap
-//! (test_soroswap_stack.rs) n'y ajoute que ses derivations propres.
+//! Socle commun de la fixture « stack reelle » : env + budget, tokens SAC
+//! USDC/EURC, financement de l'utilisateur, routeur ForYield, helper de
+//! reordonnancement des reserves et garde anti-derive des wasm vendorises
+//! (manifeste SHA256SUMS).
+//!
+//! Le stack Soroswap et sa garde de wasm construit localement ont ete retires
+//! le 28/08/2026 avec la venue (cf.
+//! docs/plans/2026-08-28-retrait-soroswap-aquarius-seul.md). La fixture Aqua
+//! (test_aqua_stack.rs) est desormais la seule a batir sur ce socle.
 
 extern crate std;
 
 use super::{SwapRouter, SwapRouterClient};
 use soroban_sdk::{
+    contract, contractimpl,
     testutils::{Address as _, Ledger},
     token::{StellarAssetClient, TokenClient},
-    Address, Bytes, Env,
+    vec, Address, Bytes, BytesN, Env, Vec,
 };
 
-pub mod factory_wasm {
-    soroban_sdk::contractimport!(file = "test_wasms/soroswap_factory.wasm");
-}
-pub mod pair_wasm {
-    soroban_sdk::contractimport!(file = "test_wasms/soroswap_pair.wasm");
-}
-pub mod router_wasm {
-    soroban_sdk::contractimport!(file = "test_wasms/soroswap_router.wasm");
-}
-pub mod aggregator_wasm {
-    soroban_sdk::contractimport!(file = "test_wasms/soroswap_aggregator.wasm");
-}
-
-/// Reserves initiales des pools : 1000 USDC / 1000 EURC (prix 1:1), memes
-/// valeurs pour les deux venues afin que les derivations soient comparables.
+/// Reserves initiales du pool : 1000 USDC / 1000 EURC (prix 1:1).
 pub const RESERVE: i128 = 1_000_0000000;
 pub const AMOUNT_IN: i128 = 5_0000000;
 pub const MIN_OUT: i128 = 4_9000000;
 
-/// fee_bps COMPTABLES du routeur ForYield par venue. Chaque fixture note en
-/// son sein laquelle des deux constantes est inerte chez elle (configuree a
-/// l'initialize mais jamais lue faute de swap conclu sur la venue).
-pub const SOROSWAP_FEE_BPS: u32 = 30;
+/// fee_bps COMPTABLE du routeur ForYield.
 pub const AQUARIUS_FEE_BPS: u32 = 10;
 
 /// Timestamp de ledger fixe et non nul : les tests de deadline comparent
 /// contre cette valeur.
 pub const LEDGER_TIME: u64 = 1_700_000_000;
-
-/// Empreinte SHA-256 consignee du wasm aggregator construit localement
-/// (test_wasms/README.md, section « construit localement ») : ce wasm est
-/// HORS de SHA256SUMS (non re-telechargeable), cette constante est sa seule
-/// garde anti-derive.
-const AGGREGATOR_WASM_SHA256_HEX: &str =
-    "4ee0fddf79d695d48e694413d8eee7ba592d38b626d94c8b4e3c54f725eb2f40";
 
 pub struct BaseFixture<'a> {
     pub env: Env,
@@ -100,31 +78,19 @@ pub fn setup_base<'a>() -> BaseFixture<'a> {
     }
 }
 
-/// Routeur ForYield enregistre et initialise sur les deux venues fournies,
-/// fee_bps du socle. Les fixtures passent une adresse SANS contrat pour une
-/// venue absente de leur perimetre (registre Aqua vide ou aggregator jamais
-/// atteint) : la venue rend false sans appel, le fallback la traverse.
-pub fn init_router<'a>(
-    base: &BaseFixture,
-    soroswap_aggregator: &Address,
-    aquarius_router: &Address,
-) -> SwapRouterClient<'a> {
+/// Routeur ForYield enregistre et initialise sur la venue fournie, fee_bps du
+/// socle.
+pub fn init_router<'a>(base: &BaseFixture, aquarius_router: &Address) -> SwapRouterClient<'a> {
     let router = SwapRouterClient::new(&base.env, &base.env.register(SwapRouter, ()));
-    router.initialize(
-        &base.admin,
-        soroswap_aggregator,
-        aquarius_router,
-        &SOROSWAP_FEE_BPS,
-        &AQUARIUS_FEE_BPS,
-    );
+    router.initialize(&base.admin, aquarius_router, &AQUARIUS_FEE_BPS);
     router
 }
 
 /// Reordonne un couple de reserves (reserve_0, reserve_1), rendu dans
-/// l'ordre des tokens TRIES par adresse (convention commune au pair Soroswap
-/// et au router Aqua), vers l'ordre fixe (usdc, eurc). L'ordre trie n'est
-/// pas deterministe entre deux runs (adresses generees) : les trois lecteurs
-/// de reserves des fixtures passent par ce helper (suivi de revue Task 11).
+/// l'ordre des tokens TRIES par adresse (convention du router Aqua), vers
+/// l'ordre fixe (usdc, eurc). L'ordre trie n'est pas deterministe entre deux
+/// runs (adresses generees) : les lecteurs de reserves des fixtures passent
+/// tous par ce helper (suivi de revue Task 11).
 pub fn order_usdc_eurc(
     usdc: &Address,
     eurc: &Address,
@@ -138,73 +104,133 @@ pub fn order_usdc_eurc(
     }
 }
 
-pub struct SoroswapStack<'a> {
-    pub aggregator: Address,
-    pub router: router_wasm::Client<'a>,
-    pub pair: pair_wasm::Client<'a>,
+pub mod aqua_router_wasm {
+    soroban_sdk::contractimport!(file = "test_wasms/soroban_liquidity_pool_router_contract.wasm");
+}
+mod aqua_pool_wasm {
+    soroban_sdk::contractimport!(file = "test_wasms/soroban_liquidity_pool_contract.wasm");
+}
+mod aqua_plane_wasm {
+    soroban_sdk::contractimport!(file = "test_wasms/soroban_liquidity_pool_plane_contract.wasm");
+}
+mod aqua_calculator_wasm {
+    soroban_sdk::contractimport!(
+        file = "test_wasms/soroban_liquidity_pool_liquidity_calculator_contract.wasm"
+    );
+}
+mod aqua_token_wasm {
+    soroban_sdk::contractimport!(file = "test_wasms/soroban_token_contract.wasm");
 }
 
-/// Stack Soroswap complet : factory (initialisee avec le hash du wasm du
-/// pair), router Soroswap, aggregator reel (initialize admin + adapter
-/// Soroswap pointant le router), paire USDC/EURC creee et alimentee
-/// RESERVE/RESERVE par add_liquidity (semantique Uniswap V2, miroir de
-/// scripts/seed_soroswap_pool.sh ; mins = desired : premiere fourniture,
-/// prix libre, aucun arrondi). Les reserves sont mintees a l'admin ici.
-pub fn deploy_soroswap_stack<'a>(base: &BaseFixture) -> SoroswapStack<'a> {
-    let env = &base.env;
-    let admin = &base.admin;
+/// fee_fraction du pool standard, en unites de 1/10 000 : 30 = 0,3 %. Le
+/// router Aqua n'accepte que la liste blanche [10, 30, 100] (miroir,
+/// liquidity_pool_router/src/constants.rs, CONSTANT_PRODUCT_FEE_AVAILABLE ;
+/// erreur BadFee=302 du spec embarque sinon).
+pub const AQUA_FEE_FRACTION: u32 = 30;
 
-    let pair_hash = env.deployer().upload_contract_wasm(pair_wasm::WASM);
-    let factory = env.register(factory_wasm::WASM, ());
-    factory_wasm::Client::new(env, &factory).initialize(admin, &pair_hash);
+/// Feed de boost factice : la chaine d'init du router Aqua EXIGE un feed
+/// (set_reward_boost_config, lu sans garde par init_standard_pool -- miroir,
+/// pool_utils.rs), et le checkpoint de rewards du deposit invoque
+/// feed.total_supply() sans try_ (miroir, rewards/src/manager.rs,
+/// get_total_locked) : l'adresse doit porter un CONTRAT exportant
+/// total_supply. Le locker feed canonique n'est pas vendorise (absent du
+/// perimetre Task 9) ; total_supply = 0 rend le boost neutre (miroir,
+/// calculate_effective_balance : total_locked = 0 -> balance effective =
+/// balance de parts, aucun effet sur les rewards ni sur le swap).
+#[contract]
+struct MockBoostFeed;
 
-    let soroswap_router_id = env.register(router_wasm::WASM, ());
-    let soroswap_router = router_wasm::Client::new(env, &soroswap_router_id);
-    soroswap_router.initialize(&factory);
-
-    let aggregator = env.register(aggregator_wasm::WASM, ());
-    aggregator_wasm::Client::new(env, &aggregator).initialize(
-        admin,
-        &soroban_sdk::vec![
-            env,
-            aggregator_wasm::Adapter {
-                protocol_id: aggregator_wasm::Protocol::Soroswap,
-                router: soroswap_router_id.clone(),
-                paused: false,
-            },
-        ],
-    );
-
-    StellarAssetClient::new(env, &base.usdc.address).mint(admin, &RESERVE);
-    StellarAssetClient::new(env, &base.eurc.address).mint(admin, &RESERVE);
-    soroswap_router.add_liquidity(
-        &base.usdc.address,
-        &base.eurc.address,
-        &RESERVE,
-        &RESERVE,
-        &RESERVE,
-        &RESERVE,
-        admin,
-        &(LEDGER_TIME + 3600),
-    );
-    let pair = pair_wasm::Client::new(
-        env,
-        &soroswap_router.router_pair_for(&base.usdc.address, &base.eurc.address),
-    );
-
-    SoroswapStack {
-        aggregator,
-        router: soroswap_router,
-        pair,
+#[contractimpl]
+impl MockBoostFeed {
+    pub fn total_supply(_env: Env) -> u128 {
+        0
     }
 }
 
-/// Octets embarques des 8 wasm re-telechargeables, indexes par nom de
-/// fichier : la garde vendored_wasms_match_sha256sums confronte chaque
-/// entree de SHA256SUMS a ces octets. include_bytes! plutot que les WASM
-/// des contractimport! : la garde couvre les fichiers du manifeste,
+pub struct AquaStack<'a> {
+    pub router: aqua_router_wasm::Client<'a>,
+    pub pool_index: BytesN<32>,
+}
+
+/// Chaine d'init Aqua complete depuis les wasm vendorises. Chaque etape est
+/// OBLIGATOIRE : init_standard_pool lit token_hash, reward_token, boost
+/// token/feed, plane et la config de paiement sans garde (absents ->
+/// StorageError 501, miroir pool_utils.rs / rewards/src/storage.rs). Les
+/// roles privilegies (rewards/operations/pause/emergency) retombent sur
+/// l'admin via get_role_safe : set_privileged_addrs est omis a dessein.
+/// Le calculator n'est pas exige par init_standard_pool mais fait partie du
+/// cablage de reference (aqua_setup.rs) : branche pour rester conforme.
+pub fn deploy_aqua_stack<'a>(base: &BaseFixture, with_liquidity: bool) -> AquaStack<'a> {
+    let env = &base.env;
+    let admin = &base.admin;
+
+    let pool_hash = env.deployer().upload_contract_wasm(aqua_pool_wasm::WASM);
+    let token_hash = env.deployer().upload_contract_wasm(aqua_token_wasm::WASM);
+
+    let aqua_router = aqua_router_wasm::Client::new(env, &env.register(aqua_router_wasm::WASM, ()));
+    aqua_router.init_admin(admin);
+    aqua_router.set_pool_hash(admin, &pool_hash);
+    aqua_router.set_token_hash(admin, &token_hash);
+
+    let reward_token = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    let boost_token = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
+    let boost_feed = env.register(MockBoostFeed, ());
+    aqua_router.set_reward_token(admin, &reward_token);
+    aqua_router.set_reward_boost_config(admin, &boost_token, &boost_feed);
+    // Le token de paiement est lu meme a montant nul (miroir, contract.rs,
+    // init_standard_pool) : configure a 0, aucun transfert a la creation.
+    aqua_router.configure_init_pool_payment(admin, &reward_token, &0, &0, admin);
+
+    let plane = env.register(aqua_plane_wasm::WASM, ());
+    aqua_router.set_pools_plane(admin, &plane);
+    let calculator =
+        aqua_calculator_wasm::Client::new(env, &env.register(aqua_calculator_wasm::WASM, ()));
+    calculator.init_admin(admin);
+    calculator.set_pools_plane(admin, &plane);
+    aqua_router.set_liquidity_calculator(admin, &calculator.address);
+
+    // Paire TRIEE par adresse : convention du router Aqua
+    // (assert_tokens_sorted, erreur TokensNotSorted=2002 du spec embarque),
+    // la meme que notre venue et notre registre appliquent.
+    let tokens = sorted_pair_vec(env, &base.usdc.address, &base.eurc.address);
+    let (pool_index, _pool) = aqua_router.init_standard_pool(admin, &tokens, &AQUA_FEE_FRACTION);
+
+    if with_liquidity {
+        StellarAssetClient::new(env, &base.usdc.address).mint(admin, &RESERVE);
+        StellarAssetClient::new(env, &base.eurc.address).mint(admin, &RESERVE);
+        aqua_router.deposit(
+            admin,
+            &tokens,
+            &pool_index,
+            &vec![env, RESERVE as u128, RESERVE as u128],
+            &0,
+        );
+    }
+
+    AquaStack {
+        router: aqua_router,
+        pool_index,
+    }
+}
+
+pub fn sorted_pair_vec(env: &Env, a: &Address, b: &Address) -> Vec<Address> {
+    if a < b {
+        vec![env, a.clone(), b.clone()]
+    } else {
+        vec![env, b.clone(), a.clone()]
+    }
+}
+
+/// Octets embarques des 5 wasm vendorises, indexes par nom de fichier : la
+/// garde vendored_wasms_match_sha256sums confronte chaque entree de
+/// SHA256SUMS a ces octets. include_bytes! plutot que les WASM des
+/// contractimport! : la garde couvre les fichiers du manifeste,
 /// independamment de ce que les fixtures importent.
-const VENDORED_WASMS: [(&str, &[u8]); 8] = [
+const VENDORED_WASMS: [(&str, &[u8]); 5] = [
     (
         "soroban_liquidity_pool_contract.wasm",
         include_bytes!("../test_wasms/soroban_liquidity_pool_contract.wasm"),
@@ -224,18 +250,6 @@ const VENDORED_WASMS: [(&str, &[u8]); 8] = [
     (
         "soroban_token_contract.wasm",
         include_bytes!("../test_wasms/soroban_token_contract.wasm"),
-    ),
-    (
-        "soroswap_factory.wasm",
-        include_bytes!("../test_wasms/soroswap_factory.wasm"),
-    ),
-    (
-        "soroswap_pair.wasm",
-        include_bytes!("../test_wasms/soroswap_pair.wasm"),
-    ),
-    (
-        "soroswap_router.wasm",
-        include_bytes!("../test_wasms/soroswap_router.wasm"),
     ),
 ];
 
@@ -263,27 +277,18 @@ fn sha256_of(env: &Env, wasm: &[u8]) -> [u8; 32] {
         .to_array()
 }
 
-/// Garde anti-derive du wasm aggregator construit localement (suivi de revue
-/// Task 10) : hors SHA256SUMS, seul ce test detecte un binaire regenere sans
-/// mise a jour du README (ou altere). SHA-256 via le host crypto de l'env de
-/// test : aucune dependance ajoutee. L'empreinte attendue est decodee depuis
-/// la chaine hex consignee, identique caractere pour caractere au README.
-#[test]
-fn locally_built_aggregator_wasm_matches_recorded_sha256() {
-    let env = Env::default();
-    assert_eq!(
-        sha256_of(&env, aggregator_wasm::WASM),
-        sha256_from_hex(AGGREGATOR_WASM_SHA256_HEX)
-    );
-}
-
-/// Garde anti-derive des 8 wasm re-telechargeables (suivi de revue Task 11,
-/// durcissement supply-chain du repo public) : SHA256SUMS est parse au
-/// moment du test et chaque entree confrontee aux octets presents sur le
-/// disque au moment de la compilation (include_bytes! est une dependance de
-/// build : tout changement de fichier force la recompilation, la garde voit
-/// donc toujours les octets courants). Complement du script fetch (qui ne verifie qu'au
-/// re-telechargement) : ici la verification court a chaque run de tests.
+/// Garde anti-derive des 5 wasm vendorises : SHA256SUMS est parse au moment
+/// du test et chaque entree confrontee aux octets presents sur le disque au
+/// moment de la compilation (include_bytes! est une dependance de build :
+/// tout changement de fichier force la recompilation, la garde voit donc
+/// toujours les octets courants).
+///
+/// Cette garde a PRIS DE L'IMPORTANCE le 28/08/2026 : la source amont de ces
+/// wasm (depot soroswap/aggregator, seul a publier les binaires Aqua, le
+/// depot canonique AquaToken/soroban-amm etant en 404) a ete coupee suite a
+/// la compromission de Soroswap. Elle est desormais la seule chose qui
+/// garantit que les binaires du depot n'ont pas ete alteres depuis leur
+/// epinglage au commit 84de10e0 de juillet 2026.
 #[test]
 fn vendored_wasms_match_sha256sums() {
     let manifest = include_str!("../test_wasms/SHA256SUMS");
@@ -307,6 +312,6 @@ fn vendored_wasms_match_sha256sums() {
     assert_eq!(
         checked,
         VENDORED_WASMS.len(),
-        "SHA256SUMS doit lister les 8 wasm vendorises"
+        "SHA256SUMS doit lister les 5 wasm vendorises"
     );
 }

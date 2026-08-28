@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# Cotation des deux venues D4 (Soroswap, Aquarius) pour USDC-Blend -> EURC,
-# par SIMULATION UNIQUEMENT : aucune transaction soumise, aucun frais.
+# Cotation de la venue D4 (Aquarius) pour USDC-Blend -> EURC, par SIMULATION
+# UNIQUEMENT : aucune transaction soumise, aucun frais.
 #
-# La best-execution du SwapRouter est off-chain (le contrat garantit min-out
-# et fallback atomique, pas la selection) : ce script est l'outil de
-# selection. Il imprime la sortie cotee par chaque venue pour un montant
-# d'entree donne et designe la meilleure ; `preferred` du swap_exact_in en
-# decoule, min_out = cotation gagnante moins la marge de slippage choisie.
+# Ce script CALIBRE min_out. Il ne choisit plus de venue : le routeur est
+# mono-venue depuis le 28/08/2026 (retrait de Soroswap, cf.
+# docs/plans/2026-08-28-retrait-soroswap-aquarius-seul.md), la
+# best-execution n'a donc plus d'objet. Ce que le contrat garantit reste
+# entier : le swap sert au moins min_out, ou tout revert. La marge de
+# slippage se choisit ici, sur la cotation imprimee.
 #
-# Soroswap : router_get_amounts_out du router canonique (la venue cote
-# elle-meme, memes maths que l'execution). Aquarius : estimate_swap du
-# router, sur CHAQUE pool de la paire rendu par get_pools (la meilleure
-# sortie gagne ; en pratique un seul pool standard 30 bps existe).
+# Aquarius : estimate_swap du router, sur CHAQUE pool de la paire rendu par
+# get_pools (la meilleure sortie gagne ; en pratique un seul pool standard
+# 30 bps existe).
 #
-# Usage : scripts/quote_venues.sh <cle> <montant_usdc_7dp>
+# Une sortie a 0 signale un pool vide ou inexistant : le swap echouerait en
+# VenueFailed. Sans seconde venue pour prendre le relais, c'est un etat
+# bloquant, a corriger par scripts/seed_aquarius_pool.sh avant toute demo.
+#
+# Usage : scripts/quote_aqua.sh <cle> <montant_usdc_7dp>
 set -euo pipefail
 
-KEY="${1:?usage: quote_venues.sh <cle> <montant_usdc_7dp>}"
+KEY="${1:?usage: quote_aqua.sh <cle> <montant_usdc_7dp>}"
 AMOUNT_IN="${2:?montant USDC en unites 7 decimales}"
 NETWORK=testnet
 
@@ -25,7 +29,6 @@ NETWORK=testnet
 AQUA_ROUTER="${AQUA_ROUTER:-CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD}"
 
 # Adresses relues aux sources canoniques, jamais codees en dur.
-SOROSWAP_ROUTER=$(curl -sf https://raw.githubusercontent.com/soroswap/core/main/public/testnet.contracts.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('ids', d)['router'])")
 USDC=$(curl -sf https://raw.githubusercontent.com/blend-capital/blend-utils/main/testnet.contracts.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('ids', d)['USDC'])")
 EURC=$(stellar contract id asset --asset EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO --network $NETWORK)
 
@@ -46,12 +49,7 @@ simulate() {
   stellar contract invoke --id "$id" --source "$KEY" --network $NETWORK --send=no -- "$@" 2>/dev/null
 }
 
-# Soroswap : le router cote [amount_in, amount_out] sur le chemin direct.
-SOROSWAP_OUT=$(simulate "$SOROSWAP_ROUTER" router_get_amounts_out \
-  --amount_in "$AMOUNT_IN" --path "[\"$USDC\",\"$EURC\"]" \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)[1])")
-
-# Aquarius : meilleure sortie parmi les pools de la paire (get_pools rend
+# Meilleure sortie parmi les pools de la paire (get_pools rend
 # {pool_hash: adresse} ; estimate_swap cote chaque pool).
 AQUA_OUT=0
 AQUA_POOL=none
@@ -66,10 +64,11 @@ for POOL_HASH in $(simulate "$AQUA_ROUTER" get_pools --tokens "$TOKENS_JSON" \
 done
 
 echo "amount_in=$AMOUNT_IN (USDC -> EURC)"
-echo "soroswap_out=$SOROSWAP_OUT (router $SOROSWAP_ROUTER)"
 echo "aquarius_out=$AQUA_OUT (router $AQUA_ROUTER pool $AQUA_POOL)"
-if [ "$SOROSWAP_OUT" -ge "$AQUA_OUT" ]; then
-  echo "best=SoroswapAggregator (preferred=0)"
-else
-  echo "best=AquariusRouter (preferred=1)"
+if [ "$AQUA_OUT" -eq 0 ]; then
+  echo "ATTENTION : aucune sortie cotee. Pool vide ou inexistant, le swap"
+  echo "echouerait en VenueFailed. Re-seed : scripts/seed_aquarius_pool.sh"
+  exit 1
 fi
+# Marge de slippage de 1 %, celle employee pour la demonstration testnet.
+echo "min_out_1pct=$(( AQUA_OUT * 99 / 100 ))"

@@ -56,10 +56,11 @@ Evidence transactions in [docs/evidence/d3-eurc-sac.md](./docs/evidence/d3-eurc-
 
 | Component | Contract ID |
 |---|---|
-| SwapRouter (D4) | redeployment pending, see below |
+| SwapRouter (D4) | `CCQJWT73HTZUVLM2UUPUA5VR53Z5MTHCRZDVF5RODH3ORMVALNQQY6EA` |
 
 Routes USDC<->EURC through the Aquarius router, with min-out slippage
 protection and per-pair swap-fee accounting.
+[Explore the D4 router](https://stellar.expert/explorer/testnet/contract/CCQJWT73HTZUVLM2UUPUA5VR53Z5MTHCRZDVF5RODH3ORMVALNQQY6EA).
 
 The Soroswap venue was **removed on 2026-08-28** after Soroswap was reported
 compromised. The router is now single-venue: the atomic fallback is gone, and

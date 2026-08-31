@@ -61,6 +61,51 @@ body {
   letter-spacing: 0.06em;
 }
 
+/* Selecteur d'instance (XLM / EURC) et bascule depot / rachat : meme forme,
+   deux echelles. Les onglets sont des boutons, donc ils heritent de la regle
+   `button` plus bas : la largeur pleine et la marge haute sont a annuler. */
+.tabs {
+  display: flex;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 14px;
+}
+
+.tabs .tab {
+  flex: 1;
+  width: auto;
+  margin-top: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 9px;
+  border-radius: 9px;
+}
+
+.tabs .tab:hover:not(:disabled) {
+  background: rgba(91, 141, 239, 0.12);
+  color: var(--text);
+}
+
+.tabs .tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.tabs .tab.active:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+/* La bascule depot / rachat vit DANS la carte : elle prend de l'air au-dessus
+   et emprunte le fond sombre des champs pour ne pas doubler la carte. */
+.tabs.modes {
+  margin: 22px 0 4px;
+  background: #0c1322;
+}
+
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);

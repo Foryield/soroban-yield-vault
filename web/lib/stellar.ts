@@ -1,8 +1,9 @@
 import {
+  Asset,
   Contract,
+  Operation,
   TransactionBuilder,
   BASE_FEE,
-  Networks,
   Address,
   nativeToScVal,
   scValToNative,
@@ -22,55 +23,19 @@ import { xBullModule } from "@creit.tech/stellar-wallets-kit/modules/xbull.modul
 import { AlbedoModule } from "@creit.tech/stellar-wallets-kit/modules/albedo.module";
 import { LobstrModule } from "@creit.tech/stellar-wallets-kit/modules/lobstr.module";
 import { LedgerModule } from "@creit.tech/stellar-wallets-kit/modules/ledger.module";
+import {
+  DECIMALS,
+  HORIZON_URL,
+  IS_TESTNET,
+  NETWORK,
+  PASSPHRASE,
+  RPC_URL,
+  requireConfig,
+} from "./network";
+import type { AssetDescriptor, VaultConfig } from "./vaults";
 
-// --- Configuration reseau ---------------------------------------------------
-// NEXT_PUBLIC_STELLAR_NETWORK selectionne le reseau : "testnet" (defaut) ou
-// "mainnet". Passphrase, endpoints, explorer et Friendbot en decoulent.
-// Les env NEXT_PUBLIC_* restent prioritaires sur les defauts publics.
-// Sur mainnet, VAULT_ID et RPC_URL n'ont aucun defaut : ils DOIVENT etre
-// fournis par l'environnement (fail-closed, jamais de contrat implicite).
-
-export type StellarNetwork = "testnet" | "mainnet";
-
-function resolveNetwork(raw: string | undefined): StellarNetwork {
-  const value = (raw || "testnet").toLowerCase();
-  if (value === "mainnet" || value === "public") return "mainnet";
-  if (value === "testnet") return "testnet";
-  throw new Error(`Unsupported NEXT_PUBLIC_STELLAR_NETWORK: ${raw}`);
-}
-
-export const NETWORK: StellarNetwork = resolveNetwork(
-  process.env.NEXT_PUBLIC_STELLAR_NETWORK,
-);
-export const IS_TESTNET = NETWORK === "testnet";
-export const NETWORK_LABEL = IS_TESTNET ? "Soroban Testnet" : "Soroban Mainnet";
-
-const PASSPHRASE = IS_TESTNET ? Networks.TESTNET : Networks.PUBLIC;
-
-const VAULT_ID =
-  process.env.NEXT_PUBLIC_VAULT_ID ||
-  (IS_TESTNET ? "CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN" : "");
-const RPC_URL =
-  process.env.NEXT_PUBLIC_RPC_URL ||
-  (IS_TESTNET ? "https://soroban-testnet.stellar.org" : "");
-const HORIZON_URL =
-  process.env.NEXT_PUBLIC_HORIZON_URL ||
-  (IS_TESTNET
-    ? "https://horizon-testnet.stellar.org"
-    : "https://horizon.stellar.org");
-
-function requireConfig(value: string, name: string): string {
-  if (!value) {
-    throw new Error(`${name} must be configured for ${NETWORK}`);
-  }
-  return value;
-}
-
-const DECIMALS = 7;
-const EXPLORER_SEGMENT = IS_TESTNET ? "testnet" : "public";
-
-export const EXPLORER_TX = (hash: string) =>
-  `https://stellar.expert/explorer/${EXPLORER_SEGMENT}/tx/${hash}`;
+export { EXPLORER_TX, IS_TESTNET, NETWORK_LABEL } from "./network";
+export type { StellarNetwork } from "./network";
 
 // Levee quand le compte du wallet n'existe pas encore on-chain (Horizon 404).
 // Un compte Stellar n'existe qu'apres avoir ete finance.
@@ -83,6 +48,8 @@ export class AccountNotFundedError extends Error {
 
 // Finance un compte via Friendbot. Testnet uniquement : sur mainnet le
 // financement est un vrai transfert de fonds, jamais automatise ici.
+// Friendbot ne distribue que du XLM : un actif classique comme EURC vient de
+// son propre faucet (cf. `faucet` dans vaults.ts).
 export async function fundTestnetAccount(address: string): Promise<void> {
   if (!IS_TESTNET) {
     throw new Error("Friendbot is only available on testnet");
@@ -177,7 +144,7 @@ function getKit(): StellarWalletsKit {
 // Traduit les erreurs kit/wallet en message actionnable pour l'UI.
 // parseError vient du kit et normalise les shapes d'erreur par wallet.
 export function friendlyError(e: unknown): string {
-  if (e instanceof AccountNotFundedError) {
+  if (e instanceof AccountNotFundedError || e instanceof MissingTrustlineError) {
     return e.message;
   }
   let message = "";
@@ -254,19 +221,92 @@ export async function disconnectWallet(): Promise<void> {
   }
 }
 
-export async function getNativeBalance(address: string): Promise<string> {
-  const horizon = new Horizon.Server(HORIZON_URL);
-  let acc: Awaited<ReturnType<typeof horizon.loadAccount>>;
+// --- Soldes -----------------------------------------------------------------
+// Un actif classique (EURC) n'existe sur un compte qu'a travers une trustline.
+// Pas de trustline, pas de ligne de solde chez Horizon : ce n'est pas un solde
+// nul, c'est un compte qui ne peut RIEN recevoir. La distinction se perdrait
+// dans un "0" et le depot echouerait au moment de signer, sans explication.
+
+export class MissingTrustlineError extends Error {
+  constructor(code: string) {
+    super(`No ${code} trustline on this account`);
+    this.name = "MissingTrustlineError";
+  }
+}
+
+export type AssetBalance = {
+  /// Solde disponible, en unites d'actif ("12.5000000").
+  balance: string;
+  /// Faux pour un actif classique dont la trustline manque.
+  trusted: boolean;
+};
+
+function horizonServer(): Horizon.Server {
+  return new Horizon.Server(HORIZON_URL);
+}
+
+async function loadAccount(address: string) {
+  const horizon = horizonServer();
   try {
-    acc = await horizon.loadAccount(address);
+    return await horizon.loadAccount(address);
   } catch (e) {
     if (e instanceof NotFoundError) {
       throw new AccountNotFundedError();
     }
     throw e;
   }
-  const line = acc.balances.find((b) => b.asset_type === "native");
-  return line ? line.balance : "0";
+}
+
+export async function getAssetBalance(
+  address: string,
+  asset: AssetDescriptor,
+): Promise<AssetBalance> {
+  const acc = await loadAccount(address);
+  if (asset.kind === "native") {
+    const line = acc.balances.find((b) => b.asset_type === "native");
+    return { balance: line ? line.balance : "0", trusted: true };
+  }
+  const line = acc.balances.find(
+    (b) =>
+      (b.asset_type === "credit_alphanum4" ||
+        b.asset_type === "credit_alphanum12") &&
+      b.asset_code === asset.code &&
+      b.asset_issuer === asset.issuer,
+  );
+  if (!line) {
+    return { balance: "0", trusted: false };
+  }
+  return { balance: line.balance, trusted: true };
+}
+
+// Ouvre la trustline de l'actif classique : operation Stellar Classic, donc
+// construite et soumise via Horizon, pas via le RPC Soroban. Le wallet la
+// signe comme n'importe quelle transaction.
+export async function addTrustline(
+  address: string,
+  asset: AssetDescriptor,
+): Promise<string> {
+  if (asset.kind !== "classic") {
+    throw new Error("The native asset needs no trustline");
+  }
+  const horizon = horizonServer();
+  const account = await loadAccount(address);
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: PASSPHRASE,
+  })
+    .addOperation(
+      Operation.changeTrust({ asset: new Asset(asset.code, asset.issuer) }),
+    )
+    .setTimeout(TX_TIMEOUT_S)
+    .build();
+
+  await ensureWalletAccess(address);
+  const signedTxXdr = await signWithDeadline(tx.toXDR(), address);
+  const signed = TransactionBuilder.fromXDR(signedTxXdr, PASSPHRASE);
+  const sent = await horizon.submitTransaction(signed);
+  return sent.hash;
 }
 
 function toStroops(amount: string): bigint {
@@ -287,9 +327,12 @@ function fromStroops(value: bigint): string {
 
 // Position d'un compte dans le vault. `value` est la contrepartie en actif des
 // parts detenues : c'est ce qu'un retrait total rendrait aujourd'hui.
+// `shares` est la quantite brute de parts, seule unite que `withdraw` accepte.
 export type VaultPosition = {
   value: string;
   totalAssets: string;
+  shares: bigint;
+  totalShares: bigint;
 };
 
 // Lecture seule : simuler un appel n'emet aucune transaction et ne coute rien.
@@ -319,11 +362,22 @@ async function simulateRead(
   return BigInt(scValToNative(sim.result.retval));
 }
 
+function rpcServer(): rpc.Server {
+  return new rpc.Server(requireConfig(RPC_URL, "NEXT_PUBLIC_RPC_URL"));
+}
+
+function vaultContract(vault: VaultConfig): Contract {
+  return new Contract(
+    requireConfig(vault.contractId, `contract id for the ${vault.tab} vault`),
+  );
+}
+
 export async function getVaultPosition(
   address: string,
+  vault: VaultConfig,
 ): Promise<VaultPosition> {
-  const server = new rpc.Server(requireConfig(RPC_URL, "NEXT_PUBLIC_RPC_URL"));
-  const contract = new Contract(requireConfig(VAULT_ID, "NEXT_PUBLIC_VAULT_ID"));
+  const server = rpcServer();
+  const contract = vaultContract(vault);
   const account = await server.getAccount(address);
 
   const [shares, totalShares, totalAssets] = await Promise.all([
@@ -344,7 +398,21 @@ export async function getVaultPosition(
   return {
     value: fromStroops(value),
     totalAssets: fromStroops(totalAssets),
+    shares,
+    totalShares,
   };
+}
+
+// Parts a bruler pour recuperer environ `amountAsset` : l'inverse du calcul du
+// contrat, tronque dans le meme sens. Le rachat rendra donc au plus le montant
+// demande, jamais davantage.
+export function sharesForAmount(
+  amountAsset: string,
+  position: VaultPosition,
+): bigint {
+  const totalAssets = toStroops(position.totalAssets);
+  if (totalAssets <= 0n) return 0n;
+  return (toStroops(amountAsset) * position.totalShares) / totalAssets;
 }
 
 // Freighter peut renvoyer une cle publique en cache sans autorisation vivante
@@ -408,18 +476,22 @@ async function signWithDeadline(
   }
 }
 
-export async function deposit(
+// Construit, fait signer, soumet et attend la confirmation d'un appel de
+// contrat. Depot et rachat ne different que par la fonction et ses arguments.
+async function invokeVault(
   address: string,
-  amountAsset: string,
+  vault: VaultConfig,
+  fn: "deposit" | "withdraw",
+  arg: bigint,
 ): Promise<string> {
-  const server = new rpc.Server(requireConfig(RPC_URL, "NEXT_PUBLIC_RPC_URL"));
+  const server = rpcServer();
   const account = await server.getAccount(address);
-  const contract = new Contract(requireConfig(VAULT_ID, "NEXT_PUBLIC_VAULT_ID"));
+  const contract = vaultContract(vault);
 
   const op = contract.call(
-    "deposit",
+    fn,
     new Address(address).toScVal(),
-    nativeToScVal(toStroops(amountAsset), { type: "i128" }),
+    nativeToScVal(arg, { type: "i128" }),
   );
 
   const built = new TransactionBuilder(account, {
@@ -456,4 +528,33 @@ export async function deposit(
     throw new Error("Transaction not confirmed");
   }
   return sent.hash;
+}
+
+export async function deposit(
+  address: string,
+  vault: VaultConfig,
+  amountAsset: string,
+): Promise<string> {
+  // Le contrat appelle transfer sur le SAC de l'actif : sans trustline, la
+  // simulation echoue sur une erreur d'hote illisible. Le dire avant de faire
+  // signer quoi que ce soit.
+  if (vault.asset.kind === "classic") {
+    const { trusted } = await getAssetBalance(address, vault.asset);
+    if (!trusted) throw new MissingTrustlineError(vault.asset.code);
+  }
+  return invokeVault(address, vault, "deposit", toStroops(amountAsset));
+}
+
+// Rachat : le contrat ne connait que les PARTS, jamais un montant d'actif.
+// L'appelant convertit avec sharesForAmount, ou passe la totalite de sa
+// position pour un rachat integral sans poussiere.
+export async function redeem(
+  address: string,
+  vault: VaultConfig,
+  shares: bigint,
+): Promise<string> {
+  if (shares <= 0n) {
+    throw new Error("Nothing to redeem for this amount");
+  }
+  return invokeVault(address, vault, "withdraw", shares);
 }

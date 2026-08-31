@@ -11,10 +11,19 @@ services:
     staticPublishPath: out
     pullRequestPreviewsEnabled: false
     # Valeurs publiques (contract ID testnet + endpoints), aucun secret.
-    # Actif du vault : XLM natif (tout compte finance par Friendbot peut deposer).
+    #
+    # Deux instances du meme contrat, servies par la MEME page : l'onglet XLM
+    # (actif natif, tout compte finance par Friendbot peut deposer) et l'onglet
+    # EURC (livrable 3, actif Classic detenu via son wrapper SAC). Le choix se
+    # transporte dans l'URL : `/?vault=eurc` ouvre directement l'instance EURC,
+    # ce qui donne un lien a envoyer a un relecteur sans second deploiement.
+    #
+    # Une instance dont l'identifiant est vide disparait du selecteur.
     envVars:
       - key: NEXT_PUBLIC_VAULT_ID
         value: CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN
+      - key: NEXT_PUBLIC_EURC_VAULT_ID
+        value: CDZR2IY4V3GXUONLTVXJNCMTIR2LLFC55ZRPPEHCTI4RM7LVF25UKG5K
       - key: NEXT_PUBLIC_RPC_URL
         value: https://soroban-testnet.stellar.org
       - key: NEXT_PUBLIC_HORIZON_URL

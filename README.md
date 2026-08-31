@@ -51,6 +51,12 @@ record.
 | Deposit asset - EURC SAC wrapper | `CCUUDM434BMZMYWYDITHFXHDMIVTGGD6T2I5UKNX5BSLXLW7HVR4MCGZ` |
 
 Evidence transactions in [docs/evidence/d3-eurc-sac.md](./docs/evidence/d3-eurc-sac.md).
+The demo UI serves this instance at
+[vault.for-yield.com/?vault=eurc](https://vault.for-yield.com/?vault=eurc):
+opening the EURC trustline, depositing and redeeming are three signatures in
+the browser, with no command line. Testnet EURC comes from
+[Circle's faucet](https://faucet.circle.com/), since Friendbot only hands out
+XLM.
 
 **Deliverable 4 instance — SwapRouter, DEX routing (Aquarius)**:
 
@@ -76,8 +82,9 @@ is no pause). Its July evidence remains valid as a dated record.
 
 Evidence in [docs/evidence/d4-dex-routing.md](./docs/evidence/d4-dex-routing.md).
 
-**Demo instance — native XLM, no strategy** (behind vault.for-yield.com, so any
-Friendbot-funded account can deposit with no faucet):
+**Demo instance — native XLM, no strategy** (the default tab of
+vault.for-yield.com, so any Friendbot-funded account can deposit with no
+faucet):
 
 | Component | Contract ID |
 |---|---|

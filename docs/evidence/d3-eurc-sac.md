@@ -69,6 +69,41 @@
   The July entries above remain accurate as dated records of that instance.
 - Reproducible with `VAULT_PROFILE=eurc scripts/redeploy_vault.sh`.
 
+## 2026-08-31 — Browser path: trustline, deposit and redemption without a terminal
+
+- **What it proves**: nothing new on chain. It removes the command line from
+  the D3 Measure, so a reviewer can produce the deposit and redemption
+  transactions themselves instead of reading ours.
+- **Where**: the demo UI, same deployment as the XLM demo. The instance is
+  chosen in the page and carried in the URL, so
+  `https://vault.for-yield.com/?vault=eurc` opens on the EURC vault directly.
+  One deployment, one domain, two instances.
+- **What the page now does for a Classic asset**, which the XLM path never
+  needed:
+  - reads the EURC trustline balance on Horizon instead of the native balance,
+    and tells a missing trustline apart from a zero balance (the second is a
+    number, the first means the account can receive nothing at all);
+  - opens the trustline on demand, a Stellar Classic `changeTrust` operation
+    signed in the wallet and submitted through Horizon, as a one-off;
+  - points at Circle's faucet when the balance is zero, since Friendbot only
+    funds XLM;
+  - redeems as well as deposits. `withdraw` takes shares, never an asset
+    amount, so the page converts with the contract's own truncation and offers
+    a full exit that burns the exact share balance, leaving no dust.
+- **Verified locally**: `npm run typecheck` and `npm run build` clean, both
+  with and without `.env.local`, the second being the bare path CI and Render
+  actually build. Both contract ids are present in the produced bundle. In the
+  browser, `/?vault=eurc` lands on the EURC instance, the selector switches
+  instances and rewrites the URL, and the console stays silent.
+- **Not yet verified**: every state behind a connected wallet (trustline,
+  deposit, redemption) is unproven until signed by a human on testnet. The
+  hashes of that first browser round trip belong in this file, dated the day
+  they are produced.
+- Deployment of the UI is a separate step, and the URL above only answers once
+  it has been done.
+
 D3 status: Measure met (deposit + redemption with the SAC wrapper invoked,
-verifiable contract ID), on an instance running the current published code.
-Remaining: walkthrough video at reviewer submission.
+verifiable contract ID), on an instance running the current published code, and
+reproducible by a reviewer in the browser once the UI above is deployed.
+Remaining: that deployment, the first browser round trip and its hashes, and the
+walkthrough video at reviewer submission.

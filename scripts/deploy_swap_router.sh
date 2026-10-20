@@ -26,10 +26,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 ADDR=$(stellar keys address "$KEY")
 
-# Router Aquarius testnet : PAS de registre JSON public connu (repo
-# canonique AquaToken/soroban-amm en 404), donc pas de source relue a
-# l'execution. Adresse etablie au spike S1 du 21/07/2026, annoncee stable
-# aux resets ; meme provenance que dans seed_aquarius_pool.sh. Surcharger
+# Router Aquarius testnet : adresse publiee par Aquarius sur
+# docs.aqua.network (Addresses & Networks), annoncee stable aux resets
+# (redeploiement depuis une seed epinglee). Page HTML, pas de JSON relu a
+# l'execution ; meme provenance que dans seed_aquarius_pool.sh. Surcharger
 # AQUA_ROUTER si elle change.
 AQUA_ROUTER="${AQUA_ROUTER:-CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD}"
 

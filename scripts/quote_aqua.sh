@@ -24,8 +24,8 @@ KEY="${1:?usage: quote_aqua.sh <cle> <montant_usdc_7dp>}"
 AMOUNT_IN="${2:?montant USDC en unites 7 decimales}"
 NETWORK=testnet
 
-# Router Aquarius : pas de registre public connu (cf. seed_aquarius_pool.sh),
-# adresse du spike S1 21/07/2026, surcharger AQUA_ROUTER si elle change.
+# Router Aquarius : adresse publiee sur docs.aqua.network (cf.
+# seed_aquarius_pool.sh), surcharger AQUA_ROUTER si elle change.
 AQUA_ROUTER="${AQUA_ROUTER:-CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD}"
 
 # Adresses relues aux sources canoniques, jamais codees en dur.

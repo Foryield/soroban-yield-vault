@@ -526,3 +526,108 @@ with the tests rewired onto the Aquarius stack.
   trade-off documented in the section above.
 - Re-seeding the Aquarius pool before any demonstration, the drain being a
   recurring condition rather than a one-off.
+
+## 2026-10-20 : deployed Aquarius code matches no published source
+
+- **What it records**: the Aquarius contracts our router calls on testnet run
+  bytecode that matches none of the binaries our tests are pinned to, and no
+  public source for it exists any more. This is not a sign of compromise. It is
+  a traceability gap on the project's only venue, recorded the day it was
+  found.
+- **Source repository gone**: `AquaToken/soroban-amm` still returns 404
+  (already noted on 2026-08-28), and the `AquaToken` GitHub organisation now
+  lists zero public repositories (GitHub API, read on 2026-10-20).
+- **Deployed contracts still serve**: the Aquarius router answers and quotes.
+  `estimate_swap` of 1 USDC returns `219382` (0.0219 EURC), by simulation
+  only, nothing submitted.
+- **Bytecode fetched from the ledger and compared** with
+  `stellar contract fetch`:
+  - router `CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD`:
+    SHA-256 `c99539b023df4a28d7857d33ca4c915c2e20fec04f12b125132b84fbdf94dad3` ;
+  - our USDC/EURC pool `CDYPTHT6TO7IXXIYNTIMN6YYUGN35NE6Y2AXZJOUK3J2ORLKJS7LQDJV`
+    (`pool_hash` `9ac7a9cde23ac2ada11105eeaa42e43c2ea8332ca0aa8f41f58d7160274d718e`):
+    SHA-256 `d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b4f9b473` ;
+  - neither matches any of the five sums in
+    `contracts/router/test_wasms/SHA256SUMS` (commit `84de10e0`, July 2026) ;
+  - both carry the build metadata `rssdkver 25.3.0#dcbea445` and
+    `cliver 27.0.0#5a7c5fe7`, a toolchain newer than the pinned fixtures.
+    Aquarius maintains these contracts; their source is no longer public.
+  - No wasm hash was recorded for these two contracts on 2026-07-22 or
+    2026-08-28. Whether their bytecode changed after our evidence swaps
+    therefore cannot be established after the fact; from this date on, it can.
+- **Consequences, stated rather than hidden**:
+  - the router test suite exercises the July 2026 binaries, not the code our
+    on-chain swaps call. Our own router's guarantees do not depend on the
+    venue's code and stand: `min_out` re-checked on the router's balance
+    delta, integral revert on any failure. What is untested is the venue's
+    behaviour itself ;
+  - neither we nor a reviewer can read the code that executes the swaps ;
+  - both contracts can be changed by their administrators at any time: they
+    expose `commit_upgrade` / `apply_upgrade` and
+    `set_emergency_mode(emergency_admin, value)`.
+- **Maintained and audited upstream** (correction, same day: an earlier draft
+  of this entry said no public registry confirmed the router address):
+  - the router address is the one Aquarius publishes for testnet on its
+    [Addresses & Networks](https://docs.aqua.network/developers/reference/addresses-and-networks)
+    page, which states that Aquarius redeploys from a pinned deployer seed and
+    that the testnet addresses are expected to persist across resets.
+    Survival of the 2026-12-16 reset is therefore announced by the maintainer,
+    though it cannot be checked before it happens ;
+  - the [Aquarius audits page](https://docs.aqua.network/security/audits)
+    lists a Halborn assessment, June to August 2026, covering the Soroban AMM
+    contracts including concentrated liquidity pools and the router, with no
+    critical or high-severity finding (no report link published). The live
+    router's interface exposes concentrated-pool functions
+    (`init_concentrated_pool`), consistent with that newer code base.
+- **Emergency mode on**: `get_emergency_mode` returns `true` on both the router
+  and our pool. On the pool, `get_is_killed_swap`, `get_is_killed_deposit` and
+  `get_is_killed_claim` return `false`, and the swap quote succeeds. What the
+  flag changes is documented neither in the on-chain contract spec (no doc
+  strings) nor in the public Aquarius documentation. It is recorded here as
+  observed and checked again before every proof (see `scripts/check_aquarius.sh`).
+- **Pool state, same day**: reserves `96928360 / 2352223` (9.69 USDC /
+  0.235 EURC), `get_total_shares` = `15000000`, i.e. still 100% ours (re-seed
+  of 2026-08-28). Drained of its EURC by third-party swaps, as anticipated in
+  the entry above; a re-seed is required before the video walkthrough.
+- **Reproduce**:
+
+  ```bash
+  stellar contract fetch --id CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD --network testnet -o router.wasm
+  stellar contract fetch --id CDYPTHT6TO7IXXIYNTIMN6YYUGN35NE6Y2AXZJOUK3J2ORLKJS7LQDJV --network testnet -o pool.wasm
+  shasum -a 256 router.wasm pool.wasm
+  stellar contract info meta --id CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD --network testnet
+  ```
+
+### Still open
+
+- Testing against the deployed bytecode: planned at the start of D5, where the
+  Aquarius LP strategy will exercise the pool's deposit and withdraw paths.
+- A fallback if the Aquarius address does not come back after the 2026-12-16
+  reset despite the maintainer's statement; to be decided with the project
+  lead.
+
+## 2026-10-20 : pool re-seeded ahead of the video walkthrough
+
+- **What it proves**: the Aquarius USDC/EURC pool is back to a balanced
+  1.5 / 1.5, ready for the D4 video, and the demonstration swap of
+  2026-08-28 is reproducible to the unit.
+- **Before**: reserves `96928360 / 2352223` (9.69 USDC / 0.235 EURC), all
+  `15000000` LP shares ours, drained of its EURC by third-party swaps as
+  anticipated. The ops account was topped up with 20 EURC from Circle's
+  testnet faucet beforehand (balance `215506763`).
+- **Full withdrawal** of the 15000000 shares, `min_amounts` set to the
+  simulated figures, reserves back to zero:
+  [d89a09332502f646cd30ae4d3f137a4604bfd7ea4690d9e781ccaa51a216a166](https://stellar.expert/explorer/testnet/tx/d89a09332502f646cd30ae4d3f137a4604bfd7ea4690d9e781ccaa51a216a166)
+- **Re-seed** at 1.5 USDC / 1.5 EURC via `scripts/seed_aquarius_pool.sh`
+  (pool existing, creation skipped, `15000000` LP shares minted, `pool_hash`
+  unchanged):
+  [877ed5d76fc4926baad92c88efea97fce65f9753c8b4984831cf46fd4922e0f2](https://stellar.expert/explorer/testnet/tx/877ed5d76fc4926baad92c88efea97fce65f9753c8b4984831cf46fd4922e0f2)
+- **Venue check**: `scripts/check_aquarius.sh d1-ops` passes on every line
+  (wasm hashes unchanged since the entry above, emergency mode as recorded,
+  pool not killed, pool registered in our SwapRouter, reserves above floor).
+- **Quote for the video**: `scripts/quote_aqua.sh d1-ops 2000000` returns
+  `1760032`, `min_out_1pct` = `1742431`, identical to the quote and served
+  amount of the 2026-08-28 swap. Both transactions are archived under
+  `archive/d4/`.
+- **Before filming**: run `scripts/check_aquarius.sh d1-ops` again; the pool
+  will be drained by the same mechanism and may need another re-seed.

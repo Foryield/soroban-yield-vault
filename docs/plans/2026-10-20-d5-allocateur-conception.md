@@ -58,7 +58,29 @@ Oracle Providers de developers.stellar.org un contrat « Fiat exchange rates »
 testnet, `CCSSOHTBL3LEWUCBBEB5NJFC2OKFRC74OWEIJIZLRJBGAAU4VMU5NV4W`. Lu en
 simulation le 20/10 : base `USD`, 14 décimales, résolution de 300 secondes,
 `lastprice(Other("EUR"))` = 1,1221 USD, horodaté trois minutes avant la
-lecture.
+lecture. Le cours bouge (1,12245 à 13 h 15 UTC, 1,12210 à 18 h 15).
+
+Ce que la source v3 (`reflector-network/reflector-contract`) et le contrat
+déployé disent de cette dépendance :
+
+- **Lecture gratuite.** Le contrat testnet est la variante publique
+  (`pulse-contract`) : `lastprice(asset)` sans appelant ni abonnement. La
+  variante `beam-contract` exige un appelant abonné ; ce n'est pas celle-ci.
+- **Flux à échéance.** `expires(EUR)` rend le 9/11/2026 à 17 h 28 UTC. Tout
+  le monde peut la repousser par `extend_asset_ttl(sponsor, asset, amount)`,
+  qui brûle du XRF (`CBULLEXC…N6IJ`, 7 décimales) au tarif de
+  `fee_config` : 200 XRF par jour. `lastprice` ne lit pas l'échéance ; nous
+  supposons que les nœuds cessent de publier un flux échu, ce que le contrat
+  ne permet pas de vérifier. Non vérifié.
+- **Historique court.** Rétention de 24 heures (`history_retention_period`),
+  deux enregistrements en cache. Le comportement du week-end, marchés des
+  changes fermés, n'est pas observable d'ici : à mesurer samedi 24/10 par
+  `last_timestamp`.
+- **Administration.** Un compte multisig des nœuds peut remplacer le code
+  (`update_contract`). Nous lui faisons confiance comme nous faisons
+  confiance à l'admin d'Aquarius.
+- **Hypothèse.** L'USDC Blend vaut 1 USD : le cours EUR/USD sert de cours
+  EURC/USDC.
 
 **Le rendement LP sur testnet est le nôtre.** Nous détenons 100 % de la
 liquidité du pool USDC/EURC (réensemencé le 20/10). Les frais de swap qu'il
@@ -152,6 +174,15 @@ Détails de (B) :
   retraits du vault échouent tant que l'oracle est muet, comme ils échouent
   aujourd'hui si Blend gèle sa réserve. La sortie d'urgence (section 7) reste
   disponible, elle ne valorise pas.
+- Écart pool contre oracle : la valeur équitable est celle qu'on réalise
+  quand le pool cote au prix de marché. Un pool décalé fait perdre à l'entrée
+  comme à la sortie, et la borne de glissement ci-dessous, mesurée contre la
+  valeur équitable, le refuse déjà : pas de garde séparée. Sur testnet,
+  personne n'arbitre notre pool : il cote 1,00 le 20/10 contre 1,1221 à
+  l'oracle. Nous tenons donc le rôle de l'arbitragiste : un script
+  `align_aquarius_pool.sh` ramène le pool au cours de l'oracle par un swap,
+  avant chaque mouvement Aquarius (une entrée de 0,2 USDC le décale déjà
+  d'environ 2,4 %) et après chaque swap D4.
 - Sortie : `withdraw(amount)` brûle les parts LP nécessaires au prix
   équitable, reçoit USDC et EURC, revend l'EURC contre l'USDC par le pool, et
   exige que l'USDC obtenu atteigne `amount · (10 000 − max_slippage_bps) /
@@ -166,9 +197,8 @@ Détails de (B) :
   plafond par stratégie. Les dépôts restent oisifs. `rebalance()` est
   appelable par tous : elle calcule l'écart à la cible de chaque stratégie et
   déplace tout en une transaction, retraits d'abord, dépôts ensuite. Elle ne
-  s'exécute que si un déclencheur est franchi : oisif au-dessus de
-  `idle_trigger`, ou écart d'une stratégie au-dessus de `drift_bps`, sinon
-  `NothingToRebalance`.
+  s'exécute que si une poche, oisif compris, s'écarte de sa cible de plus de
+  `drift_bps` points de base de `total_assets`, sinon `NothingToRebalance`.
 - **(B) Instructions calculées hors chaîne** (modèle du vault DeFindex,
   `rebalance(caller, instructions)`, réservé au manager). Plus souple, mais la
   décision d'allocation vit hors chaîne et n'est pas reproductible depuis les
@@ -206,7 +236,7 @@ retour (même règle que le routeur D4 envers ses venues).
 initialize(admin, asset, strategies: Vec<StrategyConfig>, params: AllocParams)
 
 struct StrategyConfig { address: Address, target_bps: u32, cap_bps: u32, active: bool }
-struct AllocParams { idle_trigger: i128, drift_bps: u32 }
+struct AllocParams { drift_bps: u32 }
 
 deposit(from, amount) -> i128          // inchangé côté appelant, reste oisif
 withdraw(from, shares) -> i128         // inchangé côté appelant
@@ -276,6 +306,30 @@ Chaque étape se committe seule, tests verts.
 2. **Déclenchement libre de `rebalance`** (section 6). L'alternative est de le
    réserver à une clé de keeper ; le champ `decided_by` devient alors cette
    clé.
-3. **Valeurs initiales** proposées pour la démonstration : cibles Blend 60 %,
-   Aquarius 30 %, oisif 10 % ; plafonds 80 % et 40 % ; `drift_bps` 500 ;
-   `max_slippage_bps` 100, la marge déjà employée en D4.
+
+## 13. Valeurs de démonstration (validées le 20/10)
+
+Elles se déduisent de la profondeur du pool Aquarius. La clé d'ops détient le
+20/10 environ 207 USDC Blend et 20,3 EURC ; l'EURC est le facteur limitant.
+
+- **Pool** réensemencé au cours de l'oracle : 15 EURC et 16,83 USDC (au cours
+  de 1,1221), 5 EURC gardés pour l'instance EURC de D6b.
+- **Dépôt de démonstration** : 2 USDC. La jambe Aquarius vaut alors 0,4 USDC,
+  dont 0,2 swappés : impact d'environ 1,2 % plus 0,3 % de frais sur la
+  moitié swappée, soit environ 0,75 % de la somme allouée, sous la borne de
+  1 %.
+- **Cibles** : Blend 70 %, Aquarius 20 %, oisif 10 %. Aquarius porte le plus
+  de risques (oracle, pool étroit, perte de divergence), il reçoit la plus
+  petite part ; l'oisif sert les petits retraits sans toucher aux stratégies.
+- **Plafonds**, fixés à l'`initialize` et immuables : Blend 90 %, Aquarius
+  30 %. Les cibles se règlent ensuite, toujours sous les plafonds.
+- **Déclencheur unique** : un écart de plus de 5 points de `total_assets`
+  sur l'une des trois poches, oisif compris (`drift_bps` = 500).
+- **Glissement maximal** : 1 % par mouvement contre la valeur équitable, la
+  marge de D4. Il suppose le pool aligné sur l'oracle juste avant (section 5).
+- **Fraîcheur de l'oracle** : 1 heure, sous réserve de la mesure du week-end.
+
+Séquence filmée : dépôt de 2 USDC (oisif à 100 %), rééquilibrage (1,4 / 0,4
+/ 0,2), dépôt de 0,05 USDC refusé au rééquilibrage (`NothingToRebalance`,
+écart de 2,2 points), dépôt de 0,2 USDC accepté (écart de 8,2 points),
+retrait de 0,15 USDC servi par l'oisif, retrait de 1 USDC servi par Blend.

@@ -380,10 +380,49 @@ sections précédentes, et pourquoi.
 - **Ordre.** Les scénarios vault-Blend de D1 ont été portés après
   `rebalance` (étape 4), seul chemin qui verse aux stratégies.
 
-**Ouvert pour l'étape 5.** La sortie d'urgence sans passage en perte lit
-`balance`. Pour la stratégie Aquarius, un prix de référence périmé fait
-échouer `balance`, donc cette sortie, et ne laisse que le passage en perte.
-La stratégie Aquarius devra offrir un retrait complet qui ne dépend pas du
-prix (brûler toutes ses parts LP et rendre ce qu'elles valent), pour qu'un
-keeper muet ne force jamais une perte.
+**Keeper muet, résolu à l'étape 5.** Un prix de référence périmé fait
+échouer `balance`, donc la sortie d'urgence sans passage en perte. L'admin
+peut publier le prix lui-même et remplacer le keeper de la stratégie : le
+prix redevient frais et la sortie normale refonctionne. Aucun chemin de
+sortie ne contourne le prix.
+
+## 15. Étape 5 : stratégie Aquarius (20/10)
+
+`contracts/strategy-aquarius`, au trait DeFindex. Écarts et constats.
+
+- **Coût de sortie au partant** (décision du 20/10, option A). Sortir d'une
+  position LP coûte toujours (frais, glissement). Le vault paie au client
+  sortant ce qui rentre effectivement, dans la marge de 1 % de ce qui est
+  demandé aux stratégies ; la stratégie brûle les parts du partant au
+  prorata de la valeur réellement sortie. Ceux qui restent ne paient pas le
+  départ des autres.
+- **Prix de référence** publiable par le keeper ou l'admin, pas de 1 % par
+  publication, une par heure au plus, péremption à 26 heures.
+- **Taille d'une opération.** Le contrôle de valeur équitable refuse toute
+  entrée ou sortie qui coûte plus de 1 %. Sur un pool à 0,3 % de frais, cela
+  borne une opération à environ 1 à 2 % de la profondeur du pool : un dépôt
+  de 3,3 % du pool est refusé. La démonstration (0,4 USDC dans un pool de
+  16,83 USDC, soit 2,4 %) passe parce que seule la moitié est swappée ; elle
+  est à confirmer en simulation sur testnet.
+- **Réalignement obligatoire.** Une entrée de 20 USDC dans un pool de 1 122
+  le décale d'environ 1,8 % ; l'entrée suivante est alors refusée tant que
+  `align_aquarius_pool.sh` ne l'a pas ramené au prix de référence.
+- **Calcul.** La racine du produit des réserves est prise avant le produit
+  par le prix : valeur exacte jusqu'à 1e19 unités par jambe (la première
+  version débordait vers 5e14, ce qui aurait bloqué les fonds).
+
+**Risque accepté.** La sortie revend l'EURC par un swap. Si l'admin
+d'Aquarius coupe les swaps du pool (`kill_swap`, mode d'urgence, déjà notés
+au journal D4), la sortie échoue proprement, parts intactes, jusqu'à leur
+réouverture.
+
+**Bloquant avant toute preuve testnet** (étape 7) :
+
+1. Mémoire d'invocation. La première version dépassait la limite du réseau
+   (43 Mo pour 40 Mio) ; la version réduite passe en test, où nos contrats
+   tournent en natif. La marge réelle, en wasm, se mesure en simulation.
+2. Arbre d'autorisation du dépôt LP. Il est calé sur les wasm Aquarius
+   vendorisés, où le pool tire les montants désirés puis rend l'excédent.
+   Le pool déployé est plus récent : à vérifier en simulation avant tout
+   dépôt réel.
 

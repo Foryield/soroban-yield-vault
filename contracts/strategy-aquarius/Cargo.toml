@@ -1,0 +1,23 @@
+[package]
+name = "strategy-aquarius"
+description = "ForYield - strategie DeFindex de liquidite Aquarius, valeur equitable au prix de reference du keeper"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
+
+[dependencies]
+defindex-strategy-core = "0.3.0"
+soroban-sdk = "25"
+
+[dev-dependencies]
+proptest = "1"
+soroban-sdk = { version = "25", features = ["testutils"] }
+# Integration avec le vault (test_vault.rs) : dependance de DEVELOPPEMENT
+# seule, acyclique (le vault ne connait pas cette strategie), meme motif que
+# le routeur.
+yield-vault = { path = "../vault" }

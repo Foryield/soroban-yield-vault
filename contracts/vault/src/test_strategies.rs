@@ -1,15 +1,8 @@
 #![cfg(test)]
 // Montants en convention Stellar 7 decimales (X_XXXXXXX, ex. 0_1000000 = 0,1).
 #![allow(clippy::inconsistent_digit_grouping, clippy::zero_prefixed_literal)]
-//! Allocation D5 : le vault face a des strategies au trait DeFindex.
-//!
-//! La strategie factice garde ses fonds (modele `hodl` de DeFindex) et rend
-//! pour `balance` son propre solde, quel que soit `from` : un don direct sur
-//! elle simule le rendement et fait monter le prix de la part, c'est voulu.
-//! Ses reglages simulent une strategie fautive : retrait qui rend plus ou
-//! moins que demande en annoncant le montant demande, `balance` force (y
-//! compris negatif ou gonfle), `balance` qui panique, retrait gele, frais
-//! d'entree.
+//! Allocation D5 : le vault face a des strategies au trait DeFindex
+//! (strategie factice : `test_mock_strategy`).
 
 extern crate std;
 
@@ -20,126 +13,7 @@ use soroban_sdk::{
     vec, Address, Env, IntoVal, Val, Vec,
 };
 
-mod mock_strategy {
-    use defindex_strategy_core::{DeFindexStrategyTrait, StrategyError};
-    use soroban_sdk::{
-        contract, contractimpl, contracttype, token::TokenClient, Address, Bytes, Env, Val, Vec,
-    };
-
-    #[contracttype]
-    enum Key {
-        Asset,
-        SkewBps,
-        BalanceOverride,
-        Broken,
-        BrokenWithdraw,
-        DepositFeeBps,
-        InflateBps,
-    }
-
-    #[contract]
-    pub struct MockStrategy;
-
-    #[contractimpl]
-    impl DeFindexStrategyTrait for MockStrategy {
-        fn __constructor(env: Env, asset: Address, _init_args: Vec<Val>) {
-            env.storage().instance().set(&Key::Asset, &asset);
-        }
-
-        fn asset(env: Env) -> Result<Address, StrategyError> {
-            Ok(env.storage().instance().get(&Key::Asset).unwrap())
-        }
-
-        fn deposit(env: Env, amount: i128, from: Address) -> Result<i128, StrategyError> {
-            from.require_auth();
-            let token = TokenClient::new(&env, &Self::asset(env.clone())?);
-            token.transfer(&from, env.current_contract_address(), &amount);
-            // Frais d'entree : une part du depot est detruite, comme une perte
-            // de glissement a l'entree d'une position.
-            let fee_bps: i128 = env
-                .storage()
-                .instance()
-                .get(&Key::DepositFeeBps)
-                .unwrap_or(0);
-            let fee = amount * fee_bps / 10_000;
-            if fee > 0 {
-                token.burn(&env.current_contract_address(), &fee);
-            }
-            Self::balance(env, from)
-        }
-
-        fn harvest(_env: Env, _from: Address, _data: Option<Bytes>) -> Result<(), StrategyError> {
-            Ok(())
-        }
-
-        fn balance(env: Env, _from: Address) -> Result<i128, StrategyError> {
-            if env.storage().instance().has(&Key::Broken) {
-                panic!("strategie en panne");
-            }
-            if let Some(value) = env.storage().instance().get(&Key::BalanceOverride) {
-                return Ok(value);
-            }
-            let token = TokenClient::new(&env, &Self::asset(env.clone())?);
-            let held = token.balance(&env.current_contract_address());
-            // Valorisation gonflee : annonce plus que ce qu'elle detient.
-            let inflate: i128 = env.storage().instance().get(&Key::InflateBps).unwrap_or(0);
-            Ok(held + held * inflate / 10_000)
-        }
-
-        fn withdraw(
-            env: Env,
-            amount: i128,
-            from: Address,
-            to: Address,
-        ) -> Result<i128, StrategyError> {
-            from.require_auth();
-            if env.storage().instance().has(&Key::BrokenWithdraw) {
-                panic!("retrait gele");
-            }
-            let skew: i32 = env.storage().instance().get(&Key::SkewBps).unwrap_or(0);
-            let sent = amount * (10_000 + skew as i128) / 10_000;
-            let token = TokenClient::new(&env, &Self::asset(env.clone())?);
-            token.transfer(&env.current_contract_address(), &to, &sent);
-            if skew != 0 {
-                // Ment : annonce le montant demande, pas ce qui a ete rendu.
-                return Ok(amount);
-            }
-            Self::balance(env, from)
-        }
-    }
-
-    #[contractimpl]
-    impl MockStrategy {
-        /// Ecart applique a chaque retrait : negatif = retenue, positif =
-        /// surplus. Le montant demande est annonce dans les deux cas.
-        pub fn set_skew_bps(env: Env, bps: i32) {
-            env.storage().instance().set(&Key::SkewBps, &bps);
-        }
-
-        pub fn set_balance_override(env: Env, value: i128) {
-            env.storage().instance().set(&Key::BalanceOverride, &value);
-        }
-
-        pub fn break_balance(env: Env) {
-            env.storage().instance().set(&Key::Broken, &true);
-        }
-
-        /// Retrait en echec, lecture intacte : un pool gele.
-        pub fn break_withdraw(env: Env) {
-            env.storage().instance().set(&Key::BrokenWithdraw, &true);
-        }
-
-        pub fn set_deposit_fee_bps(env: Env, bps: i128) {
-            env.storage().instance().set(&Key::DepositFeeBps, &bps);
-        }
-
-        pub fn set_inflate_bps(env: Env, bps: i128) {
-            env.storage().instance().set(&Key::InflateBps, &bps);
-        }
-    }
-}
-
-use mock_strategy::{MockStrategy, MockStrategyClient};
+use crate::test_mock_strategy::{MockStrategy, MockStrategyClient};
 
 /// Environnement sans vault : actif, admin, porteur finance.
 struct Base<'a> {
@@ -903,6 +777,19 @@ fn emergency_exit_without_write_off_refuses_a_partial_return() {
     assert_eq!(err, VaultError::StrategyShortfall.into());
     assert!(b.vault.strategies().get(0).unwrap().active);
     assert_eq!(b.token.balance(&s1), 70_0000000);
+}
+
+#[test]
+fn emergency_exit_without_write_off_holds_the_margin_at_one_percent() {
+    // 1 % retenu : dans la marge, la sortie passe ; 1,01 % : refusee.
+    for (skew, accepted) in [(-100, true), (-101, false)] {
+        let (b, s1, _s2) = bench_with_two();
+        b.vault.deposit(&b.user, &100_0000000);
+        b.vault.rebalance(&b.admin);
+        MockStrategyClient::new(&b.env, &s1).set_skew_bps(&skew);
+        let result = b.vault.try_emergency_exit(&s1, &false);
+        assert_eq!(result.is_ok(), accepted, "retenue de {skew} pb");
+    }
 }
 
 #[test]

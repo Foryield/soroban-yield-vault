@@ -772,7 +772,11 @@ mod test;
 #[cfg(test)]
 mod test_blend;
 #[cfg(test)]
+mod test_invariants;
+#[cfg(test)]
 mod test_matrix;
+#[cfg(test)]
+mod test_mock_strategy;
 #[cfg(test)]
 mod test_props;
 #[cfg(test)]

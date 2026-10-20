@@ -27,7 +27,7 @@ mod aqua_router_wasm {
         file = "../router/test_wasms/soroban_liquidity_pool_router_contract.wasm"
     );
 }
-mod aqua_pool_wasm {
+pub(crate) mod aqua_pool_wasm {
     soroban_sdk::contractimport!(
         file = "../router/test_wasms/soroban_liquidity_pool_contract.wasm"
     );
@@ -101,7 +101,7 @@ fn setup_with<'a>(price: i128, reserve_eurc: i128, reserve_usdc: i128) -> Bench<
 
 /// Sans snapshot : un test de propriete en ecrirait un par cas, avec des
 /// valeurs aleatoires (meme motif que test_props.rs du vault).
-fn setup_quiet<'a>() -> Bench<'a> {
+pub(crate) fn setup_quiet<'a>() -> Bench<'a> {
     let env = Env::new_with_config(EnvTestConfig {
         capture_snapshot_at_drop: false,
     });
@@ -246,6 +246,11 @@ fn withdraw(b: &Bench, from: &Address, amount: i128) -> Result<i128, ()> {
 /// Swap d'un tiers dans le pool, sous mock_all_auths (ce n'est pas la
 /// strategie qu'on eprouve ici).
 fn swap_in_pool(b: &Bench, token_in: &Address, token_out: &Address, amount: i128) {
+    swap(b, token_in, token_out, amount);
+}
+
+/// Idem, rend ce que le tiers a recu.
+pub(crate) fn swap(b: &Bench, token_in: &Address, token_out: &Address, amount: i128) -> i128 {
     let trader = Address::generate(&b.env);
     StellarAssetClient::new(&b.env, token_in).mint(&trader, &amount);
     let chain = vec![
@@ -253,7 +258,53 @@ fn swap_in_pool(b: &Bench, token_in: &Address, token_out: &Address, amount: i128
         (b.tokens.clone(), b.pool_hash.clone(), token_out.clone()),
     ];
     b.router
-        .swap_chained(&trader, &chain, token_in, &(amount as u128), &0);
+        .swap_chained(&trader, &chain, token_in, &(amount as u128), &0) as i128
+}
+
+/// Reserves du pool, (EURC, USDC).
+fn pool_reserves(b: &Bench) -> (f64, f64) {
+    let reserves = aqua_pool_wasm::Client::new(&b.env, &b.strategy.config().pool).get_reserves();
+    let (first, second) = (
+        reserves.get(0).unwrap() as f64,
+        reserves.get(1).unwrap() as f64,
+    );
+    if b.tokens.get(0).unwrap() == b.eurc.address {
+        (first, second)
+    } else {
+        (second, first)
+    }
+}
+
+/// Ramene le prix du pool sur le prix de reference par un swap de tiers, a
+/// la maniere de align_aquarius_pool.sh : sans lui, l'entree qui suit celle
+/// du vault paierait le decalage laisse par la premiere. Precision du
+/// flottant largement suffisante pour un swap de test.
+pub(crate) fn align_pool(b: &Bench, price: i128) {
+    let (r_eurc, r_usdc) = pool_reserves(b);
+    let k = r_eurc * r_usdc;
+    let target_eurc = (k * 1e9 / price as f64).sqrt();
+    // Frais de 30 pb preleves a l'entree : on les ajoute a la quantite.
+    let gross = |x: f64| (x / 0.997) as i128;
+    if target_eurc > r_eurc {
+        swap(
+            b,
+            &b.eurc.address,
+            &b.usdc.address,
+            gross(target_eurc - r_eurc),
+        );
+    } else if target_eurc < r_eurc {
+        let target_usdc = k / target_eurc;
+        swap(
+            b,
+            &b.usdc.address,
+            &b.eurc.address,
+            gross(target_usdc - r_usdc),
+        );
+    }
+    // Post-condition : prix du pool a 0,1 % du prix de reference.
+    let (r_eurc, r_usdc) = pool_reserves(b);
+    let gap = (r_usdc / r_eurc * 1e9 / price as f64 - 1.0).abs();
+    assert!(gap < 0.001, "pool a {gap} du prix de reference");
 }
 
 fn after_hours(b: &Bench, hours: u64) {

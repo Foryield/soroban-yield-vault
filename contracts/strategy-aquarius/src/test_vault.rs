@@ -5,7 +5,7 @@
 //! signatures de l'appelant de tete (porteur, keeper, admin) sont fournies :
 //! toute la chaine vault -> strategie -> router -> pool s'autorise elle-meme.
 
-use super::test::{setup, Bench, PRICE};
+use super::test::{align_pool, setup, setup_quiet, swap, Bench, PRICE};
 use soroban_sdk::{
     testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
     token::StellarAssetClient,
@@ -165,4 +165,133 @@ fn a_second_depositor_in_the_strategy_cannot_drain_the_vault_position() {
         .try_withdraw(&5_0000000, &intruder, &intruder)
         .is_err());
     assert!(b.strategy.balance(&vault.address) > 19_8000000);
+}
+
+mod props {
+    use super::*;
+    use crate::AquaStrategyError;
+    use proptest::prelude::*;
+    use soroban_sdk::{Error, InvokeError};
+    use yield_vault::VaultError;
+
+    /// Un refus doit etre une garde nommee : la perte bornee du vault, son
+    /// manque de retrait, ou le glissement de la strategie. Une panique
+    /// d'hote, un prix perime ou un depassement ne passent pas pour un revert
+    /// legitime.
+    fn refused<T: core::fmt::Debug, C: core::fmt::Debug>(
+        r: Result<Result<T, C>, Result<Error, InvokeError>>,
+    ) -> Result<T, Error> {
+        let guards: [Error; 3] = [
+            VaultError::RebalanceLoss.into(),
+            VaultError::StrategyShortfall.into(),
+            Error::from_contract_error(AquaStrategyError::Slippage as u32),
+        ];
+        match r {
+            Ok(Ok(value)) => Ok(value),
+            Err(Ok(e)) if guards.contains(&e) => Err(e),
+            other => panic!("echec hors des gardes : {other:?}"),
+        }
+    }
+
+    /// Sortie de `pct` % des parts de `holder` : sa quote-part a 1 % pres,
+    /// ou un revert qui ne touche ni ses parts ni l'actif du vault.
+    fn exit(
+        b: &Bench,
+        vault: &YieldVaultClient,
+        holder: &Address,
+        pct: i128,
+    ) -> Result<(), TestCaseError> {
+        let held = vault.shares_of(holder);
+        let shares = held * pct / 100;
+        if shares == 0 {
+            return Ok(());
+        }
+        let (assets, total) = (vault.total_assets(), vault.total_shares());
+        let due = shares * assets / total;
+        let wallet = b.usdc.balance(holder);
+        match refused(vault.try_withdraw(holder, &shares)) {
+            Ok(got) => {
+                prop_assert!(got <= due, "{got} pour {due}");
+                prop_assert!(got * 10_000 >= due * 9_900, "{got} pour {due}");
+                prop_assert_eq!(b.usdc.balance(holder), wallet + got);
+            }
+            Err(_) => {
+                prop_assert_eq!(vault.shares_of(holder), held);
+                prop_assert_eq!(vault.total_assets(), assets);
+            }
+        }
+        Ok(())
+    }
+
+    proptest! {
+        // Pile Aquarius reelle par cas : peu de cas, des attaques quelconques.
+        #![proptest_config(ProptestConfig::with_cases(24))]
+
+        /// Un tiers deplace le pool juste avant le lot du keeper. Pendant que
+        /// le pool est deplace, les porteurs sortent, le second par Aquarius
+        /// (sandwich d'un retrait) ; puis le tiers se retire et le reste sort.
+        /// Aucun swap ne fait baisser la valeur du vault (la valeur equitable
+        /// ne depend que du produit des reserves, que les frais font croitre) ;
+        /// le lot passe avec une perte sous 1 % du volume deplace ou revert
+        /// sans rien changer ; chaque sortie rend sa quote-part a 1 % pres ou
+        /// revert sans rien changer.
+        #[test]
+        fn a_pool_mover_never_costs_the_vault_beyond_the_margin(
+            usdc_in in any::<bool>(),
+            // Petits deplacements, pres du seuil de 1 %, et gros, jusqu'a
+            // pres de 30 % des reserves du pool.
+            size in prop_oneof![0i128..5_0000000, 0i128..300_0000000],
+            exit_pct in 1i128..=100,
+        ) {
+            let b = setup_quiet();
+            let vault = funded(&b);
+            align_pool(&b, PRICE);
+            // Un second depot porte Aquarius sous sa cible au-dela du seuil.
+            let other = Address::generate(&b.env);
+            StellarAssetClient::new(&b.env, &b.usdc.address).mint(&other, &50_0000000);
+            vault.deposit(&other, &50_0000000);
+
+            let (token_in, token_out) = if usdc_in {
+                (&b.usdc.address, &b.eurc.address)
+            } else {
+                (&b.eurc.address, &b.usdc.address)
+            };
+            let start = vault.total_assets();
+            let received = if size > 0 { swap(&b, token_in, token_out, size) } else { 0 };
+            let moved_pool = vault.total_assets();
+            prop_assert!(moved_pool >= start, "{moved_pool} < {start}");
+
+            let allocation = vault.allocation();
+            match refused(vault.try_rebalance(&b.keeper)) {
+                Ok(moves) => {
+                    let (mut out, mut inn) = (0i128, 0i128);
+                    for (_, flow) in moves.iter() {
+                        if flow < 0 { out -= flow } else { inn += flow }
+                    }
+                    let loss = moved_pool - vault.total_assets();
+                    prop_assert!(loss * 10_000 <= 100 * out.max(inn), "perte {loss}");
+                }
+                Err(_) => {
+                    prop_assert_eq!(vault.total_assets(), moved_pool);
+                    prop_assert_eq!(vault.allocation(), allocation);
+                }
+            }
+
+            // Sandwich d'un retrait, le pool encore deplace : la sortie
+            // complete du premier porteur vide presque l'oisif, celle du
+            // second puise alors dans Aquarius.
+            exit(&b, &vault, &b.user, 100)?;
+            exit(&b, &vault, &other, exit_pct)?;
+
+            let before_unwind = vault.total_assets();
+            if received > 0 {
+                swap(&b, token_out, token_in, received);
+            }
+            prop_assert!(vault.total_assets() >= before_unwind);
+
+            // Puis le reste sort, par Aquarius.
+            exit(&b, &vault, &b.user, 100)?;
+            exit(&b, &vault, &other, 100)?;
+        }
+    }
 }

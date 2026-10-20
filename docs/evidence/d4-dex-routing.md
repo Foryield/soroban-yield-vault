@@ -551,7 +551,7 @@ with the tests rewired onto the Aquarius stack.
     `contracts/router/test_wasms/SHA256SUMS` (commit `84de10e0`, July 2026) ;
   - both carry the build metadata `rssdkver 25.3.0#dcbea445` and
     `cliver 27.0.0#5a7c5fe7`, a toolchain newer than the pinned fixtures.
-    Someone maintains these contracts without publishing their source.
+    Aquarius maintains these contracts; their source is no longer public.
   - No wasm hash was recorded for these two contracts on 2026-07-22 or
     2026-08-28. Whether their bytecode changed after our evidence swaps
     therefore cannot be established after the fact; from this date on, it can.
@@ -562,9 +562,29 @@ with the tests rewired onto the Aquarius stack.
     delta, integral revert on any failure. What is untested is the venue's
     behaviour itself ;
   - neither we nor a reviewer can read the code that executes the swaps ;
-  - the router address comes from the S1 spike of 2026-07-21, announced stable
-    across testnet resets, with no public registry to confirm it. Nothing
-    guarantees it survives the reset of 2026-12-16.
+  - both contracts can be changed by their administrators at any time: they
+    expose `commit_upgrade` / `apply_upgrade` and
+    `set_emergency_mode(emergency_admin, value)`.
+- **Maintained and audited upstream** (correction, same day: an earlier draft
+  of this entry said no public registry confirmed the router address):
+  - the router address is the one Aquarius publishes for testnet on its
+    [Addresses & Networks](https://docs.aqua.network/developers/reference/addresses-and-networks)
+    page, which states that Aquarius redeploys from a pinned deployer seed and
+    that the testnet addresses are expected to persist across resets.
+    Survival of the 2026-12-16 reset is therefore announced by the maintainer,
+    though it cannot be checked before it happens ;
+  - the [Aquarius audits page](https://docs.aqua.network/security/audits)
+    lists a Halborn assessment, June to August 2026, covering the Soroban AMM
+    contracts including concentrated liquidity pools and the router, with no
+    critical or high-severity finding (no report link published). The live
+    router's interface exposes concentrated-pool functions
+    (`init_concentrated_pool`), consistent with that newer code base.
+- **Emergency mode on**: `get_emergency_mode` returns `true` on both the router
+  and our pool. On the pool, `get_is_killed_swap`, `get_is_killed_deposit` and
+  `get_is_killed_claim` return `false`, and the swap quote succeeds. What the
+  flag changes is documented neither in the on-chain contract spec (no doc
+  strings) nor in the public Aquarius documentation. It is recorded here as
+  observed and checked again before every proof (see `scripts/check_aquarius.sh`).
 - **Pool state, same day**: reserves `96928360 / 2352223` (9.69 USDC /
   0.235 EURC), `get_total_shares` = `15000000`, i.e. still 100% ours (re-seed
   of 2026-08-28). Drained of its EURC by third-party swaps, as anticipated in
@@ -580,6 +600,8 @@ with the tests rewired onto the Aquarius stack.
 
 ### Still open
 
-- Follow-up on this gap, to be decided with the project lead: testing against
-  the deployed bytecode, and a fallback if the Aquarius address does not
-  survive the 2026-12-16 reset.
+- Testing against the deployed bytecode: planned at the start of D5, where the
+  Aquarius LP strategy will exercise the pool's deposit and withdraw paths.
+- A fallback if the Aquarius address does not come back after the 2026-12-16
+  reset despite the maintainer's statement; to be decided with the project
+  lead.

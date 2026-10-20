@@ -28,10 +28,10 @@ AMOUNT_USDC="${2:?montant USDC en unites 7 decimales}"
 AMOUNT_EURC="${3:?montant EURC en unites 7 decimales}"
 NETWORK=testnet
 
-# Router Aquarius testnet : PAS de registre JSON public connu (le repo
-# canonique AquaToken/soroban-amm est en 404), donc pas de source relue a
-# l'execution. Adresse etablie au spike S1 du 21/07/2026, annoncee stable
-# aux resets du testnet ; surcharger AQUA_ROUTER si elle change.
+# Router Aquarius testnet : adresse publiee par Aquarius sur
+# docs.aqua.network (Addresses & Networks), annoncee stable aux resets du
+# testnet (redeploiement depuis une seed epinglee). Page HTML, pas de JSON
+# relu a l'execution ; surcharger AQUA_ROUTER si elle change.
 AQUA_ROUTER="${AQUA_ROUTER:-CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD}"
 
 # fee_fraction en 1/10 000 : liste blanche du router [10, 30, 100]

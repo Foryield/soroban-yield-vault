@@ -28,7 +28,7 @@
 use super::test_aqua_stack::EXPECTED_OUT_AQUA as SPOT_OUT;
 use super::test_stack_common::{self as common, AMOUNT_IN, AQUARIUS_FEE_BPS};
 use super::{PairStats, RouterError, SwapResult, SwapRouterClient};
-use soroban_sdk::{token::TokenClient, Address};
+use soroban_sdk::{token::TokenClient, Address, Vec};
 use yield_vault::{YieldVault, YieldVaultClient};
 
 /// Parts mortes verrouillees au premier depot (MINIMUM_LIQUIDITY du vault,
@@ -85,9 +85,21 @@ fn setup_rebalance<'a>() -> RebalanceFixture<'a> {
     router.set_aqua_pool(&base.usdc.address, &base.eurc.address, &stack.pool_index);
 
     let vault_usdc = YieldVaultClient::new(&base.env, &base.env.register(YieldVault, ()));
-    vault_usdc.initialize(&base.admin, &base.usdc.address, &None);
+    vault_usdc.initialize(
+        &base.admin,
+        &base.admin,
+        &base.usdc.address,
+        &Vec::new(&base.env),
+        &500,
+    );
     let vault_eurc = YieldVaultClient::new(&base.env, &base.env.register(YieldVault, ()));
-    vault_eurc.initialize(&base.admin, &base.eurc.address, &None);
+    vault_eurc.initialize(
+        &base.admin,
+        &base.admin,
+        &base.eurc.address,
+        &Vec::new(&base.env),
+        &500,
+    );
 
     RebalanceFixture {
         user: base.user,

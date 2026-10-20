@@ -36,7 +36,7 @@ fn setup<'a>(initial_mint: i128) -> Fixture<'a> {
 
     let vault_id = env.register(YieldVault, ());
     let vault = YieldVaultClient::new(&env, &vault_id);
-    vault.initialize(&admin, &asset, &None);
+    vault.initialize(&admin, &admin, &asset, &Vec::new(&env), &500);
 
     Fixture {
         env,
@@ -142,7 +142,8 @@ fn unpause_restores_deposit() {
 #[should_panic(expected = "Error(Contract, #1)")]
 fn double_initialize_panics() {
     let f = setup(1_000);
-    f.vault.initialize(&f.admin, &f.user, &None); // second appel : doit paniquer
+    f.vault
+        .initialize(&f.admin, &f.admin, &f.user, &Vec::new(&f.env), &500); // second appel : doit paniquer
 }
 
 // --- Parts proportionnelles (D1) ---
@@ -409,7 +410,13 @@ fn unmocked_vault<'a>() -> (Env, Address, Address, YieldVaultClient<'a>) {
     let admin = Address::generate(&env);
     let outsider = Address::generate(&env);
     let vault = YieldVaultClient::new(&env, &env.register(YieldVault, ()));
-    vault.initialize(&admin, &Address::generate(&env), &None);
+    vault.initialize(
+        &admin,
+        &admin,
+        &Address::generate(&env),
+        &Vec::new(&env),
+        &500,
+    );
     (env, admin, outsider, vault)
 }
 

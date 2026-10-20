@@ -8,7 +8,7 @@ use super::{YieldVault, YieldVaultClient};
 use soroban_sdk::{
     testutils::{Address as _, EnvTestConfig},
     token::{StellarAssetClient, TokenClient},
-    Address, Env,
+    Address, Env, Vec,
 };
 
 fn bench(
@@ -32,7 +32,7 @@ fn bench(
     StellarAssetClient::new(&env, &asset).mint(&user, &mint);
     let vault_id = env.register(YieldVault, ());
     let vault = YieldVaultClient::new(&env, &vault_id);
-    vault.initialize(&admin, &asset, &None);
+    vault.initialize(&admin, &admin, &asset, &Vec::new(&env), &500);
     (env.clone(), user, TokenClient::new(&env, &asset), vault)
 }
 

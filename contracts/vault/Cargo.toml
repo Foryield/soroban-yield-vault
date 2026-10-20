@@ -1,6 +1,6 @@
 [package]
 name = "yield-vault"
-description = "ForYield Soroban YieldVault (MVP): USDC deposit/withdraw, proportional shares, Blend v2 allocation"
+description = "ForYield Soroban YieldVault: deposit/withdraw, proportional shares, allocation to DeFindex strategies"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [dependencies]
-blend-contract-sdk = "2.25.0"
+defindex-strategy-core = "0.3.0"
 soroban-sdk = "25"
 
 [dev-dependencies]

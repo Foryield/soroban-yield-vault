@@ -110,9 +110,10 @@ pub(crate) const MAX_STRATEGIES: u32 = 4;
 /// 100 % en points de base.
 const BPS: u32 = 10_000;
 
-/// Perte toleree sur un reequilibrage, en points de base du volume deplace :
-/// la marge de glissement de D4. Au-dela, une strategie a rendu ou valorise
-/// moins qu'elle n'a recu, et tout le lot revert.
+/// Perte toleree, en points de base du volume deplace : la marge de
+/// glissement de D4. Elle borne un reequilibrage, le manque d'un retrait
+/// servi par les strategies (a la charge du client sortant) et une sortie
+/// d'urgence sans passage en perte. Au-dela, tout revert.
 pub(crate) const MAX_REBALANCE_LOSS_BPS: i128 = 100;
 
 /// Ledgers par jour, fermeture nominale a 5 secondes.
@@ -284,10 +285,15 @@ impl YieldVault {
         Self::extend_ttls(&env, &key);
 
         // Desallocation : la part du retrait que le solde oisif ne couvre pas
-        // est retiree des strategies avant de servir le client.
-        if amount > idle {
-            Self::pull_from_strategies(&env, &token, amount - idle);
-        }
+        // est retiree des strategies avant de servir le client. Le cout de
+        // sortie d'une strategie (frais et glissement d'un pool LP) est a la
+        // charge du client sortant, dans la marge de MAX_REBALANCE_LOSS_BPS :
+        // il recoit ce qui est effectivement rentre (decision du 20/10).
+        let amount = if amount > idle {
+            amount - Self::pull_from_strategies(&env, &token, amount - idle)
+        } else {
+            amount
+        };
 
         token.transfer(&env.current_contract_address(), &from, &amount);
 
@@ -559,10 +565,11 @@ impl YieldVault {
             if due > 0 {
                 client.withdraw(&due, &this, &this);
             }
-            // Sans passage en perte, tout doit rentrer : une strategie qui
-            // retient une part de ce qu'elle annonce ne la fait pas perdre en
-            // silence.
-            if token.balance(&this) - before < due {
+            // Sans passage en perte, tout doit rentrer, au cout de sortie
+            // pres (MAX_REBALANCE_LOSS_BPS) : une strategie qui retient une
+            // part de ce qu'elle annonce ne la fait pas perdre en silence.
+            let got = token.balance(&this) - before;
+            if got * (BPS as i128) < due * (BPS as i128 - MAX_REBALANCE_LOSS_BPS) {
                 panic_with_error!(&env, VaultError::StrategyShortfall);
             }
         }
@@ -664,14 +671,17 @@ impl YieldVault {
         value
     }
 
-    /// Ramene au moins `need` unites d'actif sur le vault, strategie par
-    /// strategie dans l'ordre de la liste. Le vault juge sur le delta de son
-    /// propre solde, jamais sur la valeur de retour de la strategie : une
-    /// strategie qui ment sur ce qu'elle a rendu ne trompe pas le vault. Si
-    /// les strategies ne rendent pas assez, tout le retrait revert (aucune
-    /// perte de parts), comme en D1 quand Blend gelait sa reserve.
-    fn pull_from_strategies(env: &Env, token: &TokenClient, need: i128) {
+    /// Ramene `need` unites d'actif sur le vault, strategie par strategie dans
+    /// l'ordre de la liste, et rend le manque restant. Le vault juge sur le
+    /// delta de son propre solde, jamais sur la valeur de retour de la
+    /// strategie : une strategie qui ment sur ce qu'elle a rendu ne trompe
+    /// pas le vault. Un manque est tolere jusqu'a MAX_REBALANCE_LOSS_BPS de ce
+    /// qui a ete demande aux strategies (cout de sortie, a la charge du client
+    /// sortant) ; au-dela, tout le retrait revert (aucune perte de parts),
+    /// comme en D1 quand Blend gelait sa reserve.
+    fn pull_from_strategies(env: &Env, token: &TokenClient, need: i128) -> i128 {
         let this = env.current_contract_address();
+        let requested = need;
         let mut need = need;
         for s in Self::strategy_list(env).iter().filter(|s| s.active) {
             if need <= 0 {
@@ -687,9 +697,13 @@ impl YieldVault {
             client.withdraw(&ask, &this, &this);
             need -= token.balance(&this) - before;
         }
-        if need > 0 {
+        if need <= 0 {
+            return 0;
+        }
+        if need * (BPS as i128) > MAX_REBALANCE_LOSS_BPS * requested {
             panic_with_error!(env, VaultError::StrategyShortfall);
         }
+        need
     }
 
     /// Gardes de configuration : nombre borne, strategies actives, actif

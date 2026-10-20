@@ -986,3 +986,61 @@ fn a_target_at_its_cap_survives_a_tolerated_loss_elsewhere() {
     b.vault.rebalance(&b.admin);
     assert_eq!(b.token.balance(&s1), 70_0000000);
 }
+
+// --- Cout de sortie a la charge du client sortant (decision du 20/10) ---
+
+/// Vault a une strategie (cible 90 %), 100 deposes et alloues : 10 oisifs,
+/// 90 dans la strategie.
+fn bench_with_one_allocated<'a>() -> (Bench<'a>, Address) {
+    let b = base();
+    let s = strategy(&b.env, &b.asset);
+    let list = vec![&b.env, config(&s, 9_000, 9_000)];
+    let b = deploy(b, list, 500);
+    b.vault.deposit(&b.user, &100_0000000);
+    b.vault.rebalance(&b.admin);
+    (b, s)
+}
+
+#[test]
+fn the_exiting_client_bears_an_exit_cost_within_the_margin() {
+    let (b, s) = bench_with_one_allocated();
+    // La strategie rend 0,5 % de moins que demande, comme un pool LP qui
+    // preleve ses frais et son glissement a la sortie.
+    MockStrategyClient::new(&b.env, &s).set_skew_bps(&-50);
+
+    let before = b.token.balance(&b.user);
+    let paid = b.vault.withdraw(&b.user, &50_0000000);
+
+    // 10 d'oisif, 40 demandes a la strategie, 39,8 rentres : le client
+    // recoit 49,8 et c'est ce que withdraw annonce.
+    assert_eq!(paid, 49_8000000);
+    assert_eq!(b.token.balance(&b.user) - before, 49_8000000);
+    assert_eq!(b.token.balance(&b.vault.address), 0);
+}
+
+#[test]
+fn the_exit_cost_margin_holds_exactly_at_1_percent() {
+    for (skew, passes) in [(-100_i32, true), (-101, false)] {
+        let (b, s) = bench_with_one_allocated();
+        MockStrategyClient::new(&b.env, &s).set_skew_bps(&skew);
+        let shares = b.vault.shares_of(&b.user);
+        let result = b.vault.try_withdraw(&b.user, &50_0000000);
+        assert_eq!(result.is_ok(), passes, "ecart de {skew} pb");
+        if !passes {
+            assert_eq!(
+                result.unwrap_err().unwrap(),
+                VaultError::StrategyShortfall.into()
+            );
+            assert_eq!(b.vault.shares_of(&b.user), shares);
+        }
+    }
+}
+
+#[test]
+fn emergency_exit_accepts_an_exit_cost_within_the_margin() {
+    let (b, s) = bench_with_one_allocated();
+    MockStrategyClient::new(&b.env, &s).set_skew_bps(&-50);
+    // 90 dus, 89,55 rentres : dans la marge, la sortie passe sans write_off.
+    assert_eq!(b.vault.emergency_exit(&s, &false), 89_5500000);
+    assert!(!b.vault.strategies().get(0).unwrap().active);
+}

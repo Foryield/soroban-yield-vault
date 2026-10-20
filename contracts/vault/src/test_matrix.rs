@@ -4,7 +4,7 @@
 //! attendue est un litteral calcule par un oracle Python independant
 //! (scripts/generate_matrix_tests.py), pas par la formule du contrat.
 
-use super::{YieldVault, YieldVaultClient};
+use super::{StrategyConfig, YieldVault, YieldVaultClient};
 use soroban_sdk::{
     testutils::{Address as _, EnvTestConfig},
     token::{StellarAssetClient, TokenClient},
@@ -30,9 +30,17 @@ fn bench(
         .register_stellar_asset_contract_v2(admin.clone())
         .address();
     StellarAssetClient::new(&env, &asset).mint(&user, &mint);
-    let vault_id = env.register(YieldVault, ());
+    let vault_id = env.register(
+        YieldVault,
+        (
+            admin.clone(),
+            admin.clone(),
+            asset.clone(),
+            Vec::<StrategyConfig>::new(&env),
+            500u32,
+        ),
+    );
     let vault = YieldVaultClient::new(&env, &vault_id);
-    vault.initialize(&admin, &admin, &asset, &Vec::new(&env), &500);
     (env.clone(), user, TokenClient::new(&env, &asset), vault)
 }
 

@@ -10,11 +10,13 @@
 //! moins que demande en annoncant le montant demande, `balance` force (y
 //! compris negatif), `balance` qui panique.
 
+extern crate std;
+
 use super::{StrategyConfig, VaultError, YieldVault, YieldVaultClient, MAX_STRATEGIES};
 use soroban_sdk::{
     testutils::Address as _,
     token::{StellarAssetClient, TokenClient},
-    vec, Address, Env, Error, Val, Vec,
+    vec, Address, Env, Val, Vec,
 };
 
 mod mock_strategy {
@@ -105,6 +107,15 @@ mod mock_strategy {
 
 use mock_strategy::{MockStrategy, MockStrategyClient};
 
+/// Environnement sans vault : actif, admin, porteur finance.
+struct Base<'a> {
+    env: Env,
+    admin: Address,
+    user: Address,
+    asset: Address,
+    token: TokenClient<'a>,
+}
+
 struct Bench<'a> {
     env: Env,
     admin: Address,
@@ -114,7 +125,7 @@ struct Bench<'a> {
     vault: YieldVaultClient<'a>,
 }
 
-fn bench<'a>() -> Bench<'a> {
+fn base<'a>() -> Base<'a> {
     let env = Env::default();
     env.mock_all_auths();
     let admin = Address::generate(&env);
@@ -123,15 +134,68 @@ fn bench<'a>() -> Bench<'a> {
         .register_stellar_asset_contract_v2(admin.clone())
         .address();
     StellarAssetClient::new(&env, &asset).mint(&user, &1_000_0000000);
-    let vault = YieldVaultClient::new(&env, &env.register(YieldVault, ()));
-    Bench {
+    Base {
         token: TokenClient::new(&env, &asset),
         env,
         admin,
         user,
         asset,
-        vault,
     }
+}
+
+/// Deploie le vault : le constructeur pose et valide la configuration dans
+/// la transaction meme du deploiement.
+fn deploy<'a>(b: Base<'a>, strategies: Vec<StrategyConfig>, drift_bps: u32) -> Bench<'a> {
+    let id = b.env.register(
+        YieldVault,
+        (
+            b.admin.clone(),
+            b.admin.clone(),
+            b.asset.clone(),
+            strategies,
+            drift_bps,
+        ),
+    );
+    Bench {
+        vault: YieldVaultClient::new(&b.env, &id),
+        env: b.env,
+        admin: b.admin,
+        user: b.user,
+        asset: b.asset,
+        token: b.token,
+    }
+}
+
+/// Message du deploiement refuse. Le SDK n'offre pas de `try_register` : on
+/// capture la panique du constructeur. L'hote la rapporte en
+/// `Error(Context, InvalidAction)` et range l'erreur typee du vault dans son
+/// journal de diagnostic, que le message de panique reproduit.
+fn deploy_error(b: Base, strategies: Vec<StrategyConfig>, drift_bps: u32) -> std::string::String {
+    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        deploy(b, strategies, drift_bps);
+    }))
+    .expect_err("le deploiement devait echouer");
+    payload
+        .downcast_ref::<std::string::String>()
+        .cloned()
+        .or_else(|| {
+            payload
+                .downcast_ref::<&str>()
+                .map(|s| std::string::String::from(*s))
+        })
+        .unwrap_or_default()
+}
+
+fn assert_rejected(b: Base, strategies: Vec<StrategyConfig>, drift_bps: u32, err: VaultError) {
+    let message = deploy_error(b, strategies, drift_bps);
+    let expected = std::format!(
+        "\"constructor invocation has failed with error\", Error(Contract, #{})",
+        err as u32
+    );
+    assert!(
+        message.contains(&expected),
+        "attendu {expected}, obtenu {message}"
+    );
 }
 
 fn strategy(env: &Env, asset: &Address) -> Address {
@@ -148,19 +212,13 @@ fn config(address: &Address, target_bps: u32, cap_bps: u32) -> StrategyConfig {
     }
 }
 
-/// Vault initialise sur deux strategies factices (cibles 70 % et 20 %).
+/// Vault deploye sur deux strategies factices (cibles 70 % et 20 %).
 fn bench_with_two<'a>() -> (Bench<'a>, Address, Address) {
-    let b = bench();
+    let b = base();
     let s1 = strategy(&b.env, &b.asset);
     let s2 = strategy(&b.env, &b.asset);
-    b.vault.initialize(
-        &b.admin,
-        &b.admin,
-        &b.asset,
-        &vec![&b.env, config(&s1, 7_000, 9_000), config(&s2, 2_000, 3_000)],
-        &500,
-    );
-    (b, s1, s2)
+    let list = vec![&b.env, config(&s1, 7_000, 9_000), config(&s2, 2_000, 3_000)];
+    (deploy(b, list, 500), s1, s2)
 }
 
 /// Deplace des fonds oisifs du vault vers une strategie, comme le fera le
@@ -169,15 +227,8 @@ fn allocate(b: &Bench, to: &Address, amount: i128) {
     b.token.transfer(&b.vault.address, to, &amount);
 }
 
-fn init_error(b: &Bench, strategies: Vec<StrategyConfig>, drift_bps: u32) -> Error {
-    b.vault
-        .try_initialize(&b.admin, &b.admin, &b.asset, &strategies, &drift_bps)
-        .unwrap_err()
-        .unwrap()
-}
-
 #[test]
-fn initialize_stores_the_configuration() {
+fn constructor_stores_the_configuration() {
     let (b, s1, s2) = bench_with_two();
     assert_eq!(
         b.vault.strategies(),
@@ -188,97 +239,81 @@ fn initialize_stores_the_configuration() {
 }
 
 #[test]
-fn initialize_rejects_more_than_max_strategies() {
-    let b = bench();
+fn constructor_rejects_more_than_max_strategies() {
+    let b = base();
     let mut list = Vec::new(&b.env);
     for _ in 0..=MAX_STRATEGIES {
         list.push_back(config(&strategy(&b.env, &b.asset), 0, 0));
     }
-    assert_eq!(
-        init_error(&b, list, 500),
-        VaultError::TooManyStrategies.into()
-    );
+    assert_rejected(b, list, 500, VaultError::TooManyStrategies);
 }
 
 #[test]
-fn initialize_rejects_a_strategy_on_another_asset() {
-    let b = bench();
+fn constructor_rejects_a_strategy_on_another_asset() {
+    let b = base();
     let other = b
         .env
         .register_stellar_asset_contract_v2(b.admin.clone())
         .address();
-    let s = strategy(&b.env, &other);
-    assert_eq!(
-        init_error(&b, vec![&b.env, config(&s, 1_000, 2_000)], 500),
-        VaultError::StrategyAssetMismatch.into()
-    );
+    let list = vec![&b.env, config(&strategy(&b.env, &other), 1_000, 2_000)];
+    assert_rejected(b, list, 500, VaultError::StrategyAssetMismatch);
 }
 
 #[test]
-fn initialize_rejects_a_duplicate_strategy() {
-    let b = bench();
+fn constructor_rejects_a_duplicate_strategy() {
+    let b = base();
     let s = strategy(&b.env, &b.asset);
-    assert_eq!(
-        init_error(
-            &b,
-            vec![&b.env, config(&s, 1_000, 2_000), config(&s, 1_000, 2_000)],
-            500
-        ),
-        VaultError::DuplicateStrategy.into()
-    );
+    let list = vec![&b.env, config(&s, 1_000, 2_000), config(&s, 1_000, 2_000)];
+    assert_rejected(b, list, 500, VaultError::DuplicateStrategy);
 }
 
 #[test]
-fn initialize_rejects_invalid_allocations() {
-    let b = bench();
-    let s1 = strategy(&b.env, &b.asset);
-    let s2 = strategy(&b.env, &b.asset);
-    let mut inactive = config(&s1, 1_000, 2_000);
-    inactive.active = false;
-    let cases = [
-        // strategie inactive des l'origine
-        (vec![&b.env, inactive], 500),
-        // cible au-dessus du plafond
-        (vec![&b.env, config(&s1, 3_000, 2_000)], 500),
-        // plafond au-dessus de 100 %
-        (vec![&b.env, config(&s1, 1_000, 10_001)], 500),
-        // somme des cibles au-dessus de 100 %
-        (
-            vec![
-                &b.env,
-                config(&s1, 6_000, 10_000),
-                config(&s2, 5_000, 10_000),
-            ],
-            500,
-        ),
-        // declencheur nul ou au-dessus de 100 %
-        (Vec::new(&b.env), 0),
-        (Vec::new(&b.env), 10_001),
-    ];
-    for (list, drift) in cases {
-        assert_eq!(
-            init_error(&b, list, drift),
-            VaultError::InvalidAllocation.into()
-        );
+fn constructor_rejects_invalid_allocations() {
+    // Un environnement neuf par cas : un deploiement refuse ne doit rien
+    // laisser derriere lui qui fausse le cas suivant.
+    for case in 0..6 {
+        let b = base();
+        let s1 = strategy(&b.env, &b.asset);
+        let s2 = strategy(&b.env, &b.asset);
+        let (list, drift) = match case {
+            // strategie inactive des l'origine
+            0 => {
+                let mut inactive = config(&s1, 1_000, 2_000);
+                inactive.active = false;
+                (vec![&b.env, inactive], 500)
+            }
+            // cible au-dessus du plafond
+            1 => (vec![&b.env, config(&s1, 3_000, 2_000)], 500),
+            // plafond au-dessus de 100 %
+            2 => (vec![&b.env, config(&s1, 1_000, 10_001)], 500),
+            // somme des cibles au-dessus de 100 %
+            3 => (
+                vec![
+                    &b.env,
+                    config(&s1, 6_000, 10_000),
+                    config(&s2, 5_000, 10_000),
+                ],
+                500,
+            ),
+            // declencheur nul ou au-dessus de 100 %
+            4 => (Vec::new(&b.env), 0),
+            _ => (Vec::new(&b.env), 10_001),
+        };
+        assert_rejected(b, list, drift, VaultError::InvalidAllocation);
     }
 }
 
 #[test]
-fn initialize_accepts_targets_summing_to_exactly_100_percent() {
-    let b = bench();
+fn constructor_accepts_targets_summing_to_exactly_100_percent() {
+    let b = base();
     let s1 = strategy(&b.env, &b.asset);
     let s2 = strategy(&b.env, &b.asset);
-    b.vault.initialize(
-        &b.admin,
-        &b.admin,
-        &b.asset,
-        &vec![
-            &b.env,
-            config(&s1, 6_000, 10_000),
-            config(&s2, 4_000, 10_000),
-        ],
-        &10_000,
-    );
+    let list = vec![
+        &b.env,
+        config(&s1, 6_000, 10_000),
+        config(&s2, 4_000, 10_000),
+    ];
+    let b = deploy(b, list, 10_000);
     assert_eq!(b.vault.strategies().len(), 2);
 }
 
@@ -377,7 +412,7 @@ fn a_shortfall_reverts_the_whole_withdrawal() {
 fn deposit_into_a_strategy_follows_the_trait_contract() {
     // Garde-fou de la fixture : la strategie factice tire bien les fonds de
     // `from` sous son auth, comme le fera le reequilibrage.
-    let b = bench();
+    let b = base();
     let s = strategy(&b.env, &b.asset);
     let client = defindex_strategy_core::DeFindexStrategyClient::new(&b.env, &s);
     assert_eq!(client.deposit(&1_0000000, &b.user), 1_0000000);
@@ -385,27 +420,19 @@ fn deposit_into_a_strategy_follows_the_trait_contract() {
 }
 
 #[test]
-fn initialize_rejects_a_strategy_whose_balance_cannot_be_read() {
-    let b = bench();
+fn constructor_rejects_a_strategy_whose_balance_cannot_be_read() {
+    let b = base();
     let broken = strategy(&b.env, &b.asset);
     MockStrategyClient::new(&b.env, &broken).break_balance();
-    assert!(b
-        .vault
-        .try_initialize(
-            &b.admin,
-            &b.admin,
-            &b.asset,
-            &vec![&b.env, config(&broken, 1_000, 2_000)],
-            &500
-        )
-        .is_err());
+    let list = vec![&b.env, config(&broken, 1_000, 2_000)];
+    // Panique de la strategie elle-meme, pas une erreur du vault.
+    assert!(!deploy_error(b, list, 500).is_empty());
 
+    let b = base();
     let negative = strategy(&b.env, &b.asset);
     MockStrategyClient::new(&b.env, &negative).set_balance_override(&-1);
-    assert_eq!(
-        init_error(&b, vec![&b.env, config(&negative, 1_000, 2_000)], 500),
-        VaultError::InvalidStrategyBalance.into()
-    );
+    let list = vec![&b.env, config(&negative, 1_000, 2_000)];
+    assert_rejected(b, list, 500, VaultError::InvalidStrategyBalance);
 }
 
 #[test]

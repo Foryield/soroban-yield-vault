@@ -2,7 +2,7 @@
 //! Proprietes (proptest) : invariants de la math de parts sur entrees
 //! aleatoires. 256 cas generes par propriete a chaque execution.
 
-use super::{YieldVault, YieldVaultClient};
+use super::{StrategyConfig, YieldVault, YieldVaultClient};
 use proptest::prelude::*;
 use soroban_sdk::{
     testutils::{Address as _, EnvTestConfig},
@@ -29,9 +29,17 @@ fn bench(
         .register_stellar_asset_contract_v2(admin.clone())
         .address();
     StellarAssetClient::new(&env, &asset).mint(&user, &mint);
-    let vault_id = env.register(YieldVault, ());
+    let vault_id = env.register(
+        YieldVault,
+        (
+            admin.clone(),
+            admin.clone(),
+            asset.clone(),
+            Vec::<StrategyConfig>::new(&env),
+            500u32,
+        ),
+    );
     let vault = YieldVaultClient::new(&env, &vault_id);
-    vault.initialize(&admin, &admin, &asset, &Vec::new(&env), &500);
     (env.clone(), user, TokenClient::new(&env, &asset), vault)
 }
 

@@ -29,7 +29,23 @@ use super::test_aqua_stack::EXPECTED_OUT_AQUA as SPOT_OUT;
 use super::test_stack_common::{self as common, AMOUNT_IN, AQUARIUS_FEE_BPS};
 use super::{PairStats, RouterError, SwapResult, SwapRouterClient};
 use soroban_sdk::{token::TokenClient, Address, Vec};
-use yield_vault::{YieldVault, YieldVaultClient};
+use yield_vault::{StrategyConfig, YieldVault, YieldVaultClient};
+
+/// Vault de garde pure (sans strategie) sur `asset`, configure par son
+/// constructeur au deploiement.
+fn deploy_vault<'a>(base: &common::BaseFixture<'a>, asset: &Address) -> YieldVaultClient<'a> {
+    let id = base.env.register(
+        YieldVault,
+        (
+            base.admin.clone(),
+            base.admin.clone(),
+            asset.clone(),
+            Vec::<StrategyConfig>::new(&base.env),
+            500u32,
+        ),
+    );
+    YieldVaultClient::new(&base.env, &id)
+}
 
 /// Parts mortes verrouillees au premier depot (MINIMUM_LIQUIDITY du vault,
 /// constante privee : reprise ici comme valeur ATTENDUE, pas importee -- si le
@@ -84,22 +100,8 @@ fn setup_rebalance<'a>() -> RebalanceFixture<'a> {
     let router = common::init_router(&base, &stack.router.address);
     router.set_aqua_pool(&base.usdc.address, &base.eurc.address, &stack.pool_index);
 
-    let vault_usdc = YieldVaultClient::new(&base.env, &base.env.register(YieldVault, ()));
-    vault_usdc.initialize(
-        &base.admin,
-        &base.admin,
-        &base.usdc.address,
-        &Vec::new(&base.env),
-        &500,
-    );
-    let vault_eurc = YieldVaultClient::new(&base.env, &base.env.register(YieldVault, ()));
-    vault_eurc.initialize(
-        &base.admin,
-        &base.admin,
-        &base.eurc.address,
-        &Vec::new(&base.env),
-        &500,
-    );
+    let vault_usdc = deploy_vault(&base, &base.usdc.address);
+    let vault_eurc = deploy_vault(&base, &base.eurc.address);
 
     RebalanceFixture {
         user: base.user,

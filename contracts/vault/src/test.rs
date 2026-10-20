@@ -1,5 +1,5 @@
 #![cfg(test)]
-use super::{DataKey, YieldVault, YieldVaultClient, TTL_EXTEND_TO, TTL_THRESHOLD};
+use super::{DataKey, StrategyConfig, YieldVault, YieldVaultClient, TTL_EXTEND_TO, TTL_THRESHOLD};
 use soroban_sdk::{
     symbol_short,
     testutils::{
@@ -7,7 +7,7 @@ use soroban_sdk::{
         Ledger as _, MockAuth, MockAuthInvoke,
     },
     token::{StellarAssetClient, TokenClient},
-    vec, Address, Env, IntoVal, Vec,
+    vec, Address, Env, IntoVal, Symbol, Val, Vec,
 };
 
 struct Fixture<'a> {
@@ -34,9 +34,17 @@ fn setup<'a>(initial_mint: i128) -> Fixture<'a> {
     let token = TokenClient::new(&env, &asset);
     StellarAssetClient::new(&env, &asset).mint(&user, &initial_mint);
 
-    let vault_id = env.register(YieldVault, ());
+    let vault_id = env.register(
+        YieldVault,
+        (
+            admin.clone(),
+            admin.clone(),
+            asset.clone(),
+            Vec::<StrategyConfig>::new(&env),
+            500u32,
+        ),
+    );
     let vault = YieldVaultClient::new(&env, &vault_id);
-    vault.initialize(&admin, &admin, &asset, &Vec::new(&env), &500);
 
     Fixture {
         env,
@@ -139,11 +147,24 @@ fn unpause_restores_deposit() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
-fn double_initialize_panics() {
+#[should_panic(expected = "Error(Context, InvalidAction)")]
+fn constructor_cannot_be_invoked_again() {
+    // Le constructeur remplace l'initialize de D1 : un second appel, meme
+    // direct, doit etre refuse par l'hote.
     let f = setup(1_000);
-    f.vault
-        .initialize(&f.admin, &f.admin, &f.user, &Vec::new(&f.env), &500); // second appel : doit paniquer
+    let args: Vec<Val> = (
+        f.admin.clone(),
+        f.admin.clone(),
+        f.user.clone(),
+        Vec::<StrategyConfig>::new(&f.env),
+        500u32,
+    )
+        .into_val(&f.env);
+    f.env.invoke_contract::<()>(
+        &f.vault.address,
+        &Symbol::new(&f.env, "__constructor"),
+        args,
+    );
 }
 
 // --- Parts proportionnelles (D1) ---
@@ -402,20 +423,26 @@ fn withdraw_extends_instance_and_holder_ttl() {
 // d'une adresse et verifient qui peut, et qui ne peut pas, geler le vault.
 // Meme motif que `set_aqua_pool_rejects_non_admin` cote routeur.
 
-/// Vault sans mock_all_auths. `initialize` n'exige aucune auth, l'admin et
+/// Vault sans mock_all_auths. Le constructeur n'exige aucune auth, l'admin et
 /// l'actif sont donc poses sans qu'aucune signature soit mockee. L'actif est
 /// une adresse nue : pause/unpause ne touchent que le stockage d'instance.
 fn unmocked_vault<'a>() -> (Env, Address, Address, YieldVaultClient<'a>) {
     let env = Env::default();
     let admin = Address::generate(&env);
     let outsider = Address::generate(&env);
-    let vault = YieldVaultClient::new(&env, &env.register(YieldVault, ()));
-    vault.initialize(
-        &admin,
-        &admin,
-        &Address::generate(&env),
-        &Vec::new(&env),
-        &500,
+    let asset = Address::generate(&env);
+    let vault = YieldVaultClient::new(
+        &env,
+        &env.register(
+            YieldVault,
+            (
+                admin.clone(),
+                admin.clone(),
+                asset,
+                Vec::<StrategyConfig>::new(&env),
+                500u32,
+            ),
+        ),
     );
     (env, admin, outsider, vault)
 }

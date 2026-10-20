@@ -10,7 +10,7 @@
 //!   ordre que la tolerance MINIMUM_LIQUIDITY) ;
 //! - MINIMUM_LIQUIDITY parts mortes au premier depot (anti-inflation) ;
 //! - allocation D5 : 0 a MAX_STRATEGIES strategies au trait DeFindex
-//!   (`defindex-strategy-core`), fixees a l'initialize avec cible et plafond.
+//!   (`defindex-strategy-core`), fixees au deploiement avec cible et plafond.
 //!   Un depot reste oisif ; un retrait est servi par l'oisif puis par les
 //!   strategies dans l'ordre de la liste (ordre de liquidite). total_assets =
 //!   oisif + somme des `balance` des strategies : le rendement d'une strategie
@@ -38,7 +38,8 @@ use soroban_sdk::{
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum VaultError {
-    AlreadyInitialized = 1,
+    // 1 (AlreadyInitialized) retire avec initialize : le constructeur ne
+    // s'execute qu'une fois, au deploiement. Jamais reutilise.
     AmountMustBePositive = 2,
     DepositTooSmall = 3,
     SharesMustBePositive = 4,
@@ -57,7 +58,7 @@ pub enum VaultError {
 }
 
 /// Une strategie au trait DeFindex et sa place dans l'allocation, en points de
-/// base de total_assets. Le plafond est fige a l'initialize ; la cible se
+/// base de total_assets. Le plafond est fige au deploiement ; la cible se
 /// reglera ensuite, toujours sous le plafond.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -123,13 +124,16 @@ pub struct YieldVault;
 
 #[contractimpl]
 impl YieldVault {
-    /// Initialise le vault. Idempotence interdite : un second appel panique.
+    /// Constructeur : s'execute une seule fois, dans la transaction meme du
+    /// deploiement. Aucune fenetre ne reste ouverte entre le deploiement et la
+    /// configuration, qu'un tiers pourrait occuper avec ses propres strategies
+    /// et son propre keeper (ce que permettait l'initialize de D1).
     /// `keeper` : seule cle, avec l'admin, admise a reequilibrer.
     /// `strategies` (liste immuable, ordre = ordre de liquidite des retraits) :
     /// vide = vault de garde pure, utilise par les instances sans strategie
     /// sur leur actif (ex. EURC). `drift_bps` : ecart a la cible qui declenche
     /// le reequilibrage.
-    pub fn initialize(
+    pub fn __constructor(
         env: Env,
         admin: Address,
         keeper: Address,
@@ -137,10 +141,7 @@ impl YieldVault {
         strategies: Vec<StrategyConfig>,
         drift_bps: u32,
     ) {
-        if env.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&env, VaultError::AlreadyInitialized);
-        }
-        // La liste et les plafonds sont immuables et initialize est a un coup :
+        // La liste et les plafonds sont immuables et le constructeur a un coup :
         // une configuration fausse rendrait le vault inutilisable sans recours.
         // Echouer ici est la seule occasion de le dire.
         Self::check_strategies(&env, &asset, &strategies);

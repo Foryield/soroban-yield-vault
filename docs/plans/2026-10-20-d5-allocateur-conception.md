@@ -340,5 +340,50 @@ Elles se déduisent de la profondeur du pool Aquarius. La clé d'ops détient le
 
 Séquence filmée : dépôt de 2 USDC (oisif à 100 %), rééquilibrage (1,4 / 0,4
 / 0,2), dépôt de 0,05 USDC refusé au rééquilibrage (`NothingToRebalance`,
-écart de 2,2 points), dépôt de 0,2 USDC accepté (écart de 8,2 points),
+écart de 2,2 points), dépôt de 0,2 USDC accepté (écart de 10 points),
 retrait de 0,15 USDC servi par l'oisif, retrait de 1 USDC servi par Blend.
+
+## 14. Écarts nés de l'implémentation (20/10)
+
+Étapes 2 à 4 codées sur `feat/d5-vault-strategies`. Ce qui diffère des
+sections précédentes, et pourquoi.
+
+- **Constructeur au lieu d'`initialize`.** `initialize` n'exigeait aucune
+  signature : entre le déploiement et l'initialisation, un tiers pouvait
+  poser ses propres stratégies et son propre keeper. Le vault se configure
+  désormais par `__constructor(admin, keeper, asset, strategies, drift_bps)`,
+  dans la transaction même du déploiement ; l'hôte refuse tout second appel.
+- **Interface finale.** `rebalance(caller)`, `set_targets(targets)`,
+  `set_keeper(keeper)` (remplacer une clé keeper compromise),
+  `emergency_exit(strategy, write_off)`, `allocation()`, `strategies()`.
+- **Sortie d'urgence à deux modes.** Sans passage en perte, la stratégie doit
+  tout rendre, sinon rien ne change : un pool gelé immobilise les fonds sans
+  les perdre. Avec `write_off`, décision explicite de l'admin, la stratégie
+  est retirée même en panne et ce qu'elle ne rend pas est passé en perte. Une
+  stratégie retirée sort du périmètre : `total_assets`, retraits, lots.
+- **Perte bornée par lot.** 1 % du volume déplacé, mesuré comme le plus
+  grand des deux flux (retraits, dépôts) et non leur somme. Le déclencheur
+  doit dépasser cette marge (`drift_bps` > 100), pour que l'écart laissé par
+  une perte tolérée ne relance pas de lot : les pertes ne se composent pas.
+- **Plafonds** vérifiés sur le plus grand des totaux avant et après le lot :
+  une perte d'arrondi tolérée ailleurs ne fait pas franchir son plafond à une
+  stratégie dont la cible l'égale.
+- **Stratégie Blend vendorisée en binaire seul** (licence GPL-3.0 de
+  DeFindex, option A du 20/10) : `contracts/vault/test_wasms/`, build
+  reproductible vérifié par `scripts/build_blend_strategy.sh`.
+- **Parts mortes de la stratégie Blend.** Son premier déposant cède 1 000
+  unités (0,0001 USDC). Le script de déploiement fera un dépôt d'amorçage
+  depuis la clé d'ops avant de brancher la stratégie au vault.
+- **Arrondis.** Mesurés sur la pile Blend réelle après un an d'intérêts : la
+  stratégie rend exactement le montant demandé. Le vault garde son contrôle
+  strict (`StrategyShortfall`), sans tolérance de poussière.
+- **Ordre.** Les scénarios vault-Blend de D1 ont été portés après
+  `rebalance` (étape 4), seul chemin qui verse aux stratégies.
+
+**Ouvert pour l'étape 5.** La sortie d'urgence sans passage en perte lit
+`balance`. Pour la stratégie Aquarius, un prix de référence périmé fait
+échouer `balance`, donc cette sortie, et ne laisse que le passage en perte.
+La stratégie Aquarius devra offrir un retrait complet qui ne dépend pas du
+prix (brûler toutes ses parts LP et rendre ce qu'elles valent), pour qu'un
+keeper muet ne force jamais une perte.
+

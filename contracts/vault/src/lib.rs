@@ -480,6 +480,8 @@ impl YieldVault {
 #[cfg(test)]
 mod test;
 #[cfg(test)]
+mod test_blend;
+#[cfg(test)]
 mod test_matrix;
 #[cfg(test)]
 mod test_props;

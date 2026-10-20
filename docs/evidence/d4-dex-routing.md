@@ -526,3 +526,60 @@ with the tests rewired onto the Aquarius stack.
   trade-off documented in the section above.
 - Re-seeding the Aquarius pool before any demonstration, the drain being a
   recurring condition rather than a one-off.
+
+## 2026-10-20 : deployed Aquarius code matches no published source
+
+- **What it records**: the Aquarius contracts our router calls on testnet run
+  bytecode that matches none of the binaries our tests are pinned to, and no
+  public source for it exists any more. This is not a sign of compromise. It is
+  a traceability gap on the project's only venue, recorded the day it was
+  found.
+- **Source repository gone**: `AquaToken/soroban-amm` still returns 404
+  (already noted on 2026-08-28), and the `AquaToken` GitHub organisation now
+  lists zero public repositories (GitHub API, read on 2026-10-20).
+- **Deployed contracts still serve**: the Aquarius router answers and quotes.
+  `estimate_swap` of 1 USDC returns `219382` (0.0219 EURC), by simulation
+  only, nothing submitted.
+- **Bytecode fetched from the ledger and compared** with
+  `stellar contract fetch`:
+  - router `CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD`:
+    SHA-256 `c99539b023df4a28d7857d33ca4c915c2e20fec04f12b125132b84fbdf94dad3` ;
+  - our USDC/EURC pool `CDYPTHT6TO7IXXIYNTIMN6YYUGN35NE6Y2AXZJOUK3J2ORLKJS7LQDJV`
+    (`pool_hash` `9ac7a9cde23ac2ada11105eeaa42e43c2ea8332ca0aa8f41f58d7160274d718e`):
+    SHA-256 `d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b4f9b473` ;
+  - neither matches any of the five sums in
+    `contracts/router/test_wasms/SHA256SUMS` (commit `84de10e0`, July 2026) ;
+  - both carry the build metadata `rssdkver 25.3.0#dcbea445` and
+    `cliver 27.0.0#5a7c5fe7`, a toolchain newer than the pinned fixtures.
+    Someone maintains these contracts without publishing their source.
+  - No wasm hash was recorded for these two contracts on 2026-07-22 or
+    2026-08-28. Whether their bytecode changed after our evidence swaps
+    therefore cannot be established after the fact; from this date on, it can.
+- **Consequences, stated rather than hidden**:
+  - the router test suite exercises the July 2026 binaries, not the code our
+    on-chain swaps call. Our own router's guarantees do not depend on the
+    venue's code and stand: `min_out` re-checked on the router's balance
+    delta, integral revert on any failure. What is untested is the venue's
+    behaviour itself ;
+  - neither we nor a reviewer can read the code that executes the swaps ;
+  - the router address comes from the S1 spike of 2026-07-21, announced stable
+    across testnet resets, with no public registry to confirm it. Nothing
+    guarantees it survives the reset of 2026-12-16.
+- **Pool state, same day**: reserves `96928360 / 2352223` (9.69 USDC /
+  0.235 EURC), `get_total_shares` = `15000000`, i.e. still 100% ours (re-seed
+  of 2026-08-28). Drained of its EURC by third-party swaps, as anticipated in
+  the entry above; a re-seed is required before the video walkthrough.
+- **Reproduce**:
+
+  ```bash
+  stellar contract fetch --id CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD --network testnet -o router.wasm
+  stellar contract fetch --id CDYPTHT6TO7IXXIYNTIMN6YYUGN35NE6Y2AXZJOUK3J2ORLKJS7LQDJV --network testnet -o pool.wasm
+  shasum -a 256 router.wasm pool.wasm
+  stellar contract info meta --id CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD --network testnet
+  ```
+
+### Still open
+
+- Follow-up on this gap, to be decided with the project lead: testing against
+  the deployed bytecode, and a fallback if the Aquarius address does not
+  survive the 2026-12-16 reset.

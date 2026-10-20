@@ -605,3 +605,29 @@ with the tests rewired onto the Aquarius stack.
 - A fallback if the Aquarius address does not come back after the 2026-12-16
   reset despite the maintainer's statement; to be decided with the project
   lead.
+
+## 2026-10-20 : pool re-seeded ahead of the video walkthrough
+
+- **What it proves**: the Aquarius USDC/EURC pool is back to a balanced
+  1.5 / 1.5, ready for the D4 video, and the demonstration swap of
+  2026-08-28 is reproducible to the unit.
+- **Before**: reserves `96928360 / 2352223` (9.69 USDC / 0.235 EURC), all
+  `15000000` LP shares ours, drained of its EURC by third-party swaps as
+  anticipated. The ops account was topped up with 20 EURC from Circle's
+  testnet faucet beforehand (balance `215506763`).
+- **Full withdrawal** of the 15000000 shares, `min_amounts` set to the
+  simulated figures, reserves back to zero:
+  [d89a09332502f646cd30ae4d3f137a4604bfd7ea4690d9e781ccaa51a216a166](https://stellar.expert/explorer/testnet/tx/d89a09332502f646cd30ae4d3f137a4604bfd7ea4690d9e781ccaa51a216a166)
+- **Re-seed** at 1.5 USDC / 1.5 EURC via `scripts/seed_aquarius_pool.sh`
+  (pool existing, creation skipped, `15000000` LP shares minted, `pool_hash`
+  unchanged):
+  [877ed5d76fc4926baad92c88efea97fce65f9753c8b4984831cf46fd4922e0f2](https://stellar.expert/explorer/testnet/tx/877ed5d76fc4926baad92c88efea97fce65f9753c8b4984831cf46fd4922e0f2)
+- **Venue check**: `scripts/check_aquarius.sh d1-ops` passes on every line
+  (wasm hashes unchanged since the entry above, emergency mode as recorded,
+  pool not killed, pool registered in our SwapRouter, reserves above floor).
+- **Quote for the video**: `scripts/quote_aqua.sh d1-ops 2000000` returns
+  `1760032`, `min_out_1pct` = `1742431`, identical to the quote and served
+  amount of the 2026-08-28 swap. Both transactions are archived under
+  `archive/d4/`.
+- **Before filming**: run `scripts/check_aquarius.sh d1-ops` again; the pool
+  will be drained by the same mechanism and may need another re-seed.

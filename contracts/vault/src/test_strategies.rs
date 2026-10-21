@@ -6,11 +6,15 @@
 
 extern crate std;
 
-use super::{StrategyConfig, VaultError, YieldVault, YieldVaultClient, MAX_STRATEGIES};
+use super::{
+    AllocateEvent, DeallocateEvent, EmergencyExitEvent, StrategyConfig, TargetsSetEvent,
+    VaultError, WithdrawEvent, YieldVault, YieldVaultClient, MAX_STRATEGIES,
+};
 use soroban_sdk::{
-    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    symbol_short,
+    testutils::{Address as _, Events, MockAuth, MockAuthInvoke},
     token::{StellarAssetClient, TokenClient},
-    vec, Address, Env, IntoVal, Val, Vec,
+    vec, Address, Env, Event as _, IntoVal, Symbol, Val, Vec,
 };
 
 use crate::test_mock_strategy::{MockStrategy, MockStrategyClient};
@@ -114,6 +118,7 @@ fn strategy(env: &Env, asset: &Address) -> Address {
 fn config(address: &Address, target_bps: u32, cap_bps: u32) -> StrategyConfig {
     StrategyConfig {
         address: address.clone(),
+        protocol: symbol_short!("mock"),
         target_bps,
         cap_bps,
         active: true,
@@ -897,12 +902,46 @@ fn the_exiting_client_bears_an_exit_cost_within_the_margin() {
 
     let before = b.token.balance(&b.user);
     let paid = b.vault.withdraw(&b.user, &50_0000000);
+    // all() ne garde que la derniere invocation : capturer avant toute
+    // lecture.
+    let events = b.env.events().all().filter_by_contract(&b.vault.address);
 
     // 10 d'oisif, 40 demandes a la strategie, 39,8 rentres : le client
     // recoit 49,8 et c'est ce que withdraw annonce.
     assert_eq!(paid, 49_8000000);
     assert_eq!(b.token.balance(&b.user) - before, 49_8000000);
     assert_eq!(b.token.balance(&b.vault.address), 0);
+
+    // Les events portent l'etat reel apres le cout de sortie, calcule sans
+    // relire les strategies.
+    let total_assets = b.vault.total_assets();
+    let position_after = b.vault.allocation().get(0).unwrap().1;
+    assert_eq!(
+        events,
+        [
+            DeallocateEvent {
+                strategy: s,
+                protocol: symbol_short!("mock"),
+                assets: 39_8000000,
+                position_after,
+                decided_by: b.user.clone(),
+                algo: None,
+                reason: symbol_short!("redeem"),
+                seq: 3,
+                total_assets,
+            }
+            .to_xdr(&b.env, &b.vault.address),
+            WithdrawEvent {
+                owner: b.user.clone(),
+                shares: 50_0000000,
+                assets: 49_8000000,
+                seq: 4,
+                total_assets,
+                total_shares: b.vault.total_shares(),
+            }
+            .to_xdr(&b.env, &b.vault.address),
+        ]
+    );
 }
 
 #[test]
@@ -930,4 +969,111 @@ fn emergency_exit_accepts_an_exit_cost_within_the_margin() {
     // 90 dus, 89,55 rentres : dans la marge, la sortie passe sans write_off.
     assert_eq!(b.vault.emergency_exit(&s, &false), 89_5500000);
     assert!(!b.vault.strategies().get(0).unwrap().active);
+}
+
+// --- Events du schema D6a ---
+
+#[test]
+fn rebalance_records_each_move_as_an_algorithm_decision() {
+    let (b, s1, s2) = bench_with_two();
+    b.vault.deposit(&b.user, &100_0000000);
+
+    b.vault.rebalance(&b.admin);
+
+    let algo = Some(Symbol::new(&b.env, "fy_alloc_v1"));
+    let allocate = |strategy: &Address, assets: i128, seq: u64| {
+        AllocateEvent {
+            strategy: strategy.clone(),
+            protocol: symbol_short!("mock"),
+            assets,
+            position_after: assets,
+            decided_by: b.admin.clone(),
+            algo: algo.clone(),
+            reason: symbol_short!("drift"),
+            seq,
+            total_assets: 100_0000000,
+        }
+        .to_xdr(&b.env, &b.vault.address)
+    };
+    assert_eq!(
+        b.env.events().all().filter_by_contract(&b.vault.address),
+        [allocate(&s1, 70_0000000, 2), allocate(&s2, 20_0000000, 3)]
+    );
+}
+
+#[test]
+fn a_withdrawal_served_by_a_strategy_records_a_client_redeem() {
+    let (b, s1, _s2) = bench_with_two();
+    b.vault.deposit(&b.user, &100_0000000);
+    allocate(&b, &s1, 70_0000000);
+
+    // 50 : l'oisif (30) puis 20 tires de s1.
+    b.vault.withdraw(&b.user, &50_0000000);
+
+    assert_eq!(
+        b.env.events().all().filter_by_contract(&b.vault.address),
+        [
+            DeallocateEvent {
+                strategy: s1.clone(),
+                protocol: symbol_short!("mock"),
+                assets: 20_0000000,
+                position_after: 50_0000000,
+                decided_by: b.user.clone(),
+                algo: None,
+                reason: symbol_short!("redeem"),
+                seq: 2,
+                total_assets: 50_0000000,
+            }
+            .to_xdr(&b.env, &b.vault.address),
+            WithdrawEvent {
+                owner: b.user.clone(),
+                shares: 50_0000000,
+                assets: 50_0000000,
+                seq: 3,
+                total_assets: 50_0000000,
+                total_shares: 50_0000000,
+            }
+            .to_xdr(&b.env, &b.vault.address),
+        ]
+    );
+}
+
+#[test]
+fn an_emergency_exit_records_the_write_off_decision() {
+    let (b, s1, _s2) = bench_with_two();
+    b.vault.deposit(&b.user, &100_0000000);
+    b.vault.rebalance(&b.admin);
+
+    b.vault.emergency_exit(&s1, &true);
+
+    assert_eq!(
+        b.env.events().all().filter_by_contract(&b.vault.address),
+        [EmergencyExitEvent {
+            strategy: s1,
+            assets_recovered: 70_0000000,
+            write_off: true,
+            decided_by: b.admin.clone(),
+            seq: 4,
+            total_assets: 100_0000000,
+        }
+        .to_xdr(&b.env, &b.vault.address)]
+    );
+}
+
+#[test]
+fn set_targets_records_the_previous_targets() {
+    let (b, _s1, _s2) = bench_with_two();
+
+    b.vault.set_targets(&vec![&b.env, 5_000u32, 3_000u32]);
+
+    assert_eq!(
+        b.env.events().all().filter_by_contract(&b.vault.address),
+        [TargetsSetEvent {
+            old: vec![&b.env, 7_000u32, 2_000u32],
+            new: vec![&b.env, 5_000u32, 3_000u32],
+            admin: b.admin.clone(),
+            seq: 1,
+        }
+        .to_xdr(&b.env, &b.vault.address)]
+    );
 }

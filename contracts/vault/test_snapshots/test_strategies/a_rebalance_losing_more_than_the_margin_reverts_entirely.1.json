@@ -379,6 +379,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "Seq"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "1"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "Strategies"
                           }
                         ]
@@ -409,6 +421,14 @@
                                 },
                                 "val": {
                                   "u32": 9000
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "mock"
                                 }
                               },
                               {
@@ -445,6 +465,14 @@
                                 },
                                 "val": {
                                   "u32": 3000
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "mock"
                                 }
                               },
                               {

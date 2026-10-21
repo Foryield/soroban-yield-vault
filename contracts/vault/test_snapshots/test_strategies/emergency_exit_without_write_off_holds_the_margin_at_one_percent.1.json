@@ -456,6 +456,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "Seq"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "4"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "Strategies"
                           }
                         ]
@@ -486,6 +498,14 @@
                                 },
                                 "val": {
                                   "u32": 9000
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "mock"
                                 }
                               },
                               {
@@ -522,6 +542,14 @@
                                 },
                                 "val": {
                                   "u32": 3000
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "mock"
                                 }
                               },
                               {
@@ -924,19 +952,53 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emergency"
+                "symbol": "emergency_exit"
               },
               {
                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "i128": "693000000"
+                  "key": {
+                    "symbol": "assets_recovered"
+                  },
+                  "val": {
+                    "i128": "693000000"
+                  }
                 },
                 {
-                  "bool": false
+                  "key": {
+                    "symbol": "decided_by"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "seq"
+                  },
+                  "val": {
+                    "u64": "4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_assets"
+                  },
+                  "val": {
+                    "i128": "993000000"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "write_off"
+                  },
+                  "val": {
+                    "bool": false
+                  }
                 }
               ]
             }

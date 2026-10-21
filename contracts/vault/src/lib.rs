@@ -25,6 +25,10 @@
 //!   de `drift_bps` ; plafonds par strategie, perte bornee par lot, sortie
 //!   d'urgence par strategie (`emergency_exit`, admin, meme en pause).
 //!
+//! - events au schema de conformite D6a (`#[contractevent]`, numero `seq`
+//!   sans trou) et valeur liquidative quotidienne publiee par `checkpoint`,
+//!   sans authentification.
+//!
 //! Plan de conception : docs/plans/2026-10-20-d5-allocateur-conception.md.
 //!
 //! Hors scope : frais high-water mark (D6b), parts SEP-41 transferables.
@@ -32,8 +36,8 @@
 use defindex_strategy_core::DeFindexStrategyClient;
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-    contract, contracterror, contractimpl, contractmeta, contracttype, panic_with_error,
-    symbol_short,
+    contract, contracterror, contractevent, contractimpl, contractmeta, contracttype,
+    panic_with_error, symbol_short,
     token::TokenClient,
     vec, Address, Env, IntoVal, Symbol, Vec,
 };
@@ -66,6 +70,7 @@ pub enum VaultError {
     CapExceeded = 19,
     RebalanceLoss = 20,
     StrategyNotFound = 21,
+    NavAlreadyPublished = 22,
 }
 
 /// Une strategie au trait DeFindex et sa place dans l'allocation, en points de
@@ -75,9 +80,141 @@ pub enum VaultError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StrategyConfig {
     pub address: Address,
+    /// Protocole sous-jacent (`blend`, `aquarius`), repris par les events
+    /// `allocate` et `deallocate` : l'execution via une entite hors MiCA est
+    /// enregistree avec son identite (art. 12 du reglement 2025/1140).
+    pub protocol: Symbol,
     pub target_bps: u32,
     pub cap_bps: u32,
     pub active: bool,
+}
+
+// Events du schema de conformite D6a (docs/plans/2026-10-20-d6a-schema-
+// events-conformite.md, sections 3, 4 et 8). Regles communes :
+// - `seq` : numero d'enregistrement monotone et sans trou, propre au vault ;
+//   un trou dans la suite indexee signale un event manque ;
+// - `total_assets` (et `total_shares` quand l'operation les change) : valeurs
+//   a la fin de l'appel, identiques sur tous les events d'un meme appel ;
+// - un changement incompatible change le nom de l'event, jamais sa forme.
+
+#[contractevent(topics = ["deposit"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DepositEvent {
+    #[topic]
+    pub owner: Address,
+    pub assets: i128,
+    pub shares: i128,
+    pub seq: u64,
+    pub total_assets: i128,
+    pub total_shares: i128,
+}
+
+/// `assets` : ce que le client a effectivement recu, cout de sortie deduit.
+#[contractevent(topics = ["withdraw"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithdrawEvent {
+    #[topic]
+    pub owner: Address,
+    pub shares: i128,
+    pub assets: i128,
+    pub seq: u64,
+    pub total_assets: i128,
+    pub total_shares: i128,
+}
+
+/// Versement a une strategie, decide par l'allocateur (`reason = drift`,
+/// `algo = fy_alloc_v1`).
+#[contractevent(topics = ["allocate"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AllocateEvent {
+    #[topic]
+    pub strategy: Address,
+    pub protocol: Symbol,
+    pub assets: i128,
+    pub position_after: i128,
+    pub decided_by: Address,
+    pub algo: Option<Symbol>,
+    pub reason: Symbol,
+    pub seq: u64,
+    pub total_assets: i128,
+}
+
+/// Rapatriement depuis une strategie : par l'allocateur (`reason = drift`)
+/// ou pour servir un retrait que l'oisif ne couvre pas (`reason = redeem`,
+/// decide par le client, sans algorithme).
+#[contractevent(topics = ["deallocate"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeallocateEvent {
+    #[topic]
+    pub strategy: Address,
+    pub protocol: Symbol,
+    pub assets: i128,
+    pub position_after: i128,
+    pub decided_by: Address,
+    pub algo: Option<Symbol>,
+    pub reason: Symbol,
+    pub seq: u64,
+    pub total_assets: i128,
+}
+
+/// `write_off` : passage en perte decide par l'admin, a tracer comme tel.
+#[contractevent(topics = ["emergency_exit"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmergencyExitEvent {
+    #[topic]
+    pub strategy: Address,
+    pub assets_recovered: i128,
+    pub write_off: bool,
+    pub decided_by: Address,
+    pub seq: u64,
+    pub total_assets: i128,
+}
+
+#[contractevent(topics = ["paused"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PausedEvent {
+    #[topic]
+    pub admin: Address,
+    pub seq: u64,
+}
+
+#[contractevent(topics = ["unpaused"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnpausedEvent {
+    #[topic]
+    pub admin: Address,
+    pub seq: u64,
+}
+
+/// `config_set` du schema, scinde par type de valeur : un event Soroban a des
+/// champs de type fixe.
+#[contractevent(topics = ["keeper_set"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KeeperSetEvent {
+    pub old: Address,
+    pub new: Address,
+    pub admin: Address,
+    pub seq: u64,
+}
+
+/// Cibles en points de base, dans l'ordre de `strategies()`.
+#[contractevent(topics = ["targets_set"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TargetsSetEvent {
+    pub old: Vec<u32>,
+    pub new: Vec<u32>,
+    pub admin: Address,
+    pub seq: u64,
+}
+
+/// Valeur liquidative quotidienne, emise par `checkpoint` meme sans
+/// operation : le releve periodique se reconstitue a partir de ces events.
+#[contractevent(topics = ["nav"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NavEvent {
+    pub total_assets: i128,
+    pub total_shares: i128,
+    pub seq: u64,
 }
 
 contractmeta!(
@@ -96,6 +233,8 @@ enum DataKey {
     Paused,
     TotalShares,
     Shares(Address),
+    Seq,
+    LastNavDay,
 }
 
 /// Parts mortes verrouillées au premier dépôt (jamais rachetables) : borne le
@@ -109,6 +248,13 @@ pub(crate) const MAX_STRATEGIES: u32 = 4;
 
 /// 100 % en points de base.
 const BPS: u32 = 10_000;
+
+/// Code de l'algorithme d'allocation (champ 41 du reglement 2025/1140) : il
+/// change quand la logique de decision change, jamais pour un parametre.
+const ALGO: &str = "fy_alloc_v1";
+
+/// Secondes par jour UTC : `checkpoint` publie au plus un `nav` par jour.
+const SECONDS_PER_DAY: u64 = 86_400;
 
 /// Perte toleree, en points de base du volume deplace : la marge de
 /// glissement de D4. Elle borne un reequilibrage, le manque d'un retrait
@@ -135,6 +281,10 @@ pub(crate) const TTL_EXTEND_TO: u32 = 120 * LEDGERS_PER_DAY;
 // comparaison stricte. La garde est ici plutot que dans un test, pour qu'un
 // relevement des constantes casse la compilation et jamais le reseau.
 const _: () = assert!(TTL_THRESHOLD < TTL_EXTEND_TO && TTL_EXTEND_TO < MAX_ENTRY_TTL);
+
+/// Strategie sollicitee par un retrait : adresse, protocole, montant rendu,
+/// position ensuite.
+type Pulled = (Address, Symbol, i128, i128);
 
 #[contract]
 pub struct YieldVault;
@@ -239,11 +389,15 @@ impl YieldVault {
         // reequilibrage, par lot.
         token.transfer(&from, env.current_contract_address(), &amount);
 
-        // Migration vers #[contractevent] prevue avec le schema d'events de
-        // conformite (D6a) : ne pas changer la forme des events avant.
-        #[allow(deprecated)]
-        env.events()
-            .publish((symbol_short!("deposit"), from), (amount, shares));
+        DepositEvent {
+            owner: from,
+            assets: amount,
+            shares,
+            seq: Self::next_seq(&env),
+            total_assets: assets_before + amount,
+            total_shares: total,
+        }
+        .publish(&env);
         shares
     }
 
@@ -289,18 +443,43 @@ impl YieldVault {
         // sortie d'une strategie (frais et glissement d'un pool LP) est a la
         // charge du client sortant, dans la marge de MAX_REBALANCE_LOSS_BPS :
         // il recoit ce qui est effectivement rentre (decision du 20/10).
-        let amount = if amount > idle {
-            amount - Self::pull_from_strategies(&env, &token, amount - idle)
+        let (amount, pulled, value_change) = if amount > idle {
+            let (shortfall, pulled, value_change) =
+                Self::pull_from_strategies(&env, &token, amount - idle);
+            (amount - shortfall, pulled, value_change)
         } else {
-            amount
+            (amount, Vec::new(&env), 0)
         };
 
         token.transfer(&env.current_contract_address(), &from, &amount);
 
-        // Meme reserve que deposit : forme des events figee jusqu'a D6a.
-        #[allow(deprecated)]
-        env.events()
-            .publish((symbol_short!("withdraw"), from), (shares, amount));
+        // L'actif baisse du montant servi et, si les strategies ont ete
+        // sollicitees, de leur cout de sortie.
+        let total_assets = assets - amount + value_change;
+        let redeem = symbol_short!("redeem");
+        for (strategy, protocol, got, position_after) in pulled.iter() {
+            DeallocateEvent {
+                position_after,
+                strategy,
+                protocol,
+                assets: got,
+                decided_by: from.clone(),
+                algo: None,
+                reason: redeem.clone(),
+                seq: Self::next_seq(&env),
+                total_assets,
+            }
+            .publish(&env);
+        }
+        WithdrawEvent {
+            owner: from,
+            shares,
+            assets: amount,
+            seq: Self::next_seq(&env),
+            total_assets,
+            total_shares: total_before - shares,
+        }
+        .publish(&env);
         amount
     }
 
@@ -418,9 +597,6 @@ impl YieldVault {
                 let got = token.balance(&this) - before;
                 withdrawn += got;
                 moves.push_back((s.address.clone(), -got));
-                #[allow(deprecated)]
-                env.events()
-                    .publish((symbol_short!("dealloc"), s.address), (got, caller.clone()));
             }
         }
         for (i, s) in strategies.iter().enumerate() {
@@ -438,11 +614,6 @@ impl YieldVault {
                 let paid = before - token.balance(&this);
                 deposited += paid;
                 moves.push_back((s.address.clone(), paid));
-                #[allow(deprecated)]
-                env.events().publish(
-                    (symbol_short!("allocate"), s.address),
-                    (paid, caller.clone()),
-                );
             }
         }
 
@@ -474,10 +645,58 @@ impl YieldVault {
         } else {
             total_before
         };
-        for s in strategies.iter().filter(|s| s.active) {
-            let value = Self::strategy_balance(&env, &s.address, &this);
+        let mut positions: Vec<i128> = Vec::new(&env);
+        for s in strategies.iter() {
+            let value = if s.active {
+                Self::strategy_balance(&env, &s.address, &this)
+            } else {
+                0
+            };
             if value > Self::bps_of(&env, cap_base, s.cap_bps) {
                 panic_with_error!(&env, VaultError::CapExceeded);
+            }
+            positions.push_back(value);
+        }
+
+        // Une strategie bouge au plus une fois par lot (au-dessus ou
+        // au-dessous de sa cible, jamais les deux) : un event par mouvement,
+        // dans l'ordre d'execution, avec la position finale.
+        let algo = Some(Symbol::new(&env, ALGO));
+        let drift = symbol_short!("drift");
+        for (address, amount) in moves.iter() {
+            let i = strategies
+                .iter()
+                .position(|s| s.address == address)
+                .unwrap() as u32;
+            let protocol = strategies.get(i).unwrap().protocol;
+            let position_after = positions.get(i).unwrap();
+            let seq = Self::next_seq(&env);
+            if amount > 0 {
+                AllocateEvent {
+                    strategy: address,
+                    protocol,
+                    assets: amount,
+                    position_after,
+                    decided_by: caller.clone(),
+                    algo: algo.clone(),
+                    reason: drift.clone(),
+                    seq,
+                    total_assets: total_after,
+                }
+                .publish(&env);
+            } else {
+                DeallocateEvent {
+                    strategy: address,
+                    protocol,
+                    assets: -amount,
+                    position_after,
+                    decided_by: caller.clone(),
+                    algo: algo.clone(),
+                    reason: drift.clone(),
+                    seq,
+                    total_assets: total_after,
+                }
+                .publish(&env);
             }
         }
         moves
@@ -486,24 +705,34 @@ impl YieldVault {
     /// Remplace la cle keeper (admin) : une cle chaude compromise ne reste pas
     /// active pour toujours.
     pub fn set_keeper(env: Env, keeper: Address) {
-        Self::admin(&env).require_auth();
+        let admin = Self::admin(&env);
+        admin.require_auth();
+        let old = Self::keeper(env.clone());
         env.storage().instance().set(&DataKey::Keeper, &keeper);
-        #[allow(deprecated)]
-        env.events().publish((symbol_short!("keeper"),), keeper);
+        KeeperSetEvent {
+            old,
+            new: keeper,
+            admin,
+            seq: Self::next_seq(&env),
+        }
+        .publish(&env);
     }
 
     /// Nouvelles cibles, dans l'ordre de la liste (admin). Chaque cible reste
     /// sous le plafond fixe au deploiement, leur somme sous 100 % ; une
     /// strategie sortie en urgence garde une cible nulle.
     pub fn set_targets(env: Env, targets: Vec<u32>) {
-        Self::admin(&env).require_auth();
+        let admin = Self::admin(&env);
+        admin.require_auth();
         let mut strategies = Self::strategy_list(&env);
         if targets.len() != strategies.len() {
             panic_with_error!(&env, VaultError::InvalidAllocation);
         }
+        let mut old: Vec<u32> = Vec::new(&env);
         let mut sum: u32 = 0;
         for i in 0..strategies.len() {
             let mut s = strategies.get(i).unwrap();
+            old.push_back(s.target_bps);
             let target = targets.get(i).unwrap();
             if target > s.cap_bps || (!s.active && target != 0) {
                 panic_with_error!(&env, VaultError::InvalidAllocation);
@@ -518,8 +747,13 @@ impl YieldVault {
         env.storage()
             .instance()
             .set(&DataKey::Strategies, &strategies);
-        #[allow(deprecated)]
-        env.events().publish((symbol_short!("targets"),), targets);
+        TargetsSetEvent {
+            old,
+            new: targets,
+            admin,
+            seq: Self::next_seq(&env),
+        }
+        .publish(&env);
     }
 
     /// Sortie d'urgence (admin) : rapatrie tout ce que la strategie rend et la
@@ -534,7 +768,8 @@ impl YieldVault {
     /// strategie ne rend pas (lecture ou retrait en echec) pour que le vault
     /// fonctionne a nouveau ; le prix de la part baisse d'autant.
     pub fn emergency_exit(env: Env, strategy: Address, write_off: bool) -> i128 {
-        Self::admin(&env).require_auth();
+        let admin = Self::admin(&env);
+        admin.require_auth();
         let this = env.current_contract_address();
         let token = TokenClient::new(&env, &Self::asset(&env));
         let mut strategies = Self::strategy_list(&env);
@@ -574,24 +809,71 @@ impl YieldVault {
             }
         }
         let recovered = token.balance(&this) - before;
-        #[allow(deprecated)]
-        env.events().publish(
-            (symbol_short!("emergency"), strategy),
-            (recovered, write_off),
-        );
+        EmergencyExitEvent {
+            strategy,
+            assets_recovered: recovered,
+            write_off,
+            decided_by: admin,
+            seq: Self::next_seq(&env),
+            total_assets: Self::total_assets(env.clone()),
+        }
+        .publish(&env);
         recovered
     }
 
     /// Pause d'urgence (admin uniquement).
     pub fn pause(env: Env) {
-        Self::admin(&env).require_auth();
+        let admin = Self::admin(&env);
+        admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &true);
+        PausedEvent {
+            admin,
+            seq: Self::next_seq(&env),
+        }
+        .publish(&env);
     }
 
     /// Leve la pause (admin uniquement).
     pub fn unpause(env: Env) {
-        Self::admin(&env).require_auth();
+        let admin = Self::admin(&env);
+        admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &false);
+        UnpausedEvent {
+            admin,
+            seq: Self::next_seq(&env),
+        }
+        .publish(&env);
+    }
+
+    /// Publie la valeur liquidative du jour (event `nav`), au plus une fois
+    /// par jour UTC de l'horodatage du ledger. Sans authentification : une
+    /// tache planifiee l'appelle chaque jour et, si elle en manque un,
+    /// n'importe qui peut rattraper. Le jour calendaire, plutot qu'un delai
+    /// de 24 h depuis le dernier appel, evite qu'un appel en avance sur la
+    /// veille fasse sauter un jour. Fonctionne en pause : la valeur reste a
+    /// publier quand tout est gele. Prolonge aussi la duree de vie de
+    /// l'instance.
+    pub fn checkpoint(env: Env) {
+        let day = env.ledger().timestamp() / SECONDS_PER_DAY;
+        let last: Option<u64> = env.storage().instance().get(&DataKey::LastNavDay);
+        if last.is_some_and(|last| day <= last) {
+            panic_with_error!(&env, VaultError::NavAlreadyPublished);
+        }
+        env.storage().instance().set(&DataKey::LastNavDay, &day);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        NavEvent {
+            total_assets: Self::total_assets(env.clone()),
+            total_shares: Self::total_shares(env.clone()),
+            seq: Self::next_seq(&env),
+        }
+        .publish(&env);
+    }
+
+    /// Numero d'enregistrement du dernier event emis (0 avant le premier).
+    pub fn last_seq(env: Env) -> u64 {
+        env.storage().instance().get(&DataKey::Seq).unwrap_or(0)
     }
 
     pub fn is_paused(env: Env) -> bool {
@@ -599,6 +881,14 @@ impl YieldVault {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false)
+    }
+
+    /// Reserve le numero d'enregistrement suivant : 1, 2, 3... sans trou,
+    /// un par event. Un appel qui revert annule aussi son increment.
+    fn next_seq(env: &Env) -> u64 {
+        let seq = Self::last_seq(env.clone()) + 1;
+        env.storage().instance().set(&DataKey::Seq, &seq);
+        seq
     }
 
     fn admin(env: &Env) -> Address {
@@ -678,11 +968,21 @@ impl YieldVault {
     /// pas le vault. Un manque est tolere jusqu'a MAX_REBALANCE_LOSS_BPS de ce
     /// qui a ete demande aux strategies (cout de sortie, a la charge du client
     /// sortant) ; au-dela, tout le retrait revert (aucune perte de parts),
-    /// comme en D1 quand Blend gelait sa reserve.
-    fn pull_from_strategies(env: &Env, token: &TokenClient, need: i128) -> i128 {
+    /// comme en D1 quand Blend gelait sa reserve. Rend aussi, pour les events,
+    /// ce que chaque strategie sollicitee a rendu et sa position ensuite, et
+    /// la variation de total_assets due au seul passage par les strategies
+    /// (cout de sortie, au signe pres) : les strategies non sollicitees n'ont
+    /// pas bouge, inutile de les relire.
+    fn pull_from_strategies(
+        env: &Env,
+        token: &TokenClient,
+        need: i128,
+    ) -> (i128, Vec<Pulled>, i128) {
         let this = env.current_contract_address();
         let requested = need;
         let mut need = need;
+        let mut pulled = Vec::new(env);
+        let mut value_change: i128 = 0;
         for s in Self::strategy_list(env).iter().filter(|s| s.active) {
             if need <= 0 {
                 break;
@@ -695,15 +995,19 @@ impl YieldVault {
             let ask = if available < need { available } else { need };
             let before = token.balance(&this);
             client.withdraw(&ask, &this, &this);
-            need -= token.balance(&this) - before;
+            let got = token.balance(&this) - before;
+            need -= got;
+            let position_after = Self::strategy_balance(env, &s.address, &this);
+            value_change += got + position_after - available;
+            pulled.push_back((s.address, s.protocol, got, position_after));
         }
         if need <= 0 {
-            return 0;
+            return (0, pulled, value_change);
         }
         if need * (BPS as i128) > MAX_REBALANCE_LOSS_BPS * requested {
             panic_with_error!(env, VaultError::StrategyShortfall);
         }
-        need
+        (need, pulled, value_change)
     }
 
     /// Gardes de configuration : nombre borne, strategies actives, actif

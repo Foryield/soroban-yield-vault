@@ -116,7 +116,7 @@ invoke "$AQUA_STRATEGY" deposit --amount $SEED --from "$ADDR"
 
 # --- 3. Vault D5 -------------------------------------------------------------
 # Ordre de la liste = ordre de liquidite des retraits : Blend d'abord.
-STRATEGIES="[{\"address\":\"$BLEND_STRATEGY\",\"target_bps\":$BLEND_TARGET_BPS,\"cap_bps\":$BLEND_CAP_BPS,\"active\":true},{\"address\":\"$AQUA_STRATEGY\",\"target_bps\":$AQUA_TARGET_BPS,\"cap_bps\":$AQUA_CAP_BPS,\"active\":true}]"
+STRATEGIES="[{\"address\":\"$BLEND_STRATEGY\",\"protocol\":\"blend\",\"target_bps\":$BLEND_TARGET_BPS,\"cap_bps\":$BLEND_CAP_BPS,\"active\":true},{\"address\":\"$AQUA_STRATEGY\",\"protocol\":\"aquarius\",\"target_bps\":$AQUA_TARGET_BPS,\"cap_bps\":$AQUA_CAP_BPS,\"active\":true}]"
 VAULT=$(stellar contract deploy --wasm "$VAULT_WASM" --source "$KEY" --network $NETWORK -- \
   --admin "$ADDR" --keeper "$KEEPER" --asset "$USDC" \
   --strategies "$STRATEGIES" --drift_bps $DRIFT_BPS)

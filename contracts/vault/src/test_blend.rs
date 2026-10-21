@@ -11,6 +11,7 @@ use super::{StrategyConfig, VaultError, YieldVault, YieldVaultClient};
 use blend_contract_sdk::pool as blend_pool;
 use blend_contract_sdk::testutils::{default_reserve_config, BlendFixture};
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, BytesN as _, Ledger},
     token::{StellarAssetClient, TokenClient},
     vec, Address, Bytes, BytesN, Env, IntoVal, String, Val, Vec,
@@ -324,6 +325,7 @@ fn vault_on_blend<'a>(b: &BlendBench<'a>) -> YieldVaultClient<'a> {
         &b.env,
         StrategyConfig {
             address: b.strategy.clone(),
+            protocol: symbol_short!("blend"),
             target_bps: 10_000,
             cap_bps: 10_000,
             active: true,

@@ -22,6 +22,7 @@ use super::{
 use crate::test_mock_strategy::{MockStrategy, MockStrategyClient};
 use proptest::prelude::*;
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, EnvTestConfig},
     token::{StellarAssetClient, TokenClient},
     vec, Address, Env, Error, InvokeError, Val, Vec,
@@ -146,6 +147,7 @@ fn world<'a>(skew_bps: i32, fee_bps: i128) -> World<'a> {
     strategies[1].set_deposit_fee_bps(&fee_bps);
     let config = |s: &MockStrategyClient, target_bps, cap_bps| StrategyConfig {
         address: s.address.clone(),
+        protocol: symbol_short!("mock"),
         target_bps,
         cap_bps,
         active: true,

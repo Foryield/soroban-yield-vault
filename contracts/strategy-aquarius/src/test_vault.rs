@@ -7,6 +7,7 @@
 
 use super::test::{align_pool, setup, setup_quiet, swap, Bench, PRICE};
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
     token::StellarAssetClient,
     vec, Address, IntoVal, Vec,
@@ -18,6 +19,7 @@ fn vault_on_aquarius<'a>(b: &Bench<'a>) -> YieldVaultClient<'a> {
         &b.env,
         StrategyConfig {
             address: b.strategy.address.clone(),
+            protocol: symbol_short!("aquarius"),
             target_bps: 2_000,
             cap_bps: 3_000,
             active: true,

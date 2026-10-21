@@ -472,6 +472,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "Seq"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "3"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "Strategies"
                           }
                         ]
@@ -502,6 +514,14 @@
                                 },
                                 "val": {
                                   "u32": 9000
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "mock"
                                 }
                               },
                               {
@@ -538,6 +558,14 @@
                                 },
                                 "val": {
                                   "u32": 3000
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "mock"
                                 }
                               },
                               {
@@ -937,6 +965,92 @@
           "v0": {
             "topics": [
               {
+                "symbol": "deallocate"
+              },
+              {
+                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "algo"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "assets"
+                  },
+                  "val": {
+                    "i128": "769998930"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "decided_by"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "position_after"
+                  },
+                  "val": {
+                    "i128": "1070"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "protocol"
+                  },
+                  "val": {
+                    "symbol": "mock"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "reason"
+                  },
+                  "val": {
+                    "symbol": "redeem"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "seq"
+                  },
+                  "val": {
+                    "u64": "2"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_assets"
+                  },
+                  "val": {
+                    "i128": "1070"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
                 "symbol": "withdraw"
               },
               {
@@ -944,12 +1058,46 @@
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "i128": "999999000"
+                  "key": {
+                    "symbol": "assets"
+                  },
+                  "val": {
+                    "i128": "1069998930"
+                  }
                 },
                 {
-                  "i128": "1069998930"
+                  "key": {
+                    "symbol": "seq"
+                  },
+                  "val": {
+                    "u64": "3"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "shares"
+                  },
+                  "val": {
+                    "i128": "999999000"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_assets"
+                  },
+                  "val": {
+                    "i128": "1070"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_shares"
+                  },
+                  "val": {
+                    "i128": "1000"
+                  }
                 }
               ]
             }

@@ -421,6 +421,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "Seq"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "4"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "Strategies"
                           }
                         ]
@@ -451,6 +463,14 @@
                                 },
                                 "val": {
                                   "u32": 9000
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "mock"
                                 }
                               },
                               {
@@ -487,6 +507,14 @@
                                 },
                                 "val": {
                                   "u32": 3000
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "mock"
                                 }
                               },
                               {
@@ -903,36 +931,6 @@
     {
       "event": {
         "ext": "v0",
-        "contract_id": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "allocate"
-              },
-              {
-                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
-              }
-            ],
-            "data": {
-              "vec": [
-                {
-                  "i128": "700000000"
-                },
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    },
-    {
-      "event": {
-        "ext": "v0",
         "contract_id": "CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF",
         "type_": "contract",
         "body": {
@@ -971,16 +969,162 @@
                 "symbol": "allocate"
               },
               {
+                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "algo"
+                  },
+                  "val": {
+                    "symbol": "fy_alloc_v1"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "assets"
+                  },
+                  "val": {
+                    "i128": "700000000"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "decided_by"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "position_after"
+                  },
+                  "val": {
+                    "i128": "700000000"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "protocol"
+                  },
+                  "val": {
+                    "symbol": "mock"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "reason"
+                  },
+                  "val": {
+                    "symbol": "drift"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "seq"
+                  },
+                  "val": {
+                    "u64": "3"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_assets"
+                  },
+                  "val": {
+                    "i128": "1000000000"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "allocate"
+              },
+              {
                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM"
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "i128": "200000000"
+                  "key": {
+                    "symbol": "algo"
+                  },
+                  "val": {
+                    "symbol": "fy_alloc_v1"
+                  }
                 },
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
+                  "key": {
+                    "symbol": "assets"
+                  },
+                  "val": {
+                    "i128": "200000000"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "decided_by"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "position_after"
+                  },
+                  "val": {
+                    "i128": "200000000"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "protocol"
+                  },
+                  "val": {
+                    "symbol": "mock"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "reason"
+                  },
+                  "val": {
+                    "symbol": "drift"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "seq"
+                  },
+                  "val": {
+                    "u64": "4"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_assets"
+                  },
+                  "val": {
+                    "i128": "1000000000"
+                  }
                 }
               ]
             }

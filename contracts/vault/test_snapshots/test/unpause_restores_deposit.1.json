@@ -358,6 +358,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "Seq"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "3"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "Strategies"
                           }
                         ]
@@ -656,12 +668,46 @@
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "i128": "2000"
+                  "key": {
+                    "symbol": "assets"
+                  },
+                  "val": {
+                    "i128": "2000"
+                  }
                 },
                 {
-                  "i128": "1000"
+                  "key": {
+                    "symbol": "seq"
+                  },
+                  "val": {
+                    "u64": "3"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "shares"
+                  },
+                  "val": {
+                    "i128": "1000"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_assets"
+                  },
+                  "val": {
+                    "i128": "2000"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_shares"
+                  },
+                  "val": {
+                    "i128": "2000"
+                  }
                 }
               ]
             }

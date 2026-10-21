@@ -307,6 +307,14 @@
                               },
                               {
                                 "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "mock"
+                                }
+                              },
+                              {
+                                "key": {
                                   "symbol": "target_bps"
                                 },
                                 "val": {
@@ -339,6 +347,14 @@
                                 },
                                 "val": {
                                   "u32": 3000
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "mock"
                                 }
                               },
                               {

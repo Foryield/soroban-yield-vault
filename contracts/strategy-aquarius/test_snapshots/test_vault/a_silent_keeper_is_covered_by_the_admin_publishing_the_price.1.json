@@ -1557,6 +1557,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "Seq"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "3"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "Strategies"
                           }
                         ]
@@ -1587,6 +1599,14 @@
                                 },
                                 "val": {
                                   "u32": 3000
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "protocol"
+                                },
+                                "val": {
+                                  "symbol": "aquarius"
                                 }
                               },
                               {
@@ -4122,19 +4142,53 @@
           "v0": {
             "topics": [
               {
-                "symbol": "emergency"
+                "symbol": "emergency_exit"
               },
               {
                 "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA2ZMN"
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "i128": "198816566"
+                  "key": {
+                    "symbol": "assets_recovered"
+                  },
+                  "val": {
+                    "i128": "198816566"
+                  }
                 },
                 {
-                  "bool": false
+                  "key": {
+                    "symbol": "decided_by"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "seq"
+                  },
+                  "val": {
+                    "u64": "3"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_assets"
+                  },
+                  "val": {
+                    "i128": "998816566"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "write_off"
+                  },
+                  "val": {
+                    "bool": false
+                  }
                 }
               ]
             }

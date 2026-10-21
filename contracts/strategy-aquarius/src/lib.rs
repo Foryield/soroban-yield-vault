@@ -327,7 +327,15 @@ impl DeFindexStrategyTrait for AquariusLpStrategy {
             amount,
             from.clone(),
         );
-        Self::balance(env, from)
+        // Meme calcul que `balance`, sur la valeur deja lue : le pool n'a pas
+        // bouge depuis, et chaque lecture de position coute de la memoire
+        // d'invocation.
+        Ok(Self::mul_div_floor(
+            &env,
+            value_after,
+            held + minted,
+            new_total,
+        ))
     }
 
     fn harvest(_env: Env, _from: Address, _data: Option<Bytes>) -> Result<(), StrategyError> {
@@ -415,7 +423,16 @@ impl DeFindexStrategyTrait for AquariusLpStrategy {
             delivered,
             from.clone(),
         );
-        Self::balance(env, from)
+        // Meme calcul que `balance`, sur la valeur deja lue (voir deposit).
+        if held == burn {
+            return Ok(0);
+        }
+        Ok(Self::mul_div_floor(
+            &env,
+            value_after,
+            held - burn,
+            total - burn,
+        ))
     }
 }
 

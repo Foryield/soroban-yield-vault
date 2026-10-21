@@ -12,11 +12,12 @@
 # plus d'un pas, le script publie le pas maximal dans sa direction et dit
 # l'ecart restant : relance une heure plus tard, il converge. Le week-end,
 # sans nouveau taux, il republie celui du vendredi : la publication rafraichit
-# la date, sans quoi le prix perime au bout de max_age (26 h) et toute
-# valorisation echoue.
+# la date, sans quoi le prix perime au bout de max_age (72 h au deploiement
+# D5) et toute valorisation echoue, depots et retraits du vault compris.
 #
-# source_date = date du taux BCE au format AAAAMMJJ (ex. 20261020), lisible
-# dans l'event de publication.
+# source_date = date du taux BCE, en secondes Unix a minuit UTC (ex.
+# 1792454400 pour le 20/10/2026), convention du contrat ; lisible dans l'event
+# de publication.
 #
 # Tache planifiee : une fois par jour suffit (taux publie vers 16 h CET),
 # par exemple en crontab :
@@ -43,14 +44,15 @@ simulate() {
 # Taux du jour : date et cours USD, convertis en entier exact a l'echelle 1e9
 # (la BCE publie 4 decimales, aucune perte).
 read -r SOURCE_DATE TARGET < <(curl -sf "$ECB_URL" | python3 -c "
-import re, sys
+import calendar, re, sys
 from decimal import Decimal
 xml = sys.stdin.read()
 date = re.search(r\"time='(\d{4})-(\d{2})-(\d{2})'\", xml)
 rate = re.search(r\"currency='USD' rate='([0-9.]+)'\", xml)
 if not date or not rate:
     sys.exit('flux BCE illisible')
-print(''.join(date.groups()), int(Decimal(rate.group(1)) * $SCALE))
+year, month, day = (int(g) for g in date.groups())
+print(calendar.timegm((year, month, day, 0, 0, 0)), int(Decimal(rate.group(1)) * $SCALE))
 ")
 # Une substitution de processus en echec ne fait pas echouer `read` : les
 # gardes suivantes s'en chargent.

@@ -4168,6 +4168,14 @@
                 },
                 {
                   "key": {
+                    "symbol": "position_before"
+                  },
+                  "val": {
+                    "i128": "198816566"
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "seq"
                   },
                   "val": {
@@ -4188,6 +4196,14 @@
                   },
                   "val": {
                     "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "written_off"
+                  },
+                  "val": {
+                    "i128": "0"
                   }
                 }
               ]

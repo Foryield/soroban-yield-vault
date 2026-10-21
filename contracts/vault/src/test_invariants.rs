@@ -576,7 +576,14 @@ impl World<'_> {
                 Ok(got)
             }
         };
+        // Le passage en perte exige la pause : l'admin gele le vault autour.
+        if write_off {
+            self.vault.pause();
+        }
         let got = outcome(self.vault.try_emergency_exit(address, &write_off));
+        if write_off {
+            self.vault.unpause();
+        }
         assert_outcome("sortie d'urgence", got, expected);
         if expected.is_ok() {
             let config = self.vault.strategies().get(strategy as u32).unwrap();

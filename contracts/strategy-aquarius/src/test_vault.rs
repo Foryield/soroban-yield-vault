@@ -297,3 +297,33 @@ mod props {
         }
     }
 }
+
+/// Memoire d'invocation (limite reseau : 40 Mio) des deux chemins les plus
+/// lourds, sur la pile Aquarius reelle. Le vault et la strategie tournent ici
+/// en natif : en wasm s'ajoute leur instanciation. La borne garde une marge
+/// pour elle ; la mesure qui fait foi est la simulation testnet.
+const MEMORY_BOUND: u64 = 30 * 1024 * 1024;
+
+fn memory_of(b: &Bench, call: impl FnOnce()) -> u64 {
+    b.env.cost_estimate().budget().reset_unlimited();
+    call();
+    b.env.cost_estimate().budget().memory_bytes_cost()
+}
+
+#[test]
+fn the_heaviest_vault_paths_stay_under_the_memory_bound() {
+    let b = setup();
+    let vault = vault_on_aquarius(&b);
+    vault.deposit(&b.user, &100_0000000);
+    let rebalance = memory_of(&b, || {
+        vault.rebalance(&b.keeper);
+    });
+    // 95 parts : l'oisif (80) puis la strategie.
+    let withdraw = memory_of(&b, || {
+        vault.withdraw(&b.user, &95_0000000);
+    });
+    assert!(
+        rebalance < MEMORY_BOUND && withdraw < MEMORY_BOUND,
+        "rebalance : {rebalance} octets, withdraw : {withdraw} octets"
+    );
+}

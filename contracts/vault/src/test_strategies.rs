@@ -662,7 +662,10 @@ fn a_write_off_retires_a_broken_strategy_and_unblocks_the_vault() {
     // Strategie illisible : total_assets, donc depots et retraits, bloques.
     assert!(b.vault.try_withdraw(&b.user, &1_0000000).is_err());
 
+    // Le passage en perte se decide vault gele.
+    b.vault.pause();
     let recovered = b.vault.emergency_exit(&s1, &true);
+    b.vault.unpause();
 
     assert_eq!(recovered, 0);
     // Les 70 sont passes en perte : le vault repart sur 30.
@@ -803,6 +806,7 @@ fn a_write_off_of_a_frozen_strategy_retires_it_with_nothing_recovered() {
     b.vault.deposit(&b.user, &100_0000000);
     b.vault.rebalance(&b.admin);
     MockStrategyClient::new(&b.env, &s1).break_withdraw();
+    b.vault.pause();
 
     assert_eq!(b.vault.emergency_exit(&s1, &true), 0);
     assert!(!b.vault.strategies().get(0).unwrap().active);
@@ -1039,22 +1043,74 @@ fn a_withdrawal_served_by_a_strategy_records_a_client_redeem() {
 }
 
 #[test]
-fn an_emergency_exit_records_the_write_off_decision() {
+fn a_write_off_requires_the_pause_and_records_what_was_lost() {
+    let (b, s1, s2) = bench_with_two();
+    b.vault.deposit(&b.user, &100_0000000);
+    b.vault.rebalance(&b.admin);
+    MockStrategyClient::new(&b.env, &s1).break_withdraw();
+
+    let err = b.vault.try_emergency_exit(&s1, &true).unwrap_err().unwrap();
+    assert_eq!(err, VaultError::WriteOffRequiresPause.into());
+
+    b.vault.pause();
+    b.vault.emergency_exit(&s1, &true);
+
+    // Pool gele : la strategie annoncait 70, rien n'est rentre.
+    assert_eq!(
+        b.env.events().all().filter_by_contract(&b.vault.address),
+        [EmergencyExitEvent {
+            strategy: s1,
+            position_before: Some(70_0000000),
+            assets_recovered: 0,
+            written_off: Some(70_0000000),
+            write_off: true,
+            decided_by: b.admin.clone(),
+            seq: 5,
+            total_assets: 30_0000000,
+        }
+        .to_xdr(&b.env, &b.vault.address)]
+    );
+
+    // Strategie illisible : la valeur d'avant est inconnue, la perte aussi.
+    MockStrategyClient::new(&b.env, &s2).break_balance();
+    b.vault.emergency_exit(&s2, &true);
+    assert_eq!(
+        b.env.events().all().filter_by_contract(&b.vault.address),
+        [EmergencyExitEvent {
+            strategy: s2,
+            position_before: None,
+            assets_recovered: 0,
+            written_off: None,
+            write_off: true,
+            decided_by: b.admin.clone(),
+            seq: 6,
+            total_assets: 10_0000000,
+        }
+        .to_xdr(&b.env, &b.vault.address)]
+    );
+}
+
+#[test]
+fn an_emergency_exit_without_write_off_records_its_exit_cost() {
     let (b, s1, _s2) = bench_with_two();
     b.vault.deposit(&b.user, &100_0000000);
     b.vault.rebalance(&b.admin);
+    // 0,5 % retenu a la sortie, dans la marge.
+    MockStrategyClient::new(&b.env, &s1).set_skew_bps(&-50);
 
-    b.vault.emergency_exit(&s1, &true);
+    b.vault.emergency_exit(&s1, &false);
 
     assert_eq!(
         b.env.events().all().filter_by_contract(&b.vault.address),
         [EmergencyExitEvent {
             strategy: s1,
-            assets_recovered: 70_0000000,
-            write_off: true,
+            position_before: Some(70_0000000),
+            assets_recovered: 69_6500000,
+            written_off: Some(3500000),
+            write_off: false,
             decided_by: b.admin.clone(),
             seq: 4,
-            total_assets: 100_0000000,
+            total_assets: 99_6500000,
         }
         .to_xdr(&b.env, &b.vault.address)]
     );

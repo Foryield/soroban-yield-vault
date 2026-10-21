@@ -71,6 +71,7 @@ pub enum VaultError {
     RebalanceLoss = 20,
     StrategyNotFound = 21,
     NavAlreadyPublished = 22,
+    WriteOffRequiresPause = 23,
 }
 
 /// Une strategie au trait DeFindex et sa place dans l'allocation, en points de
@@ -158,12 +159,17 @@ pub struct DeallocateEvent {
 }
 
 /// `write_off` : passage en perte decide par l'admin, a tracer comme tel.
+/// `position_before` : valeur annoncee par la strategie avant la sortie, vide
+/// si sa lecture a echoue ; `written_off` : ce qui n'est pas rentre, vide
+/// dans le meme cas (la perte se lit alors entre deux `nav`).
 #[contractevent(topics = ["emergency_exit"])]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EmergencyExitEvent {
     #[topic]
     pub strategy: Address,
+    pub position_before: Option<i128>,
     pub assets_recovered: i128,
+    pub written_off: Option<i128>,
     pub write_off: bool,
     pub decided_by: Address,
     pub seq: u64,
@@ -419,9 +425,9 @@ impl YieldVault {
         // tronque : l'arrondi est toujours en faveur du vault.
         let token = TokenClient::new(&env, &Self::asset(&env));
         let idle = token.balance(&env.current_contract_address());
-        let assets = idle
-            .checked_add(Self::strategy_assets(&env))
-            .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow));
+        let strategies = Self::strategy_list(&env);
+        let values = Self::strategy_values(&env, &strategies);
+        let assets = Self::sum(&env, idle, &values);
         let total_before = Self::total_shares(env.clone());
         let amount = shares
             .checked_mul(assets)
@@ -445,7 +451,7 @@ impl YieldVault {
         // il recoit ce qui est effectivement rentre (decision du 20/10).
         let (amount, pulled, value_change) = if amount > idle {
             let (shortfall, pulled, value_change) =
-                Self::pull_from_strategies(&env, &token, amount - idle);
+                Self::pull_from_strategies(&env, &token, amount - idle, &strategies, &values);
             (amount - shortfall, pulled, value_change)
         } else {
             (amount, Vec::new(&env), 0)
@@ -554,12 +560,15 @@ impl YieldVault {
         let this = env.current_contract_address();
         let token = TokenClient::new(&env, &Self::asset(&env));
         let strategies = Self::strategy_list(&env);
-        let total_before = Self::total_assets(env.clone());
+        // Une seule lecture de chaque strategie avant les mouvements, une
+        // seule apres : chaque `balance` coute de la memoire d'invocation
+        // (plus de 4 Mo pour la strategie Aquarius), bornee par le reseau.
+        let current = Self::strategy_values(&env, &strategies);
+        let idle = token.balance(&this);
+        let total_before = Self::sum(&env, idle, &current);
 
-        // Cible et valeur courante de chaque strategie active ; l'oisif vise
-        // ce qui reste.
+        // Cible de chaque strategie active ; l'oisif vise ce qui reste.
         let mut targets: Vec<i128> = Vec::new(&env);
-        let mut current: Vec<i128> = Vec::new(&env);
         let mut idle_target = total_before;
         for s in strategies.iter() {
             let target = if s.active {
@@ -569,13 +578,7 @@ impl YieldVault {
             };
             idle_target -= target;
             targets.push_back(target);
-            current.push_back(if s.active {
-                Self::strategy_balance(&env, &s.address, &this)
-            } else {
-                0
-            });
         }
-        let idle = token.balance(&this);
 
         let threshold = Self::bps_of(&env, total_before, Self::drift_bps(env.clone()));
         let drifted = (idle - idle_target).abs() > threshold
@@ -596,7 +599,11 @@ impl YieldVault {
                 DeFindexStrategyClient::new(&env, &s.address).withdraw(&excess, &this, &this);
                 let got = token.balance(&this) - before;
                 withdrawn += got;
-                moves.push_back((s.address.clone(), -got));
+                // Un mouvement nul n'est pas un mouvement : ni retour, ni
+                // event dont le sens serait faux.
+                if got != 0 {
+                    moves.push_back((s.address.clone(), -got));
+                }
             }
         }
         for (i, s) in strategies.iter().enumerate() {
@@ -613,7 +620,9 @@ impl YieldVault {
                 Self::strategy_deposit(&env, &token, &s.address, amount);
                 let paid = before - token.balance(&this);
                 deposited += paid;
-                moves.push_back((s.address.clone(), paid));
+                if paid != 0 {
+                    moves.push_back((s.address.clone(), paid));
+                }
             }
         }
 
@@ -632,7 +641,8 @@ impl YieldVault {
         } else {
             deposited
         };
-        let total_after = Self::total_assets(env.clone());
+        let positions = Self::strategy_values(&env, &strategies);
+        let total_after = Self::sum(&env, token.balance(&this), &positions);
         let loss = total_before - total_after;
         if loss > 0 && loss * (BPS as i128) > MAX_REBALANCE_LOSS_BPS * moved {
             panic_with_error!(&env, VaultError::RebalanceLoss);
@@ -645,17 +655,10 @@ impl YieldVault {
         } else {
             total_before
         };
-        let mut positions: Vec<i128> = Vec::new(&env);
-        for s in strategies.iter() {
-            let value = if s.active {
-                Self::strategy_balance(&env, &s.address, &this)
-            } else {
-                0
-            };
+        for (s, value) in strategies.iter().zip(positions.iter()) {
             if value > Self::bps_of(&env, cap_base, s.cap_bps) {
                 panic_with_error!(&env, VaultError::CapExceeded);
             }
-            positions.push_back(value);
         }
 
         // Une strategie bouge au plus une fois par lot (au-dessus ou
@@ -766,10 +769,17 @@ impl YieldVault {
     /// change (cas d'un pool gele, dont les fonds ne sont qu'immobilises).
     /// `write_off = true` : decision explicite de passer en perte ce que la
     /// strategie ne rend pas (lecture ou retrait en echec) pour que le vault
-    /// fonctionne a nouveau ; le prix de la part baisse d'autant.
+    /// fonctionne a nouveau ; le prix de la part baisse d'autant, sans retour.
+    /// Exige la pause : la decision se prend vault gele, apres diagnostic.
+    /// Une panne qui se repare ne se passe pas en perte : un prix de
+    /// reference perime (strategie Aquarius) se republie, et la strategie se
+    /// lit a nouveau.
     pub fn emergency_exit(env: Env, strategy: Address, write_off: bool) -> i128 {
         let admin = Self::admin(&env);
         admin.require_auth();
+        if write_off && !Self::is_paused(env.clone()) {
+            panic_with_error!(&env, VaultError::WriteOffRequiresPause);
+        }
         let this = env.current_contract_address();
         let token = TokenClient::new(&env, &Self::asset(&env));
         let mut strategies = Self::strategy_list(&env);
@@ -789,11 +799,15 @@ impl YieldVault {
 
         let client = DeFindexStrategyClient::new(&env, &strategy);
         let before = token.balance(&this);
-        if write_off {
-            if let Ok(Ok(value)) = client.try_balance(&this) {
-                if value > 0 {
-                    let _ = client.try_withdraw(&value, &this, &this);
+        let position_before = if write_off {
+            match client.try_balance(&this) {
+                Ok(Ok(value)) => {
+                    if value > 0 {
+                        let _ = client.try_withdraw(&value, &this, &this);
+                    }
+                    Some(value)
                 }
+                _ => None,
             }
         } else {
             let due = Self::strategy_balance(&env, &strategy, &this);
@@ -807,11 +821,14 @@ impl YieldVault {
             if got * (BPS as i128) < due * (BPS as i128 - MAX_REBALANCE_LOSS_BPS) {
                 panic_with_error!(&env, VaultError::StrategyShortfall);
             }
-        }
+            Some(due)
+        };
         let recovered = token.balance(&this) - before;
         EmergencyExitEvent {
             strategy,
+            position_before,
             assets_recovered: recovered,
+            written_off: position_before.map(|due| (due - recovered).max(0)),
             write_off,
             decided_by: admin,
             seq: Self::next_seq(&env),
@@ -910,15 +927,32 @@ impl YieldVault {
     /// rendues pour le vault. Le trait exige une valeur en actif sous-jacent, jamais
     /// en parts ; chaque strategie tronque en faveur de ses deposants.
     fn strategy_assets(env: &Env) -> i128 {
+        let values = Self::strategy_values(env, &Self::strategy_list(env));
+        Self::sum(env, 0, &values)
+    }
+
+    /// Valeur de chaque strategie, dans l'ordre de la liste : une lecture de
+    /// `balance` par strategie active, 0 pour une strategie sortie.
+    fn strategy_values(env: &Env, strategies: &Vec<StrategyConfig>) -> Vec<i128> {
         let this = env.current_contract_address();
-        let mut total: i128 = 0;
-        for s in Self::strategy_list(env).iter().filter(|s| s.active) {
-            let value = Self::strategy_balance(env, &s.address, &this);
-            total = total
-                .checked_add(value)
-                .unwrap_or_else(|| panic_with_error!(env, VaultError::MathOverflow));
+        let mut values = Vec::new(env);
+        for s in strategies.iter() {
+            values.push_back(if s.active {
+                Self::strategy_balance(env, &s.address, &this)
+            } else {
+                0
+            });
         }
-        total
+        values
+    }
+
+    /// `idle` plus la somme de `values`, sans debordement silencieux.
+    fn sum(env: &Env, idle: i128, values: &Vec<i128>) -> i128 {
+        values.iter().fold(idle, |total, value| {
+            total
+                .checked_add(value)
+                .unwrap_or_else(|| panic_with_error!(env, VaultError::MathOverflow))
+        })
     }
 
     /// `bps` points de base de `amount`, tronque.
@@ -973,22 +1007,25 @@ impl YieldVault {
     /// la variation de total_assets due au seul passage par les strategies
     /// (cout de sortie, au signe pres) : les strategies non sollicitees n'ont
     /// pas bouge, inutile de les relire.
+    /// `values` : la lecture de chaque strategie deja faite par l'appelant,
+    /// dans l'ordre de `strategies`.
     fn pull_from_strategies(
         env: &Env,
         token: &TokenClient,
         need: i128,
+        strategies: &Vec<StrategyConfig>,
+        values: &Vec<i128>,
     ) -> (i128, Vec<Pulled>, i128) {
         let this = env.current_contract_address();
         let requested = need;
         let mut need = need;
         let mut pulled = Vec::new(env);
         let mut value_change: i128 = 0;
-        for s in Self::strategy_list(env).iter().filter(|s| s.active) {
+        for (s, available) in strategies.iter().zip(values.iter()) {
             if need <= 0 {
                 break;
             }
-            let available = Self::strategy_balance(env, &s.address, &this);
-            if available == 0 {
+            if !s.active || available == 0 {
                 continue;
             }
             let client = DeFindexStrategyClient::new(env, &s.address);

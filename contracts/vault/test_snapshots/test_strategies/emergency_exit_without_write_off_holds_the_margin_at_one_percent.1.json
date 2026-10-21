@@ -978,6 +978,14 @@
                 },
                 {
                   "key": {
+                    "symbol": "position_before"
+                  },
+                  "val": {
+                    "i128": "700000000"
+                  }
+                },
+                {
+                  "key": {
                     "symbol": "seq"
                   },
                   "val": {
@@ -998,6 +1006,14 @@
                   },
                   "val": {
                     "bool": false
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "written_off"
+                  },
+                  "val": {
+                    "i128": "7000000"
                   }
                 }
               ]

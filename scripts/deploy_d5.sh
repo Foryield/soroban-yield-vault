@@ -21,8 +21,12 @@
 # echec de simulation n'envoie rien.
 #
 # Valeurs du plan D5 (section 13) : cibles Blend 70 % et Aquarius 20 %,
-# plafonds 90 % et 30 %, declencheur 500 pb ; prix de reference perime au
-# bout de 26 h, pas de 1 % par publication, glissement maximal 1 %.
+# plafonds 90 % et 30 %, declencheur 500 pb ; pas de 1 % par publication,
+# glissement maximal 1 %. Prix de reference perime au bout de 72 h, et non
+# 26 h comme au plan (revue de securite du 21/10) : un prix perime gele tout
+# le vault, depots et retraits compris ; 72 h couvrent un week-end ou une
+# tache quotidienne manquee. L'euro-dollar bouge rarement de plus de 1 % en
+# trois jours, l'ecart de valorisation reste dans la marge de glissement.
 #
 # Usage : scripts/deploy_d5.sh <cle_ops> <aqua_pool_hash_hex> [adresse_keeper]
 # Le keeper est par defaut la cle d'ops (plan D5, section 4).
@@ -46,7 +50,7 @@ BLEND_CAP_BPS=9000
 AQUA_TARGET_BPS=2000
 AQUA_CAP_BPS=3000
 DRIFT_BPS=500
-PRICE_MAX_AGE=93600      # 26 h
+PRICE_MAX_AGE=259200     # 72 h
 PRICE_MAX_STEP_BPS=100
 MAX_SLIPPAGE_BPS=100
 # Seuil de reinvestissement des BLND de la strategie Blend, celui des tests

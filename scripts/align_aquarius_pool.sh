@@ -69,7 +69,9 @@ else:
     print(gap, "usdc", "eurc", gross(k // target_eurc - r_usdc))
 PY
 )
-: "${AMOUNT_IN:?calcul de l'alignement en echec}"
+# Pas d'apostrophe dans le message : bash 3.2 (celui de macOS) la lit comme
+# une ouverture de guillemet dans ${VAR:?...} entre guillemets doubles.
+: "${AMOUNT_IN:?alignement incalculable}"
 [ "$TOKEN_IN" = usdc ] && IN=$USDC OUT=$EURC || { IN=$EURC; OUT=$USDC; }
 
 echo "prix de reference=$PRICE reserves=$RESERVES ecart=${GAP_BPS} pb"

@@ -94,7 +94,7 @@ plafond de frais, taille des données, émetteur et destinataire.
 | `withdraw` | owner | shares, assets, seq, total_assets, total_shares | migration D6a |
 | `allocate` | strategy | protocol, assets, position_after, decided_by, algo, reason, seq, total_assets | D5 |
 | `deallocate` | strategy | protocol, assets, position_after, decided_by, algo, reason, seq, total_assets | D5 |
-| `emergency_exit` | strategy | assets_recovered, write_off, decided_by, seq, total_assets | D5 |
+| `emergency_exit` | strategy | position_before, assets_recovered, written_off, write_off, decided_by, seq, total_assets | D5 |
 | `fee_minted` | kind | fee_shares, fee_assets, recipient, rate_bps, hwm_before, hwm_after, period_start, period_end, seq, total_assets, total_shares | D6b |
 | `paused` / `unpaused` | admin | seq | migration D6a |
 | `nav` | (aucun) | total_assets, total_shares, seq | D6a, voir section 8 |
@@ -255,7 +255,11 @@ Arrêtés par Pierrick en codant D5 (commit `f2e3a79` de
 3. **`config_set` scindé** en `keeper_set` et `targets_set` pour D5 ;
    `config_set` reste réservé aux paramètres de D6b.
 4. **`emergency_exit` garde `write_off`** : le passage en perte est une
-   décision de l'admin et doit se lire comme telle.
+   décision de l'admin et doit se lire comme telle. Il porte aussi
+   `position_before` (valeur annoncée par la stratégie avant la sortie) et
+   `written_off` (ce qui n'est pas rentré), tous deux vides si la stratégie
+   est illisible : la perte se lit alors entre deux `nav`. Un passage en
+   perte exige la pause du vault (revue de sécurité du 21/10).
 5. **`protocol` fixé au déploiement**, dans la configuration de chaque
    stratégie : le vault ne peut pas le lire sur la stratégie.
 6. **`total_assets` et `total_shares`** portent les valeurs à la fin de

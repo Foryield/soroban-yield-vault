@@ -350,6 +350,32 @@ fn deposit_and_withdraw_return_exactly_what_balance_reads() {
 /// la valeur equitable (2.sqrt(k.p) sous-estime une position hors equilibre).
 /// Le sortant recoit son du, rien de plus : l'excedent reste sur la
 /// strategie, au profit de ceux qui restent.
+/// Pool sous le prix de reference : la valeur equitable surestime ce que la
+/// position realiserait, et le gain mesure d'un depot peut depasser le
+/// montant depose. Le deposant recoit des parts pour ce qu'il apporte, au
+/// prix de part d'avant : le surplus se partage au meme prix entre tous, il
+/// ne gagne pas plus, en proportion, que ceux qui sont deja la.
+#[test]
+fn a_deposit_never_gains_more_than_the_holders_in_place() {
+    let b = setup();
+    let other = Address::generate(&b.env);
+    StellarAssetClient::new(&b.env, &b.usdc.address).mint(&other, &10_0000000);
+    deposit(&b, &b.user, 10_0000000).expect("depot de genese");
+    // EURC vendu au pool : son prix y baisse d'environ 3 % sous la reference.
+    swap_in_pool(&b, &b.eurc.address, &b.usdc.address, 15_0000000);
+    let staying_before = b.strategy.balance(&b.user);
+
+    let credited = deposit(&b, &other, 3_0000000).expect("depot");
+    let staying_after = b.strategy.balance(&b.user);
+
+    assert!(staying_after >= staying_before);
+    // credited / 3 <= staying_after / staying_before, a une unite d'arrondi.
+    assert!(
+        credited * staying_before <= 3_0000000 * staying_after + staying_before,
+        "credite {credited} pour 3_0000000 ; en place {staying_before} -> {staying_after}"
+    );
+}
+
 #[test]
 fn a_leaver_does_not_capture_the_gain_of_a_displaced_pool() {
     let b = setup();

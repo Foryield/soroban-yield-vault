@@ -309,7 +309,13 @@ impl DeFindexStrategyTrait for AquariusLpStrategy {
             if value_before <= 0 {
                 return Err(StrategyError::InvalidSharesMinted);
             }
-            let minted = Self::mul_div_floor(&env, gained, total, value_before);
+            // Credite au plus le montant depose. Pool sous le prix de
+            // reference : la valeur equitable surestime le realisable, et
+            // `gained` peut depasser le depot ; sans borne, le deposant
+            // emporterait l'ecart aux depens des deposants en place si le
+            // pool revient au prix. Symetrique du retrait, ou le sortant
+            // ne capte pas le gain d'une sortie.
+            let minted = Self::mul_div_floor(&env, gained.min(amount), total, value_before);
             if minted <= 0 {
                 return Err(StrategyError::InvalidSharesMinted);
             }

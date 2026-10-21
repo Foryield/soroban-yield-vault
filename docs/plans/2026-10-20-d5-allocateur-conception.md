@@ -176,11 +176,12 @@ Détails de (D) :
   réalise quand le pool cote au prix de marché. Un pool décalé fait perdre à
   l'entrée comme à la sortie, et la borne de glissement ci-dessous, mesurée
   contre la valeur équitable, le refuse déjà : pas de garde séparée. Sur
-  testnet, personne n'arbitre notre pool : il cote 1,00 le 20/10 contre
-  environ 1,12 au marché. Nous tenons donc le rôle de l'arbitragiste : un
-  script `align_aquarius_pool.sh` ramène le pool au prix de référence par un
-  swap, avant chaque mouvement Aquarius (une entrée de 0,2 USDC le décale
-  déjà d'environ 2,4 %) et après chaque swap D4.
+  testnet, le pool USDC/EURC cotait 1,00 le 20/10 contre environ 1,12 au
+  marché ; le 21/10, un robot tiers l'arbitrait vers son propre prix (section
+  16). La jambe Aquarius porte donc le FYEUR, euro de test que nous émettons,
+  sans marché tiers. Nous tenons le rôle de l'arbitragiste : un script
+  `align_aquarius_pool.sh` ramène le pool au prix de référence par un swap,
+  avant chaque mouvement Aquarius.
 - Sortie : `withdraw(amount)` brûle les parts LP nécessaires au prix
   équitable, reçoit USDC et EURC, revend l'EURC contre l'USDC par le pool, et
   exige que l'USDC obtenu atteigne `amount · (10 000 − max_slippage_bps) /
@@ -316,17 +317,18 @@ Chaque étape se committe seule, tests verts.
    Reflector écarté : son flux se paie pour rester vivant.
 2. **`rebalance` réservé au keeper, l'admin en secours** (section 6).
 
-## 13. Valeurs de démonstration (validées le 20/10)
+## 13. Valeurs de démonstration (validées le 20/10, pool revu le 21/10)
 
-Elles se déduisent de la profondeur du pool Aquarius. La clé d'ops détient le
-20/10 environ 207 USDC Blend et 20,3 EURC ; l'EURC est le facteur limitant.
+Elles se déduisent de la profondeur du pool Aquarius. Le 20/10, l'EURC de
+Circle limitait le pool à 15 EURC ; depuis le 21/10, la paire est USDC /
+FYEUR (section 16) et seul l'USDC de la clé d'ops la limite.
 
-- **Pool** réensemencé au prix de référence : 15 EURC et 16,83 USDC (au cours
-  du 20/10, environ 1,12), 5 EURC gardés pour l'instance EURC de D6b.
+- **Pool** amorcé au taux BCE du 21/10 (1,1234) : 100 FYEUR et 112,34 USDC.
+  L'EURC de Circle reste réservé à l'instance EURC de D6b.
 - **Dépôt de démonstration** : 2 USDC. La jambe Aquarius vaut alors 0,4 USDC,
-  dont 0,2 swappés : impact d'environ 1,2 % plus 0,3 % de frais sur la
-  moitié swappée, soit environ 0,75 % de la somme allouée, sous la borne de
-  1 %.
+  dont 0,2 swappés, soit 0,18 % de la profondeur du pool. Mesuré en
+  simulation le 21/10 : un dépôt direct de 2 USDC dans la stratégie est
+  valorisé 1,998 USDC, soit 0,1 % de coût d'entrée, sous la borne de 1 %.
 - **Cibles** : Blend 70 %, Aquarius 20 %, oisif 10 %. Aquarius porte le plus
   de risques (prix de référence, pool étroit, perte de divergence), il
   reçoit la plus petite part ; l'oisif sert les petits retraits sans toucher aux stratégies.
@@ -407,8 +409,7 @@ sortie ne contourne le prix.
   entrée ou sortie qui coûte plus de 1 %. Sur un pool à 0,3 % de frais, cela
   borne une opération à environ 1 à 2 % de la profondeur du pool : un dépôt
   de 3,3 % du pool est refusé. La démonstration (0,4 USDC dans un pool de
-  16,83 USDC, soit 2,4 %) passe parce que seule la moitié est swappée ; elle
-  est à confirmer en simulation sur testnet.
+  112,34 USDC depuis le 21/10) en est loin (section 13).
 - **Réalignement obligatoire.** Une entrée de 20 USDC dans un pool de 1 122
   le décale d'environ 1,8 % ; l'entrée suivante est alors refusée tant que
   `align_aquarius_pool.sh` ne l'a pas ramené au prix de référence.
@@ -430,4 +431,42 @@ réouverture.
    vendorisés, où le pool tire les montants désirés puis rend l'excédent.
    Le pool déployé est plus récent : à vérifier en simulation avant tout
    dépôt réel.
+
+## 16. Étape 7 : déploiement testnet (21/10)
+
+**Essai interrompu sur l'EURC de Circle.** Le pool USDC/EURC a été aligné
+puis amorcé au taux BCE à 09:21 UTC. À 09:23, un compte tiers
+(`GCKR2OXW…`, une dizaine d'échanges par jour depuis le 14/10) a acheté
+12,73 EURC contre 69 USDC et porté le prix du pool vers 26 USDC l'EURC. La
+garde de glissement de la stratégie a refusé l'amorçage en simulation :
+rien n'est parti. La liquidité a été retirée. Sur un pool que d'autres
+arbitrent vers un prix sans rapport avec le marché, notre alignement serait
+une subvention permanente.
+
+**Paire retenue : USDC / FYEUR.** Le FYEUR est un actif classique émis par
+une clé dédiée (`scripts/issue_test_eur.sh`), avec son contrat d'actif. Il
+n'a aucun marché hors de notre pool, qui ne cote donc que notre prix. Le
+contrat de stratégie ne change pas : la paire et le pool sont des
+paramètres de son constructeur. Contrepartie : nous pouvons émettre du
+FYEUR à volonté, il ne vaut un euro que par convention de test. Le journal
+de preuves le dit.
+
+**Bloquants de la section 15, levés.**
+
+1. Mémoire d'invocation. Le RPC ne publie plus la mémoire consommée ; une
+   simulation qui dépasse la limite échoue. Ont passé en simulation, en
+   wasm, sur le pool déployé : dépôt et retrait de chaque stratégie, dépôt
+   du vault. Instructions relevées : 21,8 M pour le dépôt Aquarius, 21,2 M
+   pour son retrait, 4,0 M et 3,8 M pour Blend, 2,7 M pour le dépôt du
+   vault. `rebalance` et le retrait du vault ne se simulent qu'une fois le
+   vault financé.
+2. Arbre d'autorisation du dépôt LP : le dépôt d'amorçage de la stratégie
+   Aquarius est passé sur le pool déployé.
+
+**Loyer payé au premier appel.** Chaque contrat prolonge son instance et
+son code à 120 jours dès son premier appel (`TTL_EXTEND_TO`). Le testnet
+facture ce loyer d'avance : 527 XLM pour la stratégie Aquarius (code de
+48 Ko), environ 632 XLM estimés pour le vault (57 Ko), contre 0,004 XLM pour
+le dépôt lui-même. Les appels suivants ne repaient rien avant 90 jours.
+Coût unique, en XLM de test.
 

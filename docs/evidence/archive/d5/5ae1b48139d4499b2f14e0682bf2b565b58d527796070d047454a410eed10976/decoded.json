@@ -1,0 +1,255 @@
+{
+ "hash": "5ae1b48139d4499b2f14e0682bf2b565b58d527796070d047454a410eed10976",
+ "ledger": 5313662,
+ "envelope": {
+  "tx": {
+   "tx": {
+    "source_account": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+    "fee": 100,
+    "seq_num": "16002013057777732",
+    "cond": "none",
+    "memo": "none",
+    "operations": [
+     {
+      "source_account": null,
+      "body": {
+       "change_trust": {
+        "line": {
+         "credit_alphanum12": {
+          "asset_code": "FYEUR",
+          "issuer": "GAGW52B7RDYCRYZXLT24GNIQFXP4YWFMREBK3NGOEWM4BOKBWDE56PLF"
+         }
+        },
+        "limit": "9223372036854775807"
+       }
+      }
+     }
+    ],
+    "ext": "v0"
+   },
+   "signatures": [
+    {
+     "hint": "449d0f63",
+     "signature": "20862d9bacdd832a6b5cbb73b478e6c13ada2281f252fb84a4dd70bd61fc98f980561b5bad2c617281132ffbd2989ead15a89711c2eae8ff6d2c887f6f523f0f"
+    }
+   ]
+  }
+ },
+ "result": {
+  "fee_charged": "100",
+  "result": {
+   "tx_success": [
+    {
+     "op_inner": {
+      "change_trust": "success"
+     }
+    }
+   ]
+  },
+  "ext": "v0"
+ },
+ "meta": {
+  "v4": {
+   "ext": "v0",
+   "tx_changes_before": [
+    {
+     "state": {
+      "last_modified_ledger_seq": 5313662,
+      "data": {
+       "account": {
+        "account_id": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+        "balance": "48032421697",
+        "seq_num": "16002013057777731",
+        "num_sub_entries": 3,
+        "inflation_dest": null,
+        "flags": 0,
+        "home_domain": "",
+        "thresholds": "01000000",
+        "signers": [],
+        "ext": {
+         "v1": {
+          "liabilities": {
+           "buying": "0",
+           "selling": "0"
+          },
+          "ext": {
+           "v2": {
+            "num_sponsored": 0,
+            "num_sponsoring": 0,
+            "signer_sponsoring_i_ds": [],
+            "ext": {
+             "v3": {
+              "ext": "v0",
+              "seq_ledger": 5313661,
+              "seq_time": "1792591892"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      },
+      "ext": "v0"
+     }
+    },
+    {
+     "updated": {
+      "last_modified_ledger_seq": 5313662,
+      "data": {
+       "account": {
+        "account_id": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+        "balance": "48032421697",
+        "seq_num": "16002013057777732",
+        "num_sub_entries": 3,
+        "inflation_dest": null,
+        "flags": 0,
+        "home_domain": "",
+        "thresholds": "01000000",
+        "signers": [],
+        "ext": {
+         "v1": {
+          "liabilities": {
+           "buying": "0",
+           "selling": "0"
+          },
+          "ext": {
+           "v2": {
+            "num_sponsored": 0,
+            "num_sponsoring": 0,
+            "signer_sponsoring_i_ds": [],
+            "ext": {
+             "v3": {
+              "ext": "v0",
+              "seq_ledger": 5313662,
+              "seq_time": "1792591897"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      },
+      "ext": "v0"
+     }
+    }
+   ],
+   "operations": [
+    {
+     "ext": "v0",
+     "changes": [
+      {
+       "created": {
+        "last_modified_ledger_seq": 5313662,
+        "data": {
+         "trustline": {
+          "account_id": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+          "asset": {
+           "credit_alphanum12": {
+            "asset_code": "FYEUR",
+            "issuer": "GAGW52B7RDYCRYZXLT24GNIQFXP4YWFMREBK3NGOEWM4BOKBWDE56PLF"
+           }
+          },
+          "balance": "0",
+          "limit": "9223372036854775807",
+          "flags": 1,
+          "ext": "v0"
+         }
+        },
+        "ext": "v0"
+       }
+      },
+      {
+       "state": {
+        "last_modified_ledger_seq": 5313662,
+        "data": {
+         "account": {
+          "account_id": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+          "balance": "48032421697",
+          "seq_num": "16002013057777732",
+          "num_sub_entries": 3,
+          "inflation_dest": null,
+          "flags": 0,
+          "home_domain": "",
+          "thresholds": "01000000",
+          "signers": [],
+          "ext": {
+           "v1": {
+            "liabilities": {
+             "buying": "0",
+             "selling": "0"
+            },
+            "ext": {
+             "v2": {
+              "num_sponsored": 0,
+              "num_sponsoring": 0,
+              "signer_sponsoring_i_ds": [],
+              "ext": {
+               "v3": {
+                "ext": "v0",
+                "seq_ledger": 5313662,
+                "seq_time": "1792591897"
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        },
+        "ext": "v0"
+       }
+      },
+      {
+       "updated": {
+        "last_modified_ledger_seq": 5313662,
+        "data": {
+         "account": {
+          "account_id": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+          "balance": "48032421697",
+          "seq_num": "16002013057777732",
+          "num_sub_entries": 4,
+          "inflation_dest": null,
+          "flags": 0,
+          "home_domain": "",
+          "thresholds": "01000000",
+          "signers": [],
+          "ext": {
+           "v1": {
+            "liabilities": {
+             "buying": "0",
+             "selling": "0"
+            },
+            "ext": {
+             "v2": {
+              "num_sponsored": 0,
+              "num_sponsoring": 0,
+              "signer_sponsoring_i_ds": [],
+              "ext": {
+               "v3": {
+                "ext": "v0",
+                "seq_ledger": 5313662,
+                "seq_time": "1792591897"
+               }
+              }
+             }
+            }
+           }
+          }
+         }
+        },
+        "ext": "v0"
+       }
+      }
+     ],
+     "events": []
+    }
+   ],
+   "tx_changes_after": [],
+   "soroban_meta": null,
+   "events": [],
+   "diagnostic_events": []
+  }
+ }
+}

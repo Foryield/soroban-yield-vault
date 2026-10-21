@@ -165,10 +165,13 @@ Détails de (D) :
   week-end, sans nouveau taux BCE, le keeper republie celui du vendredi.
   Hypothèse : l'USDC Blend vaut 1 USD, le taux EUR/USD sert de prix
   EURC/USDC.
-- Fraîcheur. Un prix plus vieux que `max_age` (26 heures) fait échouer
-  `balance` : dépôts et retraits du vault échouent tant que le keeper est
-  muet, comme ils échouent aujourd'hui si Blend gèle sa réserve. La sortie
-  d'urgence (section 7) reste disponible, elle ne valorise pas.
+- Fraîcheur. Un prix plus vieux que `max_age` (72 heures depuis la revue
+  de sécurité du 21/10, voir section 13) fait échouer `balance` : dépôts et
+  retraits du vault échouent tant que le keeper est muet, comme ils
+  échouent aujourd'hui si Blend gèle sa réserve. Le remède est de republier
+  le prix ; la sortie d'urgence (section 7) reste disponible, mais un
+  passage en perte exige la pause du vault et ne se justifie pas pour une
+  panne qui se répare.
 - Écart pool contre prix de référence : la valeur équitable est celle qu'on
   réalise quand le pool cote au prix de marché. Un pool décalé fait perdre à
   l'entrée comme à la sortie, et la borne de glissement ci-dessous, mesurée
@@ -334,9 +337,11 @@ Elles se déduisent de la profondeur du pool Aquarius. La clé d'ops détient le
 - **Glissement maximal** : 1 % par mouvement contre la valeur équitable, la
   marge de D4. Il suppose le pool aligné sur le prix de référence juste
   avant (section 5).
-- **Âge maximal du prix de référence** : 26 heures (publication quotidienne
-  plus deux heures de marge) ; pas d'un prix à l'autre borné à 1 %, une
-  publication par heure au plus.
+- **Âge maximal du prix de référence** : 72 heures. Le plan visait 26
+  heures (publication quotidienne plus deux heures de marge) ; la revue de
+  sécurité du 21/10 l'a relevé, car un prix périmé gèle tout le vault et 72
+  heures couvrent un week-end ou une tâche quotidienne manquée. Pas d'un
+  prix à l'autre borné à 1 %, une publication par heure au plus.
 
 Séquence filmée : dépôt de 2 USDC (oisif à 100 %), rééquilibrage (1,4 / 0,4
 / 0,2), dépôt de 0,05 USDC refusé au rééquilibrage (`NothingToRebalance`,
@@ -397,7 +402,7 @@ sortie ne contourne le prix.
   prorata de la valeur réellement sortie. Ceux qui restent ne paient pas le
   départ des autres.
 - **Prix de référence** publiable par le keeper ou l'admin, pas de 1 % par
-  publication, une par heure au plus, péremption à 26 heures.
+  publication, une par heure au plus, péremption à 72 heures.
 - **Taille d'une opération.** Le contrôle de valeur équitable refuse toute
   entrée ou sortie qui coûte plus de 1 %. Sur un pool à 0,3 % de frais, cela
   borne une opération à environ 1 à 2 % de la profondeur du pool : un dépôt

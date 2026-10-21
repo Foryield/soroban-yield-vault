@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Seed (re-seed) du pool Aquarius testnet USDC-Blend / EURC-Circle.
+# Seed (re-seed) du pool Aquarius testnet USDC-Blend / euro de test.
+#
+# L'euro de la paire est le FYEUR (scripts/issue_test_eur.sh) par defaut ;
+# PAIRED_ASSET=CODE:EMETTEUR pour un autre actif classique.
 #
 # Cree le pool standard Aquarius (constant product) via init_standard_pool
 # puis le finance via deposit.
@@ -20,12 +23,13 @@
 # XLM->AQUA sur le pool XLM/AQUA du meme router
 # (cf. docs/evidence/d4-dex-routing.md, section "Aquarius pool seeded").
 #
-# Usage : scripts/seed_aquarius_pool.sh <cle> <montant_usdc_7dp> <montant_eurc_7dp>
+# Usage : scripts/seed_aquarius_pool.sh <cle> <montant_usdc_7dp> <montant_eur_7dp>
 set -euo pipefail
 
-KEY="${1:?usage: seed_aquarius_pool.sh <cle> <usdc_7dp> <eurc_7dp>}"
+KEY="${1:?usage: seed_aquarius_pool.sh <cle> <usdc_7dp> <eur_7dp>}"
 AMOUNT_USDC="${2:?montant USDC en unites 7 decimales}"
-AMOUNT_EURC="${3:?montant EURC en unites 7 decimales}"
+AMOUNT_EURC="${3:?montant euro en unites 7 decimales}"
+PAIRED_ASSET="${PAIRED_ASSET:-FYEUR:$(stellar keys address fy-eur-issuer)}"
 NETWORK=testnet
 
 # Router Aquarius testnet : adresse publiee par Aquarius sur
@@ -42,7 +46,7 @@ ADDR=$(stellar keys address "$KEY")
 
 # Adresses de tokens relues aux sources canoniques, jamais codees en dur.
 USDC=$(curl -sf https://raw.githubusercontent.com/blend-capital/blend-utils/main/testnet.contracts.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('ids', d)['USDC'])")
-EURC=$(stellar contract id asset --asset EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO --network $NETWORK)
+EURC=$(stellar contract id asset --asset "$PAIRED_ASSET" --network $NETWORK)
 
 # Paire TRIEE par adresse (assert_tokens_sorted du router Aqua). L'ordre
 # des Address Soroban est celui des octets bruts du hash de contrat, PAS
@@ -65,7 +69,7 @@ else
   AMOUNT_0=$AMOUNT_EURC AMOUNT_1=$AMOUNT_USDC
 fi
 
-echo "router=$AQUA_ROUTER usdc=$USDC eurc=$EURC user=$ADDR"
+echo "router=$AQUA_ROUTER usdc=$USDC euro=$PAIRED_ASSET ($EURC) user=$ADDR"
 
 # Invocation en simulation seule (aucune soumission).
 simulate() {

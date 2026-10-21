@@ -28,6 +28,10 @@
 # tache quotidienne manquee. L'euro-dollar bouge rarement de plus de 1 % en
 # trois jours, l'ecart de valorisation reste dans la marge de glissement.
 #
+# L'euro de la paire Aquarius est le FYEUR (scripts/issue_test_eur.sh) par
+# defaut, comme dans seed_aquarius_pool.sh ; PAIRED_ASSET=CODE:EMETTEUR pour
+# un autre actif classique.
+#
 # Usage : scripts/deploy_d5.sh <cle_ops> <aqua_pool_hash_hex> [adresse_keeper]
 # Le keeper est par defaut la cle d'ops (plan D5, section 4).
 set -euo pipefail
@@ -39,6 +43,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 ADDR=$(stellar keys address "$KEY")
 KEEPER="${3:-$ADDR}"
+PAIRED_ASSET="${PAIRED_ASSET:-FYEUR:$(stellar keys address fy-eur-issuer)}"
 
 # Router Aquarius : adresse publiee sur docs.aqua.network (cf.
 # seed_aquarius_pool.sh), surcharger AQUA_ROUTER si elle change.
@@ -62,13 +67,13 @@ BLEND_REWARD_THRESHOLD=10000000
 SEED=100000
 
 # Sources canoniques, jamais codees en dur : USDC, BLND et le pool Blend du
-# registre blend-utils, l'EURC par son SAC deterministe.
+# registre blend-utils, l'euro de la paire par son SAC deterministe.
 REGISTRY=$(curl -sf https://raw.githubusercontent.com/blend-capital/blend-utils/main/testnet.contracts.json)
 registry() { printf '%s' "$REGISTRY" | python3 -c "import json,sys; print(json.load(sys.stdin)['ids']['$1'])"; }
 USDC=$(registry USDC)
 BLND=$(registry BLND)
 BLEND_POOL=$(registry TestnetV2)
-EURC=$(stellar contract id asset --asset EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO --network $NETWORK)
+EURC=$(stellar contract id asset --asset "$PAIRED_ASSET" --network $NETWORK)
 
 # Prix de reference initial : taux BCE du jour, USD pour 1 EUR, echelle 1e9
 # (meme lecture que push_reference_price.sh).
@@ -82,7 +87,7 @@ print(int(Decimal(rate.group(1)) * 10**9))
 ")
 
 echo "admin=$ADDR keeper=$KEEPER"
-echo "usdc=$USDC eurc=$EURC blnd=$BLND blend_pool=$BLEND_POOL"
+echo "usdc=$USDC euro=$PAIRED_ASSET ($EURC) blnd=$BLND blend_pool=$BLEND_POOL"
 echo "aqua_router=$AQUA_ROUTER aqua_pool_hash=$AQUA_POOL_HASH prix_bce=$PRICE"
 
 # Wasm : la strategie Blend vendorisee, verifiee ; les notres, compiles.

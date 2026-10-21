@@ -97,6 +97,7 @@ plafond de frais, taille des données, émetteur et destinataire.
 | `emergency_exit` | strategy | assets_recovered, decided_by, seq, total_assets | D5 |
 | `fee_minted` | kind | fee_shares, fee_assets, recipient, rate_bps, hwm_before, hwm_after, period_start, period_end, seq, total_assets, total_shares | D6b |
 | `paused` / `unpaused` | admin | seq | migration D6a |
+| `nav` | (aucun) | total_assets, total_shares, seq | D6a, voir section 8 |
 | `config_set` | key | old, new, admin, seq | D5, D6b |
 
 Précisions :
@@ -188,3 +189,44 @@ champ manquant côté chaîne.
 5. Le schéma doit-il couvrir dès D6a les instances déjà déployées, ou
    seulement les instances redéployées avec D5 ? Je propose la seconde
    option : les preuves D1 à D4 restent sur le code qui les a produites.
+
+## 8. Réponses de Julien (21/10/2026)
+
+**Statut du vault : exploratoire.** Un vault à parts mutualisées valorisées à
+un prix commun relève de la gestion collective (orientations ESMA de mars
+2025, §37 et 41), hors de l'agrément de PSCA. Ce vault ne sera donc jamais mis
+en production réelle. On va au bout du développement pour le grant SCF : le
+schéma démontre le registre qu'exigerait un service MiCA, sans ajouter ce qui
+ne servirait qu'en production.
+
+1. **Service MiCA** : le schéma est construit comme pour de la gestion de
+   portefeuille (art. 81). Champ 28 : le PSCA agit pour le compte du client,
+   valeur « autre capacité » (AOTC), à reprendre telle quelle de la liste du
+   règlement délégué 2025/1140 au moment de coder D6c. État périodique : le
+   relevé mensuel des mandats ForYield, reconstitué par D6c à partir des
+   events `nav`. Aucune requalification à prévoir, puisque rien ne part en
+   production.
+2. **`fy_alloc_v1`** : retenu, avec trois règles. Le code passe à
+   `fy_alloc_v2` quand la logique de décision change, jamais pour un
+   paramètre (déjà tracé par `config_set`). D6c tient la table code
+   d'algorithme vers hash du wasm, date de mise en service et description.
+   Une décision `reason = manual` n'a pas de code d'algorithme : le champ 41
+   désigne alors la personne, retrouvée à partir de `decided_by`. Le code
+   s'écrit avec `Symbol::new` (`symbol_short!` est limité à 9 caractères).
+3. **Décideur d'un dépôt ou d'un retrait** : le client (`owner`), qui signe
+   lui-même (`from.require_auth()`). Le champ 41 reste vide, le PSCA ne
+   décide rien. Pas de retrait en deux temps : la validation réglementaire
+   des retraits prévue par les mandats relève du produit réel, hors
+   périmètre du grant.
+4. **Valeur liquidative périodique** : oui, quotidienne. Une fonction
+   `checkpoint()` sans authentification, refusée si le dernier `nav` a moins
+   d'un jour (comparaison des horodatages de ledger), émet `nav`
+   (`total_assets`, `total_shares`, `seq`). Une tâche planifiée quotidienne
+   (GitHub Actions) l'appelle sur les instances testnet ; si elle manque un
+   jour, n'importe qui peut rattraper. D6c trace la valeur liquidative à
+   partir de ces events.
+5. **Instances concernées** : la proposition est retenue. Le schéma
+   s'applique aux instances redéployées avec D5 ; les instances D1 à D4
+   restent sur leur bytecode, pour que leurs preuves restent rejouables. Le
+   README les marque « avant schéma » et D6c ne lit que les nouvelles.
+

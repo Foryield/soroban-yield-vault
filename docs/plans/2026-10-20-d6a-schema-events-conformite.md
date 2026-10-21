@@ -94,22 +94,26 @@ plafond de frais, taille des données, émetteur et destinataire.
 | `withdraw` | owner | shares, assets, seq, total_assets, total_shares | migration D6a |
 | `allocate` | strategy | protocol, assets, position_after, decided_by, algo, reason, seq, total_assets | D5 |
 | `deallocate` | strategy | protocol, assets, position_after, decided_by, algo, reason, seq, total_assets | D5 |
-| `emergency_exit` | strategy | assets_recovered, decided_by, seq, total_assets | D5 |
+| `emergency_exit` | strategy | assets_recovered, write_off, decided_by, seq, total_assets | D5 |
 | `fee_minted` | kind | fee_shares, fee_assets, recipient, rate_bps, hwm_before, hwm_after, period_start, period_end, seq, total_assets, total_shares | D6b |
 | `paused` / `unpaused` | admin | seq | migration D6a |
 | `nav` | (aucun) | total_assets, total_shares, seq | D6a, voir section 8 |
-| `config_set` | key | old, new, admin, seq | D5, D6b |
+| `keeper_set` | (aucun) | old, new, admin, seq | D5 |
+| `targets_set` | (aucun) | old, new, admin, seq | D5 |
+| `config_set` | key | old, new, admin, seq | D6b |
 
 Précisions :
 
 - **`decided_by` et `algo`** répondent aux articles 8 et 10. `decided_by` est
-  l'adresse qui a signé le déclenchement (admin ou keeper) ; `algo` est un
+  l'adresse qui a signé le déclenchement (admin ou keeper, ou le client
+  pour un `deallocate` de raison `redeem`) ; `algo` est un
   code stable de l'algorithme et de sa version, par exemple `fy_alloc_v1`.
   Le champ 41 exige un code qui ne change pas tant que l'algorithme ne change
   pas.
 - **`reason`** est un symbole d'une liste fermée : `drift` (écart à la cible),
   `cap` (plafond par protocole), `yield` (meilleur rendement), `manual`,
-  `emergency`.
+  `emergency`, `redeem` (retrait d'un client que la poche oisive ne couvre
+  pas : décidé par le client, sans `algo`).
 - **`protocol`** nomme le protocole sous-jacent (`blend`, `aquarius`), ce qui
   répond à l'article 12 : l'exécution via une entité hors MiCA est
   enregistrée avec l'identité de cette entité.
@@ -123,8 +127,9 @@ Précisions :
   couvrent plafonds par protocole, taux de frais, trésorerie, stratégies
   ajoutées ou retirées, transfert d'admin. Un event Soroban a des champs de
   type fixe : si les valeurs ne partagent pas un type, on le scinde par
-  famille (montants en `i128`, adresses en `Address`) plutôt que de passer
-  par un type générique.
+  famille plutôt que de passer par un type générique. D5 en fait deux
+  events nommés : `keeper_set` (adresses) et `targets_set` (cibles en points
+  de base, dans l'ordre de `strategies()`).
 
 ### Routeur
 
@@ -155,7 +160,7 @@ champ manquant côté chaîne.
 | `blockchain_tx_hash`, `blockchain_network` | transaction, réseau | transaction |
 | `sender_address` / `recipient_address` | `owner`, adresse du vault | chaîne |
 | `execution_platform` | adresse du vault, `protocol`, pool Aquarius | chaîne |
-| `decision_by` | `owner` (opération du client) ou `decided_by` + `algo` | chaîne |
+| `decision_by` | vide pour une opération du client (section 8, réponse 3), sinon `decided_by` + `algo` | chaîne |
 | `fee_transactions.hwm_before` / `hwm_after` | event `fee_minted` | chaîne |
 | `nav_at_calculation`, `aum_at_calculation` | `total_assets`, `total_shares` | chaîne |
 | `period_start` / `period_end`, `fee_type` | event `fee_minted` | chaîne |
@@ -230,3 +235,29 @@ ne servirait qu'en production.
    restent sur leur bytecode, pour que leurs preuves restent rejouables. Le
    README les marque « avant schéma » et D6c ne lit que les nouvelles.
 
+## 9. Ajustements à l'implémentation (21/10/2026)
+
+Arrêtés par Pierrick en codant D5 (commit `f2e3a79` de
+`feat/d5-vault-strategies`) :
+
+1. **`nav` une fois par jour UTC.** `checkpoint()` est accepté dès que le
+   jour UTC de l'horodatage du ledger dépasse celui du dernier `nav`, et non
+   24 h après lui. Une tâche planifiée GitHub Actions part avec un retard
+   variable : avec un délai glissant, un appel à 0 h 47 suivi d'un appel le
+   lendemain à 0 h 12 serait refusé et le jour sauterait. Un second appel le
+   même jour est refusé (`NavAlreadyPublished`). `checkpoint()` fonctionne en
+   pause.
+2. **Retrait servi par une stratégie.** Quand la poche oisive ne couvre pas
+   un retrait, chaque stratégie sollicitée émet un `deallocate` de raison
+   `redeem`, `decided_by` = le client, `algo` vide, avant l'event
+   `withdraw`. L'exécution via Blend ou Aquarius (art. 12) reste ainsi
+   tracée à chaque étape.
+3. **`config_set` scindé** en `keeper_set` et `targets_set` pour D5 ;
+   `config_set` reste réservé aux paramètres de D6b.
+4. **`emergency_exit` garde `write_off`** : le passage en perte est une
+   décision de l'admin et doit se lire comme telle.
+5. **`protocol` fixé au déploiement**, dans la configuration de chaque
+   stratégie : le vault ne peut pas le lire sur la stratégie.
+6. **`total_assets` et `total_shares`** portent les valeurs à la fin de
+   l'appel, identiques sur tous les events d'un même appel (un `rebalance`
+   ou un retrait en émet plusieurs).

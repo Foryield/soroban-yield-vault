@@ -1,13 +1,15 @@
 #![cfg(test)]
-use super::{DataKey, YieldVault, YieldVaultClient, TTL_EXTEND_TO, TTL_THRESHOLD};
+use super::{
+    DataKey, DepositEvent, KeeperSetEvent, NavEvent, PausedEvent, StrategyConfig, UnpausedEvent,
+    VaultError, WithdrawEvent, YieldVault, YieldVaultClient, TTL_EXTEND_TO, TTL_THRESHOLD,
+};
 use soroban_sdk::{
-    symbol_short,
     testutils::{
         storage::Instance as _, storage::Persistent as _, Address as _, Events, IssuerFlags,
         Ledger as _, MockAuth, MockAuthInvoke,
     },
     token::{StellarAssetClient, TokenClient},
-    vec, Address, Env, IntoVal, Vec,
+    Address, Env, Event as _, IntoVal, Symbol, Val, Vec,
 };
 
 struct Fixture<'a> {
@@ -34,9 +36,17 @@ fn setup<'a>(initial_mint: i128) -> Fixture<'a> {
     let token = TokenClient::new(&env, &asset);
     StellarAssetClient::new(&env, &asset).mint(&user, &initial_mint);
 
-    let vault_id = env.register(YieldVault, ());
+    let vault_id = env.register(
+        YieldVault,
+        (
+            admin.clone(),
+            admin.clone(),
+            asset.clone(),
+            Vec::<StrategyConfig>::new(&env),
+            500u32,
+        ),
+    );
     let vault = YieldVaultClient::new(&env, &vault_id);
-    vault.initialize(&admin, &asset, &None);
 
     Fixture {
         env,
@@ -139,10 +149,24 @@ fn unpause_restores_deposit() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #1)")]
-fn double_initialize_panics() {
+#[should_panic(expected = "Error(Context, InvalidAction)")]
+fn constructor_cannot_be_invoked_again() {
+    // Le constructeur remplace l'initialize de D1 : un second appel, meme
+    // direct, doit etre refuse par l'hote.
     let f = setup(1_000);
-    f.vault.initialize(&f.admin, &f.user, &None); // second appel : doit paniquer
+    let args: Vec<Val> = (
+        f.admin.clone(),
+        f.admin.clone(),
+        f.user.clone(),
+        Vec::<StrategyConfig>::new(&f.env),
+        500u32,
+    )
+        .into_val(&f.env);
+    f.env.invoke_contract::<()>(
+        &f.vault.address,
+        &Symbol::new(&f.env, "__constructor"),
+        args,
+    );
 }
 
 // --- Parts proportionnelles (D1) ---
@@ -272,28 +296,120 @@ fn deposit_and_withdraw_emit_structured_events() {
     f.vault.deposit(&f.user, &10_000);
     assert_eq!(
         f.env.events().all().filter_by_contract(&f.vault.address),
-        vec![
-            &f.env,
-            (
-                f.vault.address.clone(),
-                (symbol_short!("deposit"), f.user.clone()).into_val(&f.env),
-                (10_000_i128, 9_000_i128).into_val(&f.env),
-            ),
-        ]
+        [DepositEvent {
+            owner: f.user.clone(),
+            assets: 10_000,
+            shares: 9_000,
+            seq: 1,
+            total_assets: 10_000,
+            total_shares: 10_000,
+        }
+        .to_xdr(&f.env, &f.vault.address)]
     );
 
     f.vault.withdraw(&f.user, &4_000);
     assert_eq!(
         f.env.events().all().filter_by_contract(&f.vault.address),
-        vec![
-            &f.env,
-            (
-                f.vault.address.clone(),
-                (symbol_short!("withdraw"), f.user.clone()).into_val(&f.env),
-                (4_000_i128, 4_000_i128).into_val(&f.env),
-            ),
-        ]
+        [WithdrawEvent {
+            owner: f.user.clone(),
+            shares: 4_000,
+            assets: 4_000,
+            seq: 2,
+            total_assets: 6_000,
+            total_shares: 6_000,
+        }
+        .to_xdr(&f.env, &f.vault.address)]
     );
+    assert_eq!(f.vault.last_seq(), 2);
+}
+
+#[test]
+fn a_reverted_call_leaves_no_hole_in_the_sequence() {
+    let f = setup(100_000);
+    f.vault.deposit(&f.user, &10_000);
+    assert!(f.vault.try_withdraw(&f.user, &1_000_000).is_err());
+
+    f.vault.deposit(&f.user, &1_000);
+
+    assert_eq!(f.vault.last_seq(), 2);
+}
+
+#[test]
+fn pause_unpause_and_keeper_changes_are_recorded() {
+    let f = setup(100_000);
+    let keeper = Address::generate(&f.env);
+
+    f.vault.pause();
+    assert_eq!(
+        f.env.events().all().filter_by_contract(&f.vault.address),
+        [PausedEvent {
+            admin: f.admin.clone(),
+            seq: 1,
+        }
+        .to_xdr(&f.env, &f.vault.address)]
+    );
+    f.vault.unpause();
+    assert_eq!(
+        f.env.events().all().filter_by_contract(&f.vault.address),
+        [UnpausedEvent {
+            admin: f.admin.clone(),
+            seq: 2,
+        }
+        .to_xdr(&f.env, &f.vault.address)]
+    );
+    // L'ancienne valeur reste lisible (art. 2(1)(b)).
+    f.vault.set_keeper(&keeper);
+    assert_eq!(
+        f.env.events().all().filter_by_contract(&f.vault.address),
+        [KeeperSetEvent {
+            old: f.admin.clone(),
+            new: keeper,
+            admin: f.admin.clone(),
+            seq: 3,
+        }
+        .to_xdr(&f.env, &f.vault.address)]
+    );
+}
+
+#[test]
+fn checkpoint_publishes_the_nav_once_per_utc_day() {
+    let f = setup(100_000);
+    f.vault.deposit(&f.user, &10_000);
+    donate_yield(&f, 500);
+    f.env.ledger().set_timestamp(82_800); // jour 0, 23 h
+
+    f.vault.checkpoint();
+
+    assert_eq!(
+        f.env.events().all().filter_by_contract(&f.vault.address),
+        [NavEvent {
+            total_assets: 10_500,
+            total_shares: 10_000,
+            seq: 2,
+        }
+        .to_xdr(&f.env, &f.vault.address)]
+    );
+    // Meme jour : refuse, sans consommer de numero.
+    f.env.ledger().set_timestamp(86_399);
+    let err = f.vault.try_checkpoint().unwrap_err().unwrap();
+    assert_eq!(err, VaultError::NavAlreadyPublished.into());
+    assert_eq!(f.vault.last_seq(), 2);
+    // Lendemain 0 h 10, moins de 24 h apres le precedent : accepte, le jour
+    // ne saute pas.
+    f.env.ledger().set_timestamp(87_000);
+    f.vault.checkpoint();
+    assert_eq!(f.vault.last_seq(), 3);
+}
+
+#[test]
+fn checkpoint_needs_no_signature_and_works_in_pause() {
+    let f = setup(100_000);
+    f.vault.pause();
+    f.env.set_auths(&[]);
+
+    f.vault.checkpoint();
+
+    assert_eq!(f.vault.last_seq(), 2);
 }
 
 #[test]
@@ -401,15 +517,27 @@ fn withdraw_extends_instance_and_holder_ttl() {
 // d'une adresse et verifient qui peut, et qui ne peut pas, geler le vault.
 // Meme motif que `set_aqua_pool_rejects_non_admin` cote routeur.
 
-/// Vault sans mock_all_auths. `initialize` n'exige aucune auth, l'admin et
+/// Vault sans mock_all_auths. Le constructeur n'exige aucune auth, l'admin et
 /// l'actif sont donc poses sans qu'aucune signature soit mockee. L'actif est
 /// une adresse nue : pause/unpause ne touchent que le stockage d'instance.
 fn unmocked_vault<'a>() -> (Env, Address, Address, YieldVaultClient<'a>) {
     let env = Env::default();
     let admin = Address::generate(&env);
     let outsider = Address::generate(&env);
-    let vault = YieldVaultClient::new(&env, &env.register(YieldVault, ()));
-    vault.initialize(&admin, &Address::generate(&env), &None);
+    let asset = Address::generate(&env);
+    let vault = YieldVaultClient::new(
+        &env,
+        &env.register(
+            YieldVault,
+            (
+                admin.clone(),
+                admin.clone(),
+                asset,
+                Vec::<StrategyConfig>::new(&env),
+                500u32,
+            ),
+        ),
+    );
     (env, admin, outsider, vault)
 }
 

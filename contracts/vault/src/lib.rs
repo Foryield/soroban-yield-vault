@@ -1,5 +1,5 @@
 #![no_std]
-//! ForYield Soroban YieldVault (Tranche 1 / Deliverable 1).
+//! ForYield Soroban YieldVault (Tranche 1 / Deliverable 1, allocateur D5).
 //!
 //! - depot d'un actif (USDC, via son StellarAssetContract) et emission de parts
 //!   proportionnelles : parts = montant x total_parts / actifs_avant, tronque ;
@@ -9,29 +9,35 @@
 //!   d'au plus une unite brute (poussiere au benefice de l'entrant, du meme
 //!   ordre que la tolerance MINIMUM_LIQUIDITY) ;
 //! - MINIMUM_LIQUIDITY parts mortes au premier depot (anti-inflation) ;
-//! - allocation Blend v2 (optionnelle, fixee a l'initialize) : tout depot est
-//!   fourni au pool de lending, tout retrait en est servi, et total_assets
-//!   valorise la position (bTokens x b_rate) - l'interet accru fait monter le
-//!   prix de la part sans aucune action du vault ;
+//! - allocation D5 : 0 a MAX_STRATEGIES strategies au trait DeFindex
+//!   (`defindex-strategy-core`), fixees au deploiement avec cible et plafond.
+//!   Un depot reste oisif ; un retrait est servi par l'oisif puis par les
+//!   strategies dans l'ordre de la liste (ordre de liquidite). total_assets =
+//!   oisif + somme des `balance` des strategies : le rendement d'une strategie
+//!   fait monter le prix de la part sans aucune action du vault ;
 //! - pause d'urgence (admin) ;
 //! - prolongation de la duree de vie a chaque depot et retrait : l'instance,
 //!   le code et l'entree de parts du porteur, sans quoi ils s'archivent au bout
 //!   de la duree par defaut du reseau, environ sept jours.
 //!
-//! RISQUE ACCEPTE (perimetre D1) : le pool est immuable et il n'existe aucune
-//! fonction de desallocation d'urgence. `pause()` bloque les nouvelles
-//! operations mais ne rapatrie PAS les fonds deja fournis a Blend ; si Blend
-//! gele la reserve, les retraits echouent atomiquement (aucune perte de parts)
-//! jusqu'au degel. Chemin de migration/divest : Tranche 2.
+//! - reequilibrage par lot (`rebalance`, keeper ou admin) : chaque poche,
+//!   oisif compris, revient a sa cible des qu'une d'elles s'en ecarte de plus
+//!   de `drift_bps` ; plafonds par strategie, perte bornee par lot, sortie
+//!   d'urgence par strategie (`emergency_exit`, admin, meme en pause).
 //!
-//! Hors scope (Tranches 2-3) : routing Aquarius, DeFindex,
-//! frais high-water mark, parts SEP-41 transferables.
+//! - events au schema de conformite D6a (`#[contractevent]`, numero `seq`
+//!   sans trou) et valeur liquidative quotidienne publiee par `checkpoint`,
+//!   sans authentification.
+//!
+//! Plan de conception : docs/plans/2026-10-20-d5-allocateur-conception.md.
+//!
+//! Hors scope : frais high-water mark (D6b), parts SEP-41 transferables.
 
-use blend_contract_sdk::pool as blend;
+use defindex_strategy_core::DeFindexStrategyClient;
 use soroban_sdk::{
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-    contract, contracterror, contractimpl, contractmeta, contracttype, panic_with_error,
-    symbol_short,
+    contract, contracterror, contractevent, contractimpl, contractmeta, contracttype,
+    panic_with_error, symbol_short,
     token::TokenClient,
     vec, Address, Env, IntoVal, Symbol, Vec,
 };
@@ -42,7 +48,8 @@ use soroban_sdk::{
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum VaultError {
-    AlreadyInitialized = 1,
+    // 1 (AlreadyInitialized) retire avec initialize : le constructeur ne
+    // s'execute qu'une fois, au deploiement. Jamais reutilise.
     AmountMustBePositive = 2,
     DepositTooSmall = 3,
     SharesMustBePositive = 4,
@@ -51,7 +58,171 @@ pub enum VaultError {
     VaultInsolvent = 7,
     ContractPaused = 8,
     MathOverflow = 9,
-    PoolReserveMissing = 10,
+    // 10 (PoolReserveMissing, pool Blend direct de D1) retire : jamais reutilise.
+    TooManyStrategies = 11,
+    StrategyAssetMismatch = 12,
+    InvalidAllocation = 13,
+    DuplicateStrategy = 14,
+    StrategyShortfall = 15,
+    InvalidStrategyBalance = 16,
+    NotAuthorized = 17,
+    NothingToRebalance = 18,
+    CapExceeded = 19,
+    RebalanceLoss = 20,
+    StrategyNotFound = 21,
+    NavAlreadyPublished = 22,
+    WriteOffRequiresPause = 23,
+}
+
+/// Une strategie au trait DeFindex et sa place dans l'allocation, en points de
+/// base de total_assets. Le plafond est fige au deploiement ; la cible se
+/// reglera ensuite, toujours sous le plafond.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StrategyConfig {
+    pub address: Address,
+    /// Protocole sous-jacent (`blend`, `aquarius`), repris par les events
+    /// `allocate` et `deallocate` : l'execution via une entite hors MiCA est
+    /// enregistree avec son identite (art. 12 du reglement 2025/1140).
+    pub protocol: Symbol,
+    pub target_bps: u32,
+    pub cap_bps: u32,
+    pub active: bool,
+}
+
+// Events du schema de conformite D6a (docs/plans/2026-10-20-d6a-schema-
+// events-conformite.md, sections 3, 4 et 8). Regles communes :
+// - `seq` : numero d'enregistrement monotone et sans trou, propre au vault ;
+//   un trou dans la suite indexee signale un event manque ;
+// - `total_assets` (et `total_shares` quand l'operation les change) : valeurs
+//   a la fin de l'appel, identiques sur tous les events d'un meme appel ;
+// - un changement incompatible change le nom de l'event, jamais sa forme.
+
+#[contractevent(topics = ["deposit"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DepositEvent {
+    #[topic]
+    pub owner: Address,
+    pub assets: i128,
+    pub shares: i128,
+    pub seq: u64,
+    pub total_assets: i128,
+    pub total_shares: i128,
+}
+
+/// `assets` : ce que le client a effectivement recu, cout de sortie deduit.
+#[contractevent(topics = ["withdraw"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WithdrawEvent {
+    #[topic]
+    pub owner: Address,
+    pub shares: i128,
+    pub assets: i128,
+    pub seq: u64,
+    pub total_assets: i128,
+    pub total_shares: i128,
+}
+
+/// Versement a une strategie, decide par l'allocateur (`reason = drift`,
+/// `algo = fy_alloc_v1`).
+#[contractevent(topics = ["allocate"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AllocateEvent {
+    #[topic]
+    pub strategy: Address,
+    pub protocol: Symbol,
+    pub assets: i128,
+    pub position_after: i128,
+    pub decided_by: Address,
+    pub algo: Option<Symbol>,
+    pub reason: Symbol,
+    pub seq: u64,
+    pub total_assets: i128,
+}
+
+/// Rapatriement depuis une strategie : par l'allocateur (`reason = drift`)
+/// ou pour servir un retrait que l'oisif ne couvre pas (`reason = redeem`,
+/// decide par le client, sans algorithme).
+#[contractevent(topics = ["deallocate"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DeallocateEvent {
+    #[topic]
+    pub strategy: Address,
+    pub protocol: Symbol,
+    pub assets: i128,
+    pub position_after: i128,
+    pub decided_by: Address,
+    pub algo: Option<Symbol>,
+    pub reason: Symbol,
+    pub seq: u64,
+    pub total_assets: i128,
+}
+
+/// `write_off` : passage en perte decide par l'admin, a tracer comme tel.
+/// `position_before` : valeur annoncee par la strategie avant la sortie, vide
+/// si sa lecture a echoue ; `written_off` : ce qui n'est pas rentre, vide
+/// dans le meme cas (la perte se lit alors entre deux `nav`). Sans
+/// `write_off`, c'est le cout de sortie tolere (dans MAX_REBALANCE_LOSS_BPS),
+/// pas une perte decidee : seul `write_off` dit si l'admin a passe en perte.
+#[contractevent(topics = ["emergency_exit"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmergencyExitEvent {
+    #[topic]
+    pub strategy: Address,
+    pub position_before: Option<i128>,
+    pub assets_recovered: i128,
+    pub written_off: Option<i128>,
+    pub write_off: bool,
+    pub decided_by: Address,
+    pub seq: u64,
+    pub total_assets: i128,
+}
+
+#[contractevent(topics = ["paused"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PausedEvent {
+    #[topic]
+    pub admin: Address,
+    pub seq: u64,
+}
+
+#[contractevent(topics = ["unpaused"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnpausedEvent {
+    #[topic]
+    pub admin: Address,
+    pub seq: u64,
+}
+
+/// `config_set` du schema, scinde par type de valeur : un event Soroban a des
+/// champs de type fixe.
+#[contractevent(topics = ["keeper_set"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KeeperSetEvent {
+    pub old: Address,
+    pub new: Address,
+    pub admin: Address,
+    pub seq: u64,
+}
+
+/// Cibles en points de base, dans l'ordre de `strategies()`.
+#[contractevent(topics = ["targets_set"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TargetsSetEvent {
+    pub old: Vec<u32>,
+    pub new: Vec<u32>,
+    pub admin: Address,
+    pub seq: u64,
+}
+
+/// Valeur liquidative quotidienne, emise par `checkpoint` meme sans
+/// operation : le releve periodique se reconstitue a partir de ces events.
+#[contractevent(topics = ["nav"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NavEvent {
+    pub total_assets: i128,
+    pub total_shares: i128,
+    pub seq: u64,
 }
 
 contractmeta!(
@@ -64,10 +235,14 @@ contractmeta!(
 enum DataKey {
     Admin,
     Asset,
-    Pool,
+    Keeper,
+    Strategies,
+    DriftBps,
     Paused,
     TotalShares,
     Shares(Address),
+    Seq,
+    LastNavDay,
 }
 
 /// Parts mortes verrouillées au premier dépôt (jamais rachetables) : borne le
@@ -75,14 +250,25 @@ enum DataKey {
 /// Uniswap V2 / DeFindex). En unités de 7 décimales, 1000 = 0,0001 actif.
 const MINIMUM_LIQUIDITY: i128 = 1_000;
 
-/// Types de requete Blend v2 (pool `submit`). Supply/Withdraw simples : la
-/// position d'un vault qui n'emprunte jamais reste hors de la matrice de
-/// liquidation (pas de SupplyCollateral).
-const BLEND_REQUEST_SUPPLY: u32 = 0;
-const BLEND_REQUEST_WITHDRAW: u32 = 1;
+/// total_assets appelle `balance` sur chaque strategie : borner leur nombre
+/// borne le cout de chaque depot et de chaque retrait.
+pub(crate) const MAX_STRATEGIES: u32 = 4;
 
-/// Le b_rate Blend est un fixed-point 12 decimales.
-const SCALAR_12: i128 = 1_000_000_000_000;
+/// 100 % en points de base.
+const BPS: u32 = 10_000;
+
+/// Code de l'algorithme d'allocation (champ 41 du reglement 2025/1140) : il
+/// change quand la logique de decision change, jamais pour un parametre.
+const ALGO: &str = "fy_alloc_v1";
+
+/// Secondes par jour UTC : `checkpoint` publie au plus un `nav` par jour.
+const SECONDS_PER_DAY: u64 = 86_400;
+
+/// Perte toleree, en points de base du volume deplace : la marge de
+/// glissement de D4. Elle borne un reequilibrage, le manque d'un retrait
+/// servi par les strategies (a la charge du client sortant) et une sortie
+/// d'urgence sans passage en perte. Au-dela, tout revert.
+pub(crate) const MAX_REBALANCE_LOSS_BPS: i128 = 100;
 
 /// Ledgers par jour, fermeture nominale a 5 secondes.
 const LEDGERS_PER_DAY: u32 = 17_280;
@@ -104,34 +290,49 @@ pub(crate) const TTL_EXTEND_TO: u32 = 120 * LEDGERS_PER_DAY;
 // relevement des constantes casse la compilation et jamais le reseau.
 const _: () = assert!(TTL_THRESHOLD < TTL_EXTEND_TO && TTL_EXTEND_TO < MAX_ENTRY_TTL);
 
+/// Strategie sollicitee par un retrait : adresse, protocole, montant rendu,
+/// position ensuite.
+type Pulled = (Address, Symbol, i128, i128);
+
 #[contract]
 pub struct YieldVault;
 
 #[contractimpl]
 impl YieldVault {
-    /// Initialise le vault. Idempotence interdite : un second appel panique.
-    /// `pool` (optionnel, immuable) : pool de lending Blend v2 vers lequel les
-    /// depots sont alloues. `None` = vault de garde pure (aucune strategie),
-    /// utilise par les instances sans pool sur leur actif (ex. EURC).
-    pub fn initialize(env: Env, admin: Address, asset: Address, pool: Option<Address>) {
-        if env.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&env, VaultError::AlreadyInitialized);
+    /// Constructeur : s'execute une seule fois, dans la transaction meme du
+    /// deploiement. Aucune fenetre ne reste ouverte entre le deploiement et la
+    /// configuration, qu'un tiers pourrait occuper avec ses propres strategies
+    /// et son propre keeper (ce que permettait l'initialize de D1).
+    /// `keeper` : seule cle, avec l'admin, admise a reequilibrer.
+    /// `strategies` (liste immuable, ordre = ordre de liquidite des retraits) :
+    /// vide = vault de garde pure, utilise par les instances sans strategie
+    /// sur leur actif (ex. EURC). `drift_bps` : ecart a la cible qui declenche
+    /// le reequilibrage.
+    pub fn __constructor(
+        env: Env,
+        admin: Address,
+        keeper: Address,
+        asset: Address,
+        strategies: Vec<StrategyConfig>,
+        drift_bps: u32,
+    ) {
+        // La liste et les plafonds sont immuables et le constructeur a un coup :
+        // une configuration fausse rendrait le vault inutilisable sans recours.
+        // Echouer ici est la seule occasion de le dire.
+        Self::check_strategies(&env, &asset, &strategies);
+        // Le declencheur doit depasser la perte toleree par lot : sinon l'ecart
+        // laisse par une perte suffirait a relancer un lot, et les pertes se
+        // composeraient de lot en lot.
+        if (drift_bps as i128) <= MAX_REBALANCE_LOSS_BPS || drift_bps > BPS {
+            panic_with_error!(&env, VaultError::InvalidAllocation);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Keeper, &keeper);
         env.storage().instance().set(&DataKey::Asset, &asset);
-        if let Some(pool) = pool {
-            // Un pool sans reserve pour cet actif rendrait strategy_assets
-            // impossible, donc total_assets, deposit et withdraw avec lui. Le
-            // pool etant immuable et initialize a un coup, le vault serait mort
-            // sans recours. Echouer ici est la seule occasion de le dire.
-            if blend::Client::new(&env, &pool)
-                .try_get_reserve(&asset)
-                .is_err()
-            {
-                panic_with_error!(&env, VaultError::PoolReserveMissing);
-            }
-            env.storage().instance().set(&DataKey::Pool, &pool);
-        }
+        env.storage()
+            .instance()
+            .set(&DataKey::Strategies, &strategies);
+        env.storage().instance().set(&DataKey::DriftBps, &drift_bps);
         env.storage().instance().set(&DataKey::Paused, &false);
         env.storage().instance().set(&DataKey::TotalShares, &0i128);
     }
@@ -146,7 +347,7 @@ impl YieldVault {
         }
 
         let token = TokenClient::new(&env, &Self::asset(&env));
-        // Actifs AVANT le transfert entrant (solde oisif + position Blend) :
+        // Actifs AVANT le transfert entrant (solde oisif + strategies) :
         // le ratio parts:actif ne doit pas inclure le montant en cours de depot.
         let assets_before = token
             .balance(&env.current_contract_address())
@@ -192,19 +393,19 @@ impl YieldVault {
         env.storage().instance().set(&DataKey::TotalShares, &total);
         Self::extend_ttls(&env, &key);
 
+        // Le depot reste oisif : il rejoint les strategies au prochain
+        // reequilibrage, par lot.
         token.transfer(&from, env.current_contract_address(), &amount);
 
-        // Allocation : tout depot part immediatement vers le pool Blend
-        // (aucun actif oisif tant qu'une strategie est branchee).
-        if let Some(pool) = Self::pool_addr(&env) {
-            Self::pool_supply(&env, &pool, amount);
+        DepositEvent {
+            owner: from,
+            assets: amount,
+            shares,
+            seq: Self::next_seq(&env),
+            total_assets: assets_before + amount,
+            total_shares: total,
         }
-
-        // Migration vers #[contractevent] prevue avec le schema d'events de
-        // conformite (D6a) : ne pas changer la forme des events avant.
-        #[allow(deprecated)]
-        env.events()
-            .publish((symbol_short!("deposit"), from), (amount, shares));
+        .publish(&env);
         shares
     }
 
@@ -226,9 +427,9 @@ impl YieldVault {
         // tronque : l'arrondi est toujours en faveur du vault.
         let token = TokenClient::new(&env, &Self::asset(&env));
         let idle = token.balance(&env.current_contract_address());
-        let assets = idle
-            .checked_add(Self::strategy_assets(&env))
-            .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow));
+        let strategies = Self::strategy_list(&env);
+        let values = Self::strategy_values(&env, &strategies);
+        let assets = Self::sum(&env, idle, &values);
         let total_before = Self::total_shares(env.clone());
         let amount = shares
             .checked_mul(assets)
@@ -246,23 +447,51 @@ impl YieldVault {
         Self::extend_ttls(&env, &key);
 
         // Desallocation : la part du retrait que le solde oisif ne couvre pas
-        // est retiree du pool Blend avant de servir le client.
-        if amount > idle {
-            if let Some(pool) = Self::pool_addr(&env) {
-                Self::pool_withdraw(&env, &pool, amount - idle);
-            }
-        }
+        // est retiree des strategies avant de servir le client. Le cout de
+        // sortie d'une strategie (frais et glissement d'un pool LP) est a la
+        // charge du client sortant, dans la marge de MAX_REBALANCE_LOSS_BPS :
+        // il recoit ce qui est effectivement rentre (decision du 20/10).
+        let (amount, pulled, value_change) = if amount > idle {
+            let (shortfall, pulled, value_change) =
+                Self::pull_from_strategies(&env, &token, amount - idle, &strategies, &values);
+            (amount - shortfall, pulled, value_change)
+        } else {
+            (amount, Vec::new(&env), 0)
+        };
 
         token.transfer(&env.current_contract_address(), &from, &amount);
 
-        // Meme reserve que deposit : forme des events figee jusqu'a D6a.
-        #[allow(deprecated)]
-        env.events()
-            .publish((symbol_short!("withdraw"), from), (shares, amount));
+        // L'actif baisse du montant servi et, si les strategies ont ete
+        // sollicitees, de leur cout de sortie.
+        let total_assets = assets - amount + value_change;
+        let redeem = symbol_short!("redeem");
+        for (strategy, protocol, got, position_after) in pulled.iter() {
+            DeallocateEvent {
+                position_after,
+                strategy,
+                protocol,
+                assets: got,
+                decided_by: from.clone(),
+                algo: None,
+                reason: redeem.clone(),
+                seq: Self::next_seq(&env),
+                total_assets,
+            }
+            .publish(&env);
+        }
+        WithdrawEvent {
+            owner: from,
+            shares,
+            assets: amount,
+            seq: Self::next_seq(&env),
+            total_assets,
+            total_shares: total_before - shares,
+        }
+        .publish(&env);
         amount
     }
 
-    /// Actif total gere : solde token oisif + valeur de la position Blend.
+    /// Actif total gere : solde token oisif + valeur des strategies.
     pub fn total_assets(env: Env) -> i128 {
         TokenClient::new(&env, &Self::asset(&env))
             .balance(&env.current_contract_address())
@@ -286,16 +515,384 @@ impl YieldVault {
             .unwrap_or(0)
     }
 
+    /// Strategies et leur configuration, dans l'ordre de liquidite.
+    pub fn strategies(env: Env) -> Vec<StrategyConfig> {
+        Self::strategy_list(&env)
+    }
+
+    /// Repartition courante : valeur de chaque strategie, en unites d'actif
+    /// (0 pour une strategie sortie en urgence, hors perimetre). L'oisif se lit
+    /// par le solde token du vault.
+    pub fn allocation(env: Env) -> Vec<(Address, i128)> {
+        let this = env.current_contract_address();
+        let mut out = Vec::new(&env);
+        for s in Self::strategy_list(&env).iter() {
+            let value = if s.active {
+                Self::strategy_balance(&env, &s.address, &this)
+            } else {
+                0
+            };
+            out.push_back((s.address, value));
+        }
+        out
+    }
+
+    pub fn keeper(env: Env) -> Address {
+        env.storage().instance().get(&DataKey::Keeper).unwrap()
+    }
+
+    pub fn drift_bps(env: Env) -> u32 {
+        env.storage().instance().get(&DataKey::DriftBps).unwrap()
+    }
+
+    /// Ramene chaque poche a sa cible, en une transaction : retraits des
+    /// strategies au-dessus de leur cible d'abord, depots ensuite, dans
+    /// l'ordre de la liste. Reserve au keeper et a l'admin : ils choisissent
+    /// le moment, jamais la repartition, que fixent les cibles. Refuse si
+    /// aucune poche ne s'ecarte de sa cible de plus de `drift_bps` points de
+    /// base de total_assets. Rend les mouvements effectues, mesures au delta
+    /// du solde du vault : positif = verse a la strategie, negatif = rapatrie.
+    pub fn rebalance(env: Env, caller: Address) -> Vec<(Address, i128)> {
+        caller.require_auth();
+        if caller != Self::admin(&env) && caller != Self::keeper(env.clone()) {
+            panic_with_error!(&env, VaultError::NotAuthorized);
+        }
+        Self::require_not_paused(&env);
+
+        let this = env.current_contract_address();
+        let token = TokenClient::new(&env, &Self::asset(&env));
+        let strategies = Self::strategy_list(&env);
+        // Une seule lecture de chaque strategie avant les mouvements, une
+        // seule apres : chaque `balance` coute de la memoire d'invocation
+        // (plus de 4 Mo pour la strategie Aquarius), bornee par le reseau.
+        let current = Self::strategy_values(&env, &strategies);
+        let idle = token.balance(&this);
+        let total_before = Self::sum(&env, idle, &current);
+
+        // Cible de chaque strategie active ; l'oisif vise ce qui reste.
+        let mut targets: Vec<i128> = Vec::new(&env);
+        let mut idle_target = total_before;
+        for s in strategies.iter() {
+            let target = if s.active {
+                Self::bps_of(&env, total_before, s.target_bps)
+            } else {
+                0
+            };
+            idle_target -= target;
+            targets.push_back(target);
+        }
+
+        let threshold = Self::bps_of(&env, total_before, Self::drift_bps(env.clone()));
+        let drifted = (idle - idle_target).abs() > threshold
+            || (0..strategies.len())
+                .any(|i| (current.get(i).unwrap() - targets.get(i).unwrap()).abs() > threshold);
+        if total_before == 0 || !drifted {
+            panic_with_error!(&env, VaultError::NothingToRebalance);
+        }
+
+        let mut moves: Vec<(Address, i128)> = Vec::new(&env);
+        let mut withdrawn: i128 = 0;
+        let mut deposited: i128 = 0;
+        // Retraits d'abord : ils alimentent l'oisif que les depots consomment.
+        for (i, s) in strategies.iter().enumerate() {
+            let excess = current.get(i as u32).unwrap() - targets.get(i as u32).unwrap();
+            if excess > 0 {
+                let before = token.balance(&this);
+                DeFindexStrategyClient::new(&env, &s.address).withdraw(&excess, &this, &this);
+                let got = token.balance(&this) - before;
+                withdrawn += got;
+                // Un mouvement nul n'est pas un mouvement : ni retour, ni
+                // event dont le sens serait faux.
+                if got != 0 {
+                    moves.push_back((s.address.clone(), -got));
+                }
+            }
+        }
+        for (i, s) in strategies.iter().enumerate() {
+            let missing = targets.get(i as u32).unwrap() - current.get(i as u32).unwrap();
+            let available = token.balance(&this);
+            let amount = if missing < available {
+                missing
+            } else {
+                available
+            };
+            if amount > 0 {
+                // Mesure au delta du solde du vault, comme les retraits.
+                let before = token.balance(&this);
+                Self::strategy_deposit(&env, &token, &s.address, amount);
+                let paid = before - token.balance(&this);
+                deposited += paid;
+                if paid != 0 {
+                    moves.push_back((s.address.clone(), paid));
+                }
+            }
+        }
+
+        // Un ecart d'une unite sur un petit total franchit un seuil nul sans
+        // rien laisser a deplacer : pas de lot vide.
+        if moves.is_empty() {
+            panic_with_error!(&env, VaultError::NothingToRebalance);
+        }
+
+        // Perte bornee : une strategie qui valorise moins qu'elle n'a recu
+        // (frais d'entree, glissement, defaillance) ne passe que dans la marge.
+        // Le volume deplace est le plus grand des deux flux, pas leur somme :
+        // 100 retires de A puis verses a B ont deplace 100, pas 200.
+        let moved = if withdrawn > deposited {
+            withdrawn
+        } else {
+            deposited
+        };
+        let positions = Self::strategy_values(&env, &strategies);
+        let total_after = Self::sum(&env, token.balance(&this), &positions);
+        let loss = total_before - total_after;
+        if loss > 0 && loss * (BPS as i128) > MAX_REBALANCE_LOSS_BPS * moved {
+            panic_with_error!(&env, VaultError::RebalanceLoss);
+        }
+        // Plafonds, verifies sur l'etat final, rapportes au plus grand des deux
+        // totaux : une perte d'arrondi toleree ailleurs ne doit pas faire
+        // franchir son plafond a une strategie dont la cible l'egale.
+        let cap_base = if total_after > total_before {
+            total_after
+        } else {
+            total_before
+        };
+        for (s, value) in strategies.iter().zip(positions.iter()) {
+            if value > Self::bps_of(&env, cap_base, s.cap_bps) {
+                panic_with_error!(&env, VaultError::CapExceeded);
+            }
+        }
+
+        // Une strategie bouge au plus une fois par lot (au-dessus ou
+        // au-dessous de sa cible, jamais les deux) : un event par mouvement,
+        // dans l'ordre d'execution, avec la position finale.
+        let algo = Some(Symbol::new(&env, ALGO));
+        let drift = symbol_short!("drift");
+        for (address, amount) in moves.iter() {
+            let i = strategies
+                .iter()
+                .position(|s| s.address == address)
+                .unwrap() as u32;
+            let protocol = strategies.get(i).unwrap().protocol;
+            let position_after = positions.get(i).unwrap();
+            let seq = Self::next_seq(&env);
+            if amount > 0 {
+                AllocateEvent {
+                    strategy: address,
+                    protocol,
+                    assets: amount,
+                    position_after,
+                    decided_by: caller.clone(),
+                    algo: algo.clone(),
+                    reason: drift.clone(),
+                    seq,
+                    total_assets: total_after,
+                }
+                .publish(&env);
+            } else {
+                DeallocateEvent {
+                    strategy: address,
+                    protocol,
+                    assets: -amount,
+                    position_after,
+                    decided_by: caller.clone(),
+                    algo: algo.clone(),
+                    reason: drift.clone(),
+                    seq,
+                    total_assets: total_after,
+                }
+                .publish(&env);
+            }
+        }
+        moves
+    }
+
+    /// Remplace la cle keeper (admin) : une cle chaude compromise ne reste pas
+    /// active pour toujours.
+    pub fn set_keeper(env: Env, keeper: Address) {
+        let admin = Self::admin(&env);
+        admin.require_auth();
+        let old = Self::keeper(env.clone());
+        env.storage().instance().set(&DataKey::Keeper, &keeper);
+        KeeperSetEvent {
+            old,
+            new: keeper,
+            admin,
+            seq: Self::next_seq(&env),
+        }
+        .publish(&env);
+    }
+
+    /// Nouvelles cibles, dans l'ordre de la liste (admin). Chaque cible reste
+    /// sous le plafond fixe au deploiement, leur somme sous 100 % ; une
+    /// strategie sortie en urgence garde une cible nulle.
+    pub fn set_targets(env: Env, targets: Vec<u32>) {
+        let admin = Self::admin(&env);
+        admin.require_auth();
+        let mut strategies = Self::strategy_list(&env);
+        if targets.len() != strategies.len() {
+            panic_with_error!(&env, VaultError::InvalidAllocation);
+        }
+        let mut old: Vec<u32> = Vec::new(&env);
+        let mut sum: u32 = 0;
+        for i in 0..strategies.len() {
+            let mut s = strategies.get(i).unwrap();
+            old.push_back(s.target_bps);
+            let target = targets.get(i).unwrap();
+            if target > s.cap_bps || (!s.active && target != 0) {
+                panic_with_error!(&env, VaultError::InvalidAllocation);
+            }
+            sum += target;
+            s.target_bps = target;
+            strategies.set(i, s);
+        }
+        if sum > BPS {
+            panic_with_error!(&env, VaultError::InvalidAllocation);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::Strategies, &strategies);
+        TargetsSetEvent {
+            old,
+            new: targets,
+            admin,
+            seq: Self::next_seq(&env),
+        }
+        .publish(&env);
+    }
+
+    /// Sortie d'urgence (admin) : rapatrie tout ce que la strategie rend et la
+    /// desactive pour de bon. Une strategie inactive sort du perimetre : plus
+    /// comptee dans total_assets, plus sollicitee aux retraits, plus jamais
+    /// alimentee. Fonctionne en pause : c'est quand tout est gele qu'on en a
+    /// besoin.
+    ///
+    /// `write_off = false` : la strategie doit tout rendre, sinon rien ne
+    /// change (cas d'un pool gele, dont les fonds ne sont qu'immobilises).
+    /// `write_off = true` : decision explicite de passer en perte ce que la
+    /// strategie ne rend pas (lecture ou retrait en echec) pour que le vault
+    /// fonctionne a nouveau ; le prix de la part baisse d'autant, sans retour.
+    /// Exige la pause : la decision se prend vault gele, apres diagnostic.
+    /// Une panne qui se repare ne se passe pas en perte : un prix de
+    /// reference perime (strategie Aquarius) se republie, et la strategie se
+    /// lit a nouveau.
+    pub fn emergency_exit(env: Env, strategy: Address, write_off: bool) -> i128 {
+        let admin = Self::admin(&env);
+        admin.require_auth();
+        if write_off && !Self::is_paused(env.clone()) {
+            panic_with_error!(&env, VaultError::WriteOffRequiresPause);
+        }
+        let this = env.current_contract_address();
+        let token = TokenClient::new(&env, &Self::asset(&env));
+        let mut strategies = Self::strategy_list(&env);
+        let index = strategies
+            .iter()
+            .position(|s| s.address == strategy && s.active)
+            .unwrap_or_else(|| panic_with_error!(&env, VaultError::StrategyNotFound))
+            as u32;
+
+        let mut config = strategies.get(index).unwrap();
+        config.active = false;
+        config.target_bps = 0;
+        strategies.set(index, config);
+        env.storage()
+            .instance()
+            .set(&DataKey::Strategies, &strategies);
+
+        let client = DeFindexStrategyClient::new(&env, &strategy);
+        let before = token.balance(&this);
+        let position_before = if write_off {
+            match client.try_balance(&this) {
+                Ok(Ok(value)) => {
+                    if value > 0 {
+                        let _ = client.try_withdraw(&value, &this, &this);
+                    }
+                    Some(value)
+                }
+                _ => None,
+            }
+        } else {
+            let due = Self::strategy_balance(&env, &strategy, &this);
+            if due > 0 {
+                client.withdraw(&due, &this, &this);
+            }
+            // Sans passage en perte, tout doit rentrer, au cout de sortie
+            // pres (MAX_REBALANCE_LOSS_BPS) : une strategie qui retient une
+            // part de ce qu'elle annonce ne la fait pas perdre en silence.
+            let got = token.balance(&this) - before;
+            if got * (BPS as i128) < due * (BPS as i128 - MAX_REBALANCE_LOSS_BPS) {
+                panic_with_error!(&env, VaultError::StrategyShortfall);
+            }
+            Some(due)
+        };
+        let recovered = token.balance(&this) - before;
+        EmergencyExitEvent {
+            strategy,
+            position_before,
+            assets_recovered: recovered,
+            written_off: position_before.map(|due| (due - recovered).max(0)),
+            write_off,
+            decided_by: admin,
+            seq: Self::next_seq(&env),
+            total_assets: Self::total_assets(env.clone()),
+        }
+        .publish(&env);
+        recovered
+    }
+
     /// Pause d'urgence (admin uniquement).
     pub fn pause(env: Env) {
-        Self::admin(&env).require_auth();
+        let admin = Self::admin(&env);
+        admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &true);
+        PausedEvent {
+            admin,
+            seq: Self::next_seq(&env),
+        }
+        .publish(&env);
     }
 
     /// Leve la pause (admin uniquement).
     pub fn unpause(env: Env) {
-        Self::admin(&env).require_auth();
+        let admin = Self::admin(&env);
+        admin.require_auth();
         env.storage().instance().set(&DataKey::Paused, &false);
+        UnpausedEvent {
+            admin,
+            seq: Self::next_seq(&env),
+        }
+        .publish(&env);
+    }
+
+    /// Publie la valeur liquidative du jour (event `nav`), au plus une fois
+    /// par jour UTC de l'horodatage du ledger. Sans authentification : une
+    /// tache planifiee l'appelle chaque jour et, si elle en manque un,
+    /// n'importe qui peut rattraper. Le jour calendaire, plutot qu'un delai
+    /// de 24 h depuis le dernier appel, evite qu'un appel en avance sur la
+    /// veille fasse sauter un jour. Fonctionne en pause : la valeur reste a
+    /// publier quand tout est gele. Prolonge aussi la duree de vie de
+    /// l'instance.
+    pub fn checkpoint(env: Env) {
+        let day = env.ledger().timestamp() / SECONDS_PER_DAY;
+        let last: Option<u64> = env.storage().instance().get(&DataKey::LastNavDay);
+        if last.is_some_and(|last| day <= last) {
+            panic_with_error!(&env, VaultError::NavAlreadyPublished);
+        }
+        env.storage().instance().set(&DataKey::LastNavDay, &day);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        NavEvent {
+            total_assets: Self::total_assets(env.clone()),
+            total_shares: Self::total_shares(env.clone()),
+            seq: Self::next_seq(&env),
+        }
+        .publish(&env);
+    }
+
+    /// Numero d'enregistrement du dernier event emis (0 avant le premier).
+    pub fn last_seq(env: Env) -> u64 {
+        env.storage().instance().get(&DataKey::Seq).unwrap_or(0)
     }
 
     pub fn is_paused(env: Env) -> bool {
@@ -303,6 +900,14 @@ impl YieldVault {
             .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false)
+    }
+
+    /// Reserve le numero d'enregistrement suivant : 1, 2, 3... sans trou,
+    /// un par event. Un appel qui revert annule aussi son increment.
+    fn next_seq(env: &Env) -> u64 {
+        let seq = Self::last_seq(env.clone()) + 1;
+        env.storage().instance().set(&DataKey::Seq, &seq);
+        seq
     }
 
     fn admin(env: &Env) -> Address {
@@ -313,71 +918,169 @@ impl YieldVault {
         env.storage().instance().get(&DataKey::Asset).unwrap()
     }
 
-    fn pool_addr(env: &Env) -> Option<Address> {
-        env.storage().instance().get(&DataKey::Pool)
+    fn strategy_list(env: &Env) -> Vec<StrategyConfig> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Strategies)
+            .unwrap_or(Vec::new(env))
     }
 
-    /// Valeur de la position Blend en unites d'actif : bTokens x b_rate / 1e12,
-    /// tronquee (valorisation conservatrice, l'interet non accru reste au vault).
+    /// Valeur des strategies actives en unites d'actif : somme des `balance`
+    /// rendues pour le vault. Le trait exige une valeur en actif sous-jacent, jamais
+    /// en parts ; chaque strategie tronque en faveur de ses deposants.
     fn strategy_assets(env: &Env) -> i128 {
-        match Self::pool_addr(env) {
-            None => 0,
-            Some(pool) => {
-                let client = blend::Client::new(env, &pool);
-                let asset = Self::asset(env);
-                let reserve = client.get_reserve(&asset);
-                let positions = client.get_positions(&env.current_contract_address());
-                let b_tokens = positions.supply.get(reserve.config.index).unwrap_or(0);
-                b_tokens
-                    .checked_mul(reserve.data.b_rate)
-                    .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow))
-                    / SCALAR_12
-            }
-        }
+        let values = Self::strategy_values(env, &Self::strategy_list(env));
+        Self::sum(env, 0, &values)
     }
 
-    /// Fournit `amount` d'actif au pool Blend. Le `submit` du pool declenche un
-    /// token.transfer(vault -> pool) imbrique : l'auth d'invocateur ne couvrant
-    /// que l'appel direct, ce transfert est pre-autorise explicitement.
-    fn pool_supply(env: &Env, pool: &Address, amount: i128) {
+    /// Valeur de chaque strategie, dans l'ordre de la liste : une lecture de
+    /// `balance` par strategie active, 0 pour une strategie sortie.
+    fn strategy_values(env: &Env, strategies: &Vec<StrategyConfig>) -> Vec<i128> {
         let this = env.current_contract_address();
-        let asset = Self::asset(env);
+        let mut values = Vec::new(env);
+        for s in strategies.iter() {
+            values.push_back(if s.active {
+                Self::strategy_balance(env, &s.address, &this)
+            } else {
+                0
+            });
+        }
+        values
+    }
+
+    /// `idle` plus la somme de `values`, sans debordement silencieux.
+    fn sum(env: &Env, idle: i128, values: &Vec<i128>) -> i128 {
+        values.iter().fold(idle, |total, value| {
+            total
+                .checked_add(value)
+                .unwrap_or_else(|| panic_with_error!(env, VaultError::MathOverflow))
+        })
+    }
+
+    /// `bps` points de base de `amount`, tronque.
+    fn bps_of(env: &Env, amount: i128, bps: u32) -> i128 {
+        amount
+            .checked_mul(bps as i128)
+            .unwrap_or_else(|| panic_with_error!(env, VaultError::MathOverflow))
+            / BPS as i128
+    }
+
+    /// Verse `amount` d'oisif a une strategie. Son `deposit` declenche un
+    /// token.transfer(vault -> strategie) imbrique : l'auth d'invocateur ne
+    /// couvrant que l'appel direct, ce transfert exact est pre-autorise, meme
+    /// convention que `invest_in_strategy` du vault DeFindex. Le vault juge au
+    /// delta de son solde : la strategie ne peut pas prendre plus.
+    fn strategy_deposit(env: &Env, token: &TokenClient, strategy: &Address, amount: i128) {
+        let this = env.current_contract_address();
         env.authorize_as_current_contract(vec![
             env,
             InvokerContractAuthEntry::Contract(SubContractInvocation {
                 context: ContractContext {
-                    contract: asset.clone(),
+                    contract: token.address.clone(),
                     fn_name: Symbol::new(env, "transfer"),
-                    args: (this.clone(), pool.clone(), amount).into_val(env),
+                    args: (this.clone(), strategy.clone(), amount).into_val(env),
                 },
                 sub_invocations: Vec::new(env),
             }),
         ]);
-        Self::pool_submit(env, pool, &asset, BLEND_REQUEST_SUPPLY, amount);
+        DeFindexStrategyClient::new(env, strategy).deposit(&amount, &this);
     }
 
-    /// Retire `amount` d'actif du pool Blend vers le vault (transfert entrant :
-    /// aucune pre-autorisation necessaire).
-    fn pool_withdraw(env: &Env, pool: &Address, amount: i128) {
-        let asset = Self::asset(env);
-        Self::pool_submit(env, pool, &asset, BLEND_REQUEST_WITHDRAW, amount);
+    /// `balance` d'une strategie pour le vault. Une valeur negative ferait
+    /// baisser total_assets, donc emettre trop de parts a l'entrant : elle est
+    /// refusee plutot que comptee.
+    fn strategy_balance(env: &Env, strategy: &Address, vault: &Address) -> i128 {
+        let value = DeFindexStrategyClient::new(env, strategy).balance(vault);
+        if value < 0 {
+            panic_with_error!(env, VaultError::InvalidStrategyBalance);
+        }
+        value
     }
 
-    fn pool_submit(env: &Env, pool: &Address, asset: &Address, request_type: u32, amount: i128) {
+    /// Ramene `need` unites d'actif sur le vault, strategie par strategie dans
+    /// l'ordre de la liste, et rend le manque restant. Le vault juge sur le
+    /// delta de son propre solde, jamais sur la valeur de retour de la
+    /// strategie : une strategie qui ment sur ce qu'elle a rendu ne trompe
+    /// pas le vault. Un manque est tolere jusqu'a MAX_REBALANCE_LOSS_BPS de ce
+    /// qui a ete demande aux strategies (cout de sortie, a la charge du client
+    /// sortant) ; au-dela, tout le retrait revert (aucune perte de parts),
+    /// comme en D1 quand Blend gelait sa reserve. Rend aussi, pour les events,
+    /// ce que chaque strategie sollicitee a rendu et sa position ensuite, et
+    /// la variation de total_assets due au seul passage par les strategies
+    /// (cout de sortie, au signe pres) : les strategies non sollicitees n'ont
+    /// pas bouge, inutile de les relire.
+    /// `values` : la lecture de chaque strategie deja faite par l'appelant,
+    /// dans l'ordre de `strategies`.
+    fn pull_from_strategies(
+        env: &Env,
+        token: &TokenClient,
+        need: i128,
+        strategies: &Vec<StrategyConfig>,
+        values: &Vec<i128>,
+    ) -> (i128, Vec<Pulled>, i128) {
         let this = env.current_contract_address();
-        blend::Client::new(env, pool).submit(
-            &this,
-            &this,
-            &this,
-            &vec![
-                env,
-                blend::Request {
-                    address: asset.clone(),
-                    amount,
-                    request_type,
-                },
-            ],
-        );
+        let requested = need;
+        let mut need = need;
+        let mut pulled = Vec::new(env);
+        let mut value_change: i128 = 0;
+        for (s, available) in strategies.iter().zip(values.iter()) {
+            if need <= 0 {
+                break;
+            }
+            if !s.active || available == 0 {
+                continue;
+            }
+            let client = DeFindexStrategyClient::new(env, &s.address);
+            let ask = if available < need { available } else { need };
+            let before = token.balance(&this);
+            client.withdraw(&ask, &this, &this);
+            let got = token.balance(&this) - before;
+            need -= got;
+            let position_after = Self::strategy_balance(env, &s.address, &this);
+            value_change += got + position_after - available;
+            pulled.push_back((s.address, s.protocol, got, position_after));
+        }
+        if need <= 0 {
+            return (0, pulled, value_change);
+        }
+        if need * (BPS as i128) > MAX_REBALANCE_LOSS_BPS * requested {
+            panic_with_error!(env, VaultError::StrategyShortfall);
+        }
+        (need, pulled, value_change)
+    }
+
+    /// Gardes de configuration : nombre borne, strategies actives, actif
+    /// commun, `balance` lisible, pas de doublon, cible sous plafond sous
+    /// 100 %, somme des cibles sous 100 % (le reste est la poche oisive).
+    fn check_strategies(env: &Env, asset: &Address, strategies: &Vec<StrategyConfig>) {
+        if strategies.len() > MAX_STRATEGIES {
+            panic_with_error!(env, VaultError::TooManyStrategies);
+        }
+        let mut target_sum: u32 = 0;
+        for (i, s) in strategies.iter().enumerate() {
+            // Une strategie ne devient inactive que par la sortie d'urgence.
+            if !s.active || s.target_bps > s.cap_bps || s.cap_bps > BPS {
+                panic_with_error!(env, VaultError::InvalidAllocation);
+            }
+            target_sum += s.target_bps;
+            for other in strategies.iter().skip(i + 1) {
+                if other.address == s.address {
+                    panic_with_error!(env, VaultError::DuplicateStrategy);
+                }
+            }
+            // Une strategie sur un autre actif fausserait total_assets sans
+            // bruit : son `balance` serait compte dans la mauvaise unite.
+            if DeFindexStrategyClient::new(env, &s.address).asset() != *asset {
+                panic_with_error!(env, VaultError::StrategyAssetMismatch);
+            }
+            // Sonde : une strategie dont `balance` panique ou rend une valeur
+            // negative bloquerait total_assets, donc tout depot et tout
+            // retrait, pour toujours.
+            Self::strategy_balance(env, &s.address, &env.current_contract_address());
+        }
+        if target_sum > BPS {
+            panic_with_error!(env, VaultError::InvalidAllocation);
+        }
     }
 
     /// Repousse l'archivage de tout ce que l'operation vient de toucher :
@@ -412,6 +1115,12 @@ mod test;
 #[cfg(test)]
 mod test_blend;
 #[cfg(test)]
+mod test_invariants;
+#[cfg(test)]
 mod test_matrix;
 #[cfg(test)]
+mod test_mock_strategy;
+#[cfg(test)]
 mod test_props;
+#[cfg(test)]
+mod test_strategies;

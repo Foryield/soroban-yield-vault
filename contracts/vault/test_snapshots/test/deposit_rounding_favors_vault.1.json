@@ -47,7 +47,6 @@
       ]
     ],
     [],
-    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -358,12 +357,60 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "DriftBps"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u32": 500
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Keeper"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "Paused"
                           }
                         ]
                       },
                       "val": {
                         "bool": false
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Seq"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u64": "2"
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "Strategies"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "vec": []
                       }
                     },
                     {
@@ -656,12 +703,46 @@
               }
             ],
             "data": {
-              "vec": [
+              "map": [
                 {
-                  "i128": "100"
+                  "key": {
+                    "symbol": "assets"
+                  },
+                  "val": {
+                    "i128": "100"
+                  }
                 },
                 {
-                  "i128": "33"
+                  "key": {
+                    "symbol": "seq"
+                  },
+                  "val": {
+                    "u64": "2"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "shares"
+                  },
+                  "val": {
+                    "i128": "33"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_assets"
+                  },
+                  "val": {
+                    "i128": "30100"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "total_shares"
+                  },
+                  "val": {
+                    "i128": "10033"
+                  }
                 }
               ]
             }

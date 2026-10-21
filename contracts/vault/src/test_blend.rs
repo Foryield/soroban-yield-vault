@@ -3,17 +3,23 @@
 // = 0,1) : le groupement d'underscores suit les decimales de l'actif, pas les
 // milliers, comme dans blend-contract-sdk.
 #![allow(clippy::inconsistent_digit_grouping, clippy::zero_prefixed_literal)]
-//! Integration du vault avec un pool Blend v2 reel (stack deployee par
-//! BlendFixture dans l'env de test : emitter, backstop, comet, pool factory).
+//! Strategie Blend de DeFindex (wasm vendorise, test_wasms/README.md) sur un
+//! pool Blend v2 reel (stack deployee par BlendFixture : emitter, backstop,
+//! comet, pool factory).
 
-use super::{YieldVault, YieldVaultClient};
+use super::{StrategyConfig, VaultError, YieldVault, YieldVaultClient};
 use blend_contract_sdk::pool as blend_pool;
 use blend_contract_sdk::testutils::{default_reserve_config, BlendFixture};
 use soroban_sdk::{
+    symbol_short,
     testutils::{Address as _, BytesN as _, Ledger},
     token::{StellarAssetClient, TokenClient},
-    vec, Address, BytesN, Env, String,
+    vec, Address, Bytes, BytesN, Env, IntoVal, String, Val, Vec,
 };
+
+mod blend_strategy {
+    soroban_sdk::contractimport!(file = "test_wasms/blend_strategy.wasm");
+}
 
 /// Oracle SEP-40 minimal : prix constant 1 $ (7 decimales) pour tout actif.
 /// Necessaire des qu'un emprunt existe (controle de sante du pool).
@@ -50,22 +56,25 @@ mod mock_oracle {
     }
 }
 
-struct BlendBench<'a> {
-    env: Env,
-    user: Address,
-    usdc: TokenClient<'a>,
-    pool: blend_pool::Client<'a>,
-    vault: YieldVaultClient<'a>,
+/// Seuil de reinvestissement des BLND passe au constructeur de la strategie.
+const REWARD_THRESHOLD: i128 = 1_0000000;
+
+/// Parts mortes de la strategie : son premier deposant cede 1000 unites de
+/// parts, verrouillees contre l'inflation du prix de la premiere part (meme
+/// modele que MINIMUM_LIQUIDITY du vault, `strategies/blend/src/reserves.rs`).
+const STRATEGY_DEAD_SHARES: i128 = 1000;
+
+pub(crate) struct BlendBench<'a> {
+    pub env: Env,
+    pub admin: Address,
+    pub user: Address,
+    pub blnd: Address,
+    pub usdc: TokenClient<'a>,
+    pub pool: blend_pool::Client<'a>,
+    pub strategy: Address,
 }
 
-fn setup_blend<'a>(initial_mint: i128) -> BlendBench<'a> {
-    setup_blend_config(initial_mint, default_reserve_config())
-}
-
-fn setup_blend_config<'a>(
-    initial_mint: i128,
-    reserve_config: blend_pool::ReserveConfig,
-) -> BlendBench<'a> {
+pub(crate) fn setup_blend<'a>(initial_mint: i128) -> BlendBench<'a> {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -75,8 +84,9 @@ fn setup_blend_config<'a>(
     let blnd = env
         .register_stellar_asset_contract_v2(admin.clone())
         .address();
-    let usdc_sac = env.register_stellar_asset_contract_v2(admin.clone());
-    let usdc = usdc_sac.address();
+    let usdc = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
 
     let blend = BlendFixture::deploy(&env, &admin, &blnd, &usdc);
     // La fixture remet le budget par defaut ; nos scenarios multi-submit
@@ -94,119 +104,336 @@ fn setup_blend_config<'a>(
         &1_0000000,
     );
     let pool = blend_pool::Client::new(&env, &pool_id);
-    pool.queue_set_reserve(&usdc, &reserve_config);
+    pool.queue_set_reserve(&usdc, &default_reserve_config());
     pool.set_reserve(&usdc);
 
     blend.backstop.deposit(&admin, &pool_id, &50_000_0000000);
     pool.set_status(&3); // sortie du statut setup
     pool.update_status(); // -> actif (backstop au-dessus du seuil)
 
-    let usdc_token = TokenClient::new(&env, &usdc);
     StellarAssetClient::new(&env, &usdc).mint(&user, &initial_mint);
 
-    let vault_id = env.register(YieldVault, ());
-    let vault = YieldVaultClient::new(&env, &vault_id);
-    vault.initialize(&admin, &usdc, &Some(pool_id));
+    // Routeur de reinvestissement : une adresse sans `router_pair_for`, ce qui
+    // rend le chemin Soroswap de `harvest` inatteignable (plan D5, section 4).
+    let no_router = Address::generate(&env);
+    let init_args: Vec<Val> = vec![
+        &env,
+        pool_id.into_val(&env),
+        blnd.into_val(&env),
+        no_router.into_val(&env),
+        REWARD_THRESHOLD.into_val(&env),
+        admin.into_val(&env),
+    ];
+    let strategy = env.register(blend_strategy::WASM, (usdc.clone(), init_args));
 
     BlendBench {
+        usdc: TokenClient::new(&env, &usdc),
         env,
+        admin,
         user,
-        usdc: usdc_token,
+        blnd,
         pool,
-        vault,
+        strategy,
     }
 }
 
-/// bTokens detenus par le vault dans le pool sur la reserve USDC.
-fn vault_b_tokens(b: &BlendBench) -> i128 {
-    let reserve = b.pool.get_reserve(&b.usdc.address);
-    let positions = b.pool.get_positions(&b.vault.address);
-    positions.supply.get(reserve.config.index).unwrap_or(0)
+fn strategy_client<'a>(b: &BlendBench<'a>) -> blend_strategy::Client<'a> {
+    blend_strategy::Client::new(&b.env, &b.strategy)
+}
+
+/// Emprunteur reel sur la reserve USDC : collateral 30k (c_factor 0,75 =>
+/// capacite 22,5k), emprunt 10k, puis un an d'interet constate on-chain par
+/// un remboursement minime.
+fn accrue_one_year_of_interest(b: &BlendBench) {
+    let borrower = Address::generate(&b.env);
+    StellarAssetClient::new(&b.env, &b.usdc.address).mint(&borrower, &50_000_0000000);
+    b.pool.submit(
+        &borrower,
+        &borrower,
+        &borrower,
+        &vec![
+            &b.env,
+            blend_pool::Request {
+                address: b.usdc.address.clone(),
+                amount: 30_000_0000000,
+                request_type: 2, // SupplyCollateral
+            },
+            blend_pool::Request {
+                address: b.usdc.address.clone(),
+                amount: 10_000_0000000,
+                request_type: 4, // Borrow
+            },
+        ],
+    );
+    b.env
+        .ledger()
+        .with_mut(|li| li.timestamp += 365 * 24 * 3600);
+    b.pool.submit(
+        &borrower,
+        &borrower,
+        &borrower,
+        &vec![
+            &b.env,
+            blend_pool::Request {
+                address: b.usdc.address.clone(),
+                amount: 1_0000000,
+                request_type: 5, // Repay
+            },
+        ],
+    );
+}
+
+/// Empreinte du wasm vendorise, confrontee a SHA256SUMS : un binaire altere
+/// apres son epinglage fait echouer la suite.
+#[test]
+fn vendored_wasms_match_sha256sums() {
+    let manifest = include_str!("../test_wasms/SHA256SUMS");
+    let (hex, name) = manifest
+        .trim()
+        .split_once("  ")
+        .expect("ligne SHA256SUMS invalide (attendu : empreinte, deux espaces, nom)");
+    assert_eq!(name, "blend_strategy.wasm");
+    let env = Env::default();
+    let digest = env
+        .crypto()
+        .sha256(&Bytes::from_slice(
+            &env,
+            include_bytes!("../test_wasms/blend_strategy.wasm"),
+        ))
+        .to_array();
+    let mut expected = [0_u8; 32];
+    for (i, byte) in expected.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).expect("hex invalide");
+    }
+    assert_eq!(digest, expected, "empreinte divergente pour {name}");
 }
 
 #[test]
-fn deposit_supplies_to_blend_pool() {
+fn strategy_reports_the_pool_asset() {
+    let b = setup_blend(1_000_0000000);
+    assert_eq!(strategy_client(&b).asset(), b.usdc.address);
+}
+
+#[test]
+fn deposit_supplies_the_pool_and_balance_reads_it_back() {
+    let b = setup_blend(10_000_0000000);
+    let s = strategy_client(&b);
+
+    let reported = s.deposit(&1_000_0000000, &b.user);
+
+    // b_rate initial = 1 : la valeur rendue est le montant depose, moins les
+    // parts mortes cedees par le premier deposant.
+    assert_eq!(reported, 1_000_0000000 - STRATEGY_DEAD_SHARES);
+    assert_eq!(s.balance(&b.user), 1_000_0000000 - STRATEGY_DEAD_SHARES);
+    assert_eq!(
+        b.usdc.balance(&b.strategy),
+        0,
+        "rien ne dort sur la strategie"
+    );
+}
+
+#[test]
+fn withdrawing_the_whole_balance_returns_it_to_the_unit() {
+    let b = setup_blend(10_000_0000000);
+    let s = strategy_client(&b);
+    s.deposit(&1_000_0000000, &b.user);
+    let before = b.usdc.balance(&b.user);
+
+    let balance = s.balance(&b.user);
+    s.withdraw(&balance, &b.user, &b.user);
+
+    assert_eq!(b.usdc.balance(&b.user) - before, balance);
+    assert_eq!(s.balance(&b.user), 0);
+}
+
+#[test]
+fn interest_accrues_into_the_strategy_balance() {
+    let b = setup_blend(10_000_0000000);
+    let s = strategy_client(&b);
+    s.deposit(&10_000_0000000, &b.user);
+
+    accrue_one_year_of_interest(&b);
+
+    let balance = s.balance(&b.user);
+    assert!(
+        balance > 10_000_0000000,
+        "interet attendu, obtenu {balance}"
+    );
+}
+
+#[test]
+fn harvest_below_the_reward_threshold_never_swaps() {
+    let b = setup_blend(10_000_0000000);
+    let s = strategy_client(&b);
+    s.deposit(&1_000_0000000, &b.user);
+    // Aucune emission reclamable ici : harvest reclame zero BLND, reste sous
+    // le seuil et s'arrete avant le chemin de swap.
+    s.harvest(&b.admin, &None);
+    assert_eq!(s.balance(&b.user), 1_000_0000000 - STRATEGY_DEAD_SHARES);
+}
+
+#[test]
+fn harvest_above_the_reward_threshold_fails_before_any_transfer() {
+    let b = setup_blend(10_000_0000000);
+    let s = strategy_client(&b);
+    s.deposit(&1_000_0000000, &b.user);
+    // BLND au-dessus du seuil sur la strategie : harvest atteint le chemin de
+    // swap, qui demande `router_pair_for` a une adresse qui ne l'expose pas.
+    StellarAssetClient::new(&b.env, &b.blnd).mint(&b.strategy, &REWARD_THRESHOLD);
+
+    assert!(s.try_harvest(&b.admin, &None).is_err());
+    // Revert entier : les BLND n'ont pas bouge, la position non plus.
+    assert_eq!(
+        TokenClient::new(&b.env, &b.blnd).balance(&b.strategy),
+        REWARD_THRESHOLD
+    );
+    assert_eq!(s.balance(&b.user), 1_000_0000000 - STRATEGY_DEAD_SHARES);
+}
+
+#[test]
+fn withdrawals_after_interest_deliver_exactly_the_amount_asked() {
+    // b_rate s'ecarte de 1 apres un an d'interet : la strategie convertit le
+    // montant demande en bTokens et arrondit en sa faveur. Mesure faite le
+    // 20/10/2026 sur des montants non ronds : aucun ecart, d'ou le controle
+    // strict du vault (StrategyShortfall), sans tolerance de poussiere. Si une
+    // version de la strategie rendait une unite de moins, ce test le dirait
+    // avant qu'un retrait reel ne revert.
     let b = setup_blend(100_000_0000000);
+    let s = strategy_client(&b);
+    s.deposit(&10_000_0000000, &b.user);
+    accrue_one_year_of_interest(&b);
 
-    let shares = b.vault.deposit(&b.user, &10_000_0000000);
+    for ask in [1_0000000_i128, 3_3333333, 777_7777777, 1_234_5678901, 17] {
+        let before = b.usdc.balance(&b.user);
+        s.withdraw(&ask, &b.user, &b.user);
+        assert_eq!(b.usdc.balance(&b.user) - before, ask, "ecart pour {ask}");
+    }
 
-    // Parts inchangees par l'allocation (b_rate initial = 1).
+    // Sortie complete : tout le solde annonce est rendu.
+    let rest = s.balance(&b.user);
+    let before = b.usdc.balance(&b.user);
+    s.withdraw(&rest, &b.user, &b.user);
+    assert_eq!(b.usdc.balance(&b.user) - before, rest);
+    assert_eq!(s.balance(&b.user), 0);
+}
+
+// --- Le vault sur la strategie Blend : scenarios D1 portes au travers du
+// reequilibrage. Cible 100 % : tout l'actif part au pool, comme en D1. ---
+
+fn vault_on_blend<'a>(b: &BlendBench<'a>) -> YieldVaultClient<'a> {
+    let list = vec![
+        &b.env,
+        StrategyConfig {
+            address: b.strategy.clone(),
+            protocol: symbol_short!("blend"),
+            target_bps: 10_000,
+            cap_bps: 10_000,
+            active: true,
+        },
+    ];
+    let id = b.env.register(
+        YieldVault,
+        (
+            b.admin.clone(),
+            b.admin.clone(),
+            b.usdc.address.clone(),
+            list,
+            500u32,
+        ),
+    );
+    YieldVaultClient::new(&b.env, &id)
+}
+
+#[test]
+fn deposits_reach_the_blend_pool_through_a_rebalance() {
+    let b = setup_blend(100_000_0000000);
+    let vault = vault_on_blend(&b);
+    let s = strategy_client(&b);
+
+    let shares = vault.deposit(&b.user, &10_000_0000000);
     assert_eq!(shares, 10_000_0000000 - 1_000);
-    // L'actif ne dort pas sur le vault : tout est fourni au pool Blend.
-    assert_eq!(b.usdc.balance(&b.vault.address), 0);
-    assert!(vault_b_tokens(&b) > 0);
-    // La position Blend est valorisee dans total_assets (b_rate = 1 a t0).
-    assert_eq!(b.vault.total_assets(), 10_000_0000000);
+    // Oisif jusqu'au lot.
+    assert_eq!(b.usdc.balance(&vault.address), 10_000_0000000);
+
+    vault.rebalance(&b.admin);
+
+    assert_eq!(b.usdc.balance(&vault.address), 0);
+    // Premier deposant de la strategie : ses parts mortes sont la seule perte.
+    assert_eq!(
+        s.balance(&vault.address),
+        10_000_0000000 - STRATEGY_DEAD_SHARES
+    );
+    assert_eq!(vault.total_assets(), 10_000_0000000 - STRATEGY_DEAD_SHARES);
 }
 
 #[test]
-fn withdraw_pulls_back_from_blend_pool() {
+fn withdrawals_pull_back_from_the_blend_pool() {
     let b = setup_blend(100_000_0000000);
-    b.vault.deposit(&b.user, &10_000_0000000);
-    let user_before = b.usdc.balance(&b.user);
+    let vault = vault_on_blend(&b);
+    vault.deposit(&b.user, &10_000_0000000);
+    vault.rebalance(&b.admin);
+    let before = b.usdc.balance(&b.user);
 
-    let amount = b.vault.withdraw(&b.user, &4_000_0000000);
+    let amount = vault.withdraw(&b.user, &4_000_0000000);
 
-    assert_eq!(amount, 4_000_0000000);
-    assert_eq!(b.usdc.balance(&b.user), user_before + 4_000_0000000);
-    // Le retrait est servi depuis le pool, le vault ne garde rien d'inactif.
-    assert_eq!(b.usdc.balance(&b.vault.address), 0);
-    assert_eq!(b.vault.total_assets(), 6_000_0000000);
+    assert_eq!(b.usdc.balance(&b.user) - before, amount);
+    assert_eq!(b.usdc.balance(&vault.address), 0);
+
+    // Sortie complete du porteur : tout ce que ses parts valent est rendu,
+    // sans ecart d'arrondi qui ferait revert le retrait.
+    let rest = vault.shares_of(&b.user);
+    vault.withdraw(&b.user, &rest);
+    assert_eq!(vault.shares_of(&b.user), 0);
 }
 
 #[test]
-fn deposit_beyond_pool_supply_cap_reverts_atomically() {
-    let mut config = default_reserve_config();
-    config.supply_cap = 5_000_0000000;
-    let b = setup_blend_config(100_000_0000000, config);
-
-    let result = b.vault.try_deposit(&b.user, &10_000_0000000);
-
-    // Le refus du pool (ExceededSupplyCap) fait echouer TOUTE la transaction :
-    // aucune part emise, aucun token deplace (atomicite Soroban).
-    assert!(result.is_err());
-    assert_eq!(b.vault.total_shares(), 0);
-    assert_eq!(b.usdc.balance(&b.user), 100_000_0000000);
-    assert_eq!(b.vault.total_assets(), 0);
-}
-
-#[test]
-fn frozen_pool_blocks_deposits_but_not_exits() {
+fn blend_interest_raises_the_vault_share_price() {
     let b = setup_blend(100_000_0000000);
-    b.vault.deposit(&b.user, &10_000_0000000);
+    let vault = vault_on_blend(&b);
+    vault.deposit(&b.user, &10_000_0000000);
+    vault.rebalance(&b.admin);
+
+    accrue_one_year_of_interest(&b);
+
+    let assets = vault.total_assets();
+    assert!(assets > 10_000_0000000, "interet attendu, obtenu {assets}");
+    // Un nouveau deposant paie le prix de part accru.
+    let user2 = Address::generate(&b.env);
+    StellarAssetClient::new(&b.env, &b.usdc.address).mint(&user2, &10_000_0000000);
+    let shares = vault.deposit(&user2, &10_000_0000000);
+    assert!(shares < 10_000_0000000 - 1_000, "prix de part > 1 attendu");
+}
+
+#[test]
+fn a_frozen_pool_blocks_the_rebalance_but_not_the_exits() {
+    let b = setup_blend(100_000_0000000);
+    let vault = vault_on_blend(&b);
+    vault.deposit(&b.user, &10_000_0000000);
+    vault.rebalance(&b.admin);
 
     b.pool.set_status(&4); // Admin Frozen : Blend refuse les nouveaux supplies
 
-    assert!(b.vault.try_deposit(&b.user, &1_000_0000000).is_err());
-    assert_eq!(b.vault.total_shares(), 10_000_0000000); // rien n'a bouge
+    // Le depot passe (il reste oisif), le lot qui voudrait l'investir non.
+    vault.deposit(&b.user, &5_000_0000000);
+    assert!(vault.try_rebalance(&b.admin).is_err());
+    assert_eq!(b.usdc.balance(&vault.address), 5_000_0000000);
 
     // La sortie reste possible : Blend gele les entrees, pas les retraits.
-    let amount = b.vault.withdraw(&b.user, &4_000_0000000);
-    assert_eq!(amount, 4_000_0000000);
+    let before = b.usdc.balance(&b.user);
+    vault.withdraw(&b.user, &8_000_0000000);
+    assert!(b.usdc.balance(&b.user) > before);
 }
 
 #[test]
-fn donation_before_first_deposit_with_pool_absorbed_into_genesis() {
+fn a_withdrawal_beyond_pool_liquidity_reverts_without_burning_shares() {
     let b = setup_blend(100_000_0000000);
-    // Donation avant toute part : elle reste oisive sur le vault.
-    StellarAssetClient::new(&b.env, &b.usdc.address).mint(&b.vault.address, &5_000_0000000);
+    let vault = vault_on_blend(&b);
+    vault.deposit(&b.user, &10_000_0000000);
+    vault.rebalance(&b.admin);
 
-    let shares = b.vault.deposit(&b.user, &10_000_0000000);
-
-    // La genese absorbe l'oisif + le depot ; seul le depot part au pool.
-    assert_eq!(shares, 15_000_0000000 - 1_000);
-    assert_eq!(b.vault.total_shares(), 15_000_0000000);
-    assert_eq!(b.usdc.balance(&b.vault.address), 5_000_0000000);
-    assert_eq!(b.vault.total_assets(), 15_000_0000000);
-}
-
-#[test]
-fn withdraw_blocked_by_pool_utilization_reverts_atomically() {
-    let b = setup_blend(100_000_0000000);
-    b.vault.deposit(&b.user, &10_000_0000000);
-
-    // Second actif de collateral, ajoute comme reserve au pool actif
-    // (saut de ledger pour purger le timelock de queue_set_reserve).
+    // Second actif de collateral, ajoute comme reserve au pool actif (saut de
+    // ledger pour purger le timelock de queue_set_reserve), puis emprunt de
+    // 90 % de la reserve USDC, fournie par le seul vault.
     let collat = b
         .env
         .register_stellar_asset_contract_v2(Address::generate(&b.env))
@@ -214,9 +441,6 @@ fn withdraw_blocked_by_pool_utilization_reverts_atomically() {
     b.pool.queue_set_reserve(&collat, &default_reserve_config());
     b.env.ledger().with_mut(|li| li.timestamp += 8 * 24 * 3600);
     b.pool.set_reserve(&collat);
-
-    // Emprunteur : collateral dans le second actif, emprunt de 90 % de la
-    // reserve USDC (fournie uniquement par le vault).
     let borrower = Address::generate(&b.env);
     StellarAssetClient::new(&b.env, &collat).mint(&borrower, &40_000_0000000);
     b.pool.submit(
@@ -238,105 +462,51 @@ fn withdraw_blocked_by_pool_utilization_reverts_atomically() {
         ],
     );
 
-    // Retirer 8k des 10k fournis porterait l'utilisation au-dela du max :
-    // le pool refuse, TOUT le retrait echoue, aucune part n'est brulee.
-    let shares_before = b.vault.shares_of(&b.user);
+    let shares_before = vault.shares_of(&b.user);
     let balance_before = b.usdc.balance(&b.user);
-
-    assert!(b.vault.try_withdraw(&b.user, &8_000_0000000).is_err());
-    assert_eq!(b.vault.shares_of(&b.user), shares_before);
+    assert!(vault.try_withdraw(&b.user, &8_000_0000000).is_err());
+    assert_eq!(vault.shares_of(&b.user), shares_before);
     assert_eq!(b.usdc.balance(&b.user), balance_before);
 
-    // Un retrait plus modeste, compatible avec l'utilisation max, passe.
-    let amount = b.vault.withdraw(&b.user, &100_0000000);
-    assert!(amount >= 100_0000000); // >= : l'interet a pu commencer a courir
+    // Un retrait compatible avec l'utilisation maximale passe. Le prix de la
+    // part frole 1 : les parts mortes de la strategie (1000 unites sur 10k)
+    // le tirent a peine sous 1, l'interet a peine au-dessus.
+    let before = b.usdc.balance(&b.user);
+    let amount = vault.withdraw(&b.user, &100_0000000);
+    assert_eq!(b.usdc.balance(&b.user) - before, amount);
+    assert!((amount - 100_0000000).abs() <= 100, "obtenu {amount}");
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #10)")]
-fn initialize_with_a_pool_missing_the_reserve_fails_fast() {
-    let b = setup_blend(1_000_0000000);
-
-    // Actif jamais declare en reserve dans ce pool. Sans garde, l'initialize
-    // reussit et le vault est mort : le pool est immuable, et get_reserve
-    // panique ensuite dans total_assets, deposit et withdraw, donc pour
-    // toujours. La contre-epreuve est setup_blend lui-meme, qui initialise le
-    // meme pool sur l'USDC, qui a bien une reserve.
-    let orphan = b
-        .env
-        .register_stellar_asset_contract_v2(Address::generate(&b.env))
-        .address();
-    let vault = YieldVaultClient::new(&b.env, &b.env.register(YieldVault, ()));
-
-    vault.initialize(
-        &Address::generate(&b.env),
-        &orphan,
-        &Some(b.pool.address.clone()),
-    );
-}
-
-#[test]
-fn blend_interest_accrues_into_total_assets_and_share_price() {
+fn a_rebalance_beyond_the_pool_supply_cap_reverts_atomically() {
     let b = setup_blend(100_000_0000000);
-    b.vault.deposit(&b.user, &10_000_0000000);
+    let vault = vault_on_blend(&b);
+    // Le pool plafonne l'offre a 5k, sous les 10k que le lot voudrait verser.
+    let mut config = default_reserve_config();
+    config.supply_cap = 5_000_0000000;
+    b.pool.queue_set_reserve(&b.usdc.address, &config);
+    b.env.ledger().with_mut(|li| li.timestamp += 8 * 24 * 3600);
+    b.pool.set_reserve(&b.usdc.address);
 
-    // Emprunteur reel sur la reserve USDC : collateral 30k (c_factor 0,75
-    // => capacite 22,5k), emprunt 10k. L'utilisation genere de l'interet.
-    let borrower = Address::generate(&b.env);
-    StellarAssetClient::new(&b.env, &b.usdc.address).mint(&borrower, &50_000_0000000);
-    b.pool.submit(
-        &borrower,
-        &borrower,
-        &borrower,
-        &vec![
-            &b.env,
-            blend_pool::Request {
-                address: b.usdc.address.clone(),
-                amount: 30_000_0000000,
-                request_type: 2, // SupplyCollateral
-            },
-            blend_pool::Request {
-                address: b.usdc.address.clone(),
-                amount: 10_000_0000000,
-                request_type: 4, // Borrow
-            },
-        ],
-    );
+    vault.deposit(&b.user, &10_000_0000000);
+    assert!(vault.try_rebalance(&b.admin).is_err());
+    assert_eq!(b.usdc.balance(&vault.address), 10_000_0000000);
+    assert_eq!(strategy_client(&b).balance(&vault.address), 0);
+}
 
-    // Un an plus tard : un remboursement minime declenche l'accrual on-chain.
-    b.env
-        .ledger()
-        .with_mut(|li| li.timestamp += 365 * 24 * 3600);
-    b.pool.submit(
-        &borrower,
-        &borrower,
-        &borrower,
-        &vec![
-            &b.env,
-            blend_pool::Request {
-                address: b.usdc.address.clone(),
-                amount: 1_0000000,
-                request_type: 5, // Repay
-            },
-        ],
-    );
+#[test]
+fn emergency_exit_brings_the_whole_blend_position_home() {
+    let b = setup_blend(100_000_0000000);
+    let vault = vault_on_blend(&b);
+    vault.deposit(&b.user, &10_000_0000000);
+    vault.rebalance(&b.admin);
+    let invested = strategy_client(&b).balance(&vault.address);
 
-    // La position du vault vaut plus que le principal : l'interet est dans
-    // total_assets via b_rate (le vault n'a rien fait).
-    let assets = b.vault.total_assets();
-    assert!(
-        assets > 10_000_0000000,
-        "expected accrued interest, got {assets}"
-    );
+    let recovered = vault.emergency_exit(&b.strategy, &false);
 
-    // Un nouveau deposant paie le prix de part accru : strictement moins
-    // d'une part par unite deposee.
-    let user2 = Address::generate(&b.env);
-    StellarAssetClient::new(&b.env, &b.usdc.address).mint(&user2, &10_000_0000000);
-    let shares = b.vault.deposit(&user2, &10_000_0000000);
-    assert!(shares > 0);
-    assert!(
-        shares < 10_000_0000000 - 1_000,
-        "share price should exceed 1, got {shares} shares"
-    );
+    assert_eq!(recovered, invested);
+    assert_eq!(strategy_client(&b).balance(&vault.address), 0);
+    assert_eq!(vault.total_assets(), invested);
+    let err = vault.try_rebalance(&b.admin).unwrap_err().unwrap();
+    assert_eq!(err, VaultError::NothingToRebalance.into());
 }

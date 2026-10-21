@@ -161,7 +161,9 @@ pub struct DeallocateEvent {
 /// `write_off` : passage en perte decide par l'admin, a tracer comme tel.
 /// `position_before` : valeur annoncee par la strategie avant la sortie, vide
 /// si sa lecture a echoue ; `written_off` : ce qui n'est pas rentre, vide
-/// dans le meme cas (la perte se lit alors entre deux `nav`).
+/// dans le meme cas (la perte se lit alors entre deux `nav`). Sans
+/// `write_off`, c'est le cout de sortie tolere (dans MAX_REBALANCE_LOSS_BPS),
+/// pas une perte decidee : seul `write_off` dit si l'admin a passe en perte.
 #[contractevent(topics = ["emergency_exit"])]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EmergencyExitEvent {

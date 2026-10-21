@@ -325,6 +325,26 @@ fn deposit_values_the_position_at_its_fair_price() {
     assert!(b.usdc.balance(&b.strategy.address) < 1_0000000 / 1000);
 }
 
+/// `deposit` et `withdraw` rendent leur valeur par calcul, sans relire le
+/// pool : elle doit egaler `balance` dans tous les cas, depot hors genese,
+/// sortie partielle et sortie totale comprises.
+#[test]
+fn deposit_and_withdraw_return_exactly_what_balance_reads() {
+    let b = setup();
+    let other = Address::generate(&b.env);
+    StellarAssetClient::new(&b.env, &b.usdc.address).mint(&other, &10_0000000);
+    deposit(&b, &b.user, 10_0000000).expect("depot de genese");
+
+    let after_deposit = deposit(&b, &other, 5_0000000).expect("second depot");
+    assert_eq!(after_deposit, b.strategy.balance(&other));
+
+    let after_partial = withdraw(&b, &other, 2_0000000).expect("sortie partielle");
+    assert_eq!(after_partial, b.strategy.balance(&other));
+
+    let after_full = withdraw(&b, &other, after_partial).expect("sortie totale");
+    assert_eq!(after_full, b.strategy.balance(&other));
+}
+
 #[test]
 fn a_large_swap_in_the_pool_does_not_move_the_fair_value() {
     let b = setup();

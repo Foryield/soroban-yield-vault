@@ -406,10 +406,15 @@ impl DeFindexStrategyTrait for AquariusLpStrategy {
         Self::check_slippage(&env, &cfg, delivered, amount);
         TokenClient::new(&env, &cfg.asset).transfer(&this, &to, &delivered);
 
-        // Parts brulees au prorata de la valeur reellement sortie, cout de
-        // sortie compris : le deposant qui sort le paie, pas ceux qui restent.
+        // Parts brulees au prorata du plus grand de la valeur sortie et du
+        // montant livre. Une sortie qui coute (frais, glissement) sort plus
+        // que le montant livre : le deposant qui sort paie ce cout, pas ceux
+        // qui restent. Une sortie qui realise plus que la valeur equitable
+        // (pool ecarte du prix de reference : la valeur realisee depasse
+        // 2.sqrt(k.p)) laisse l'excedent oisif sur la strategie : ce gain
+        // appartient a tous les deposants, le sortant ne le capte pas.
         let value_after = Self::value(&env, &Self::position(&env, &cfg), price);
-        let removed = (value_before - value_after).max(0);
+        let removed = (value_before - value_after).max(delivered);
         let burn = Self::mul_div_ceil(&env, removed, total, value_before).min(held);
         env.storage().persistent().set(&key, &(held - burn));
         env.storage()

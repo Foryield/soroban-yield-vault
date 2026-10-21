@@ -342,7 +342,32 @@ fn deposit_and_withdraw_return_exactly_what_balance_reads() {
     assert_eq!(after_partial, b.strategy.balance(&other));
 
     let after_full = withdraw(&b, &other, after_partial).expect("sortie totale");
-    assert_eq!(after_full, b.strategy.balance(&other));
+    assert_eq!(after_full, 0);
+    assert_eq!(b.strategy.balance(&other), 0);
+}
+
+/// Pool ecarte du prix de reference : la valeur realisee a la sortie depasse
+/// la valeur equitable (2.sqrt(k.p) sous-estime une position hors equilibre).
+/// Le sortant recoit son du, rien de plus : l'excedent reste sur la
+/// strategie, au profit de ceux qui restent.
+#[test]
+fn a_leaver_does_not_capture_the_gain_of_a_displaced_pool() {
+    let b = setup();
+    let other = Address::generate(&b.env);
+    StellarAssetClient::new(&b.env, &b.usdc.address).mint(&other, &10_0000000);
+    deposit(&b, &b.user, 10_0000000).expect("depot de genese");
+    deposit(&b, &other, 3_0000000).expect("second depot");
+    // Ecart de l'ordre de 0,5 % : sous la marge de glissement, la sortie passe.
+    swap_in_pool(&b, &b.usdc.address, &b.eurc.address, 3_0000000);
+    let staying_before = b.strategy.balance(&b.user);
+    let due = b.strategy.balance(&other);
+    let before = b.usdc.balance(&other);
+
+    let left = withdraw(&b, &other, due).expect("sortie au montant du solde");
+
+    assert_eq!(b.usdc.balance(&other) - before, due);
+    assert_eq!(left, 0);
+    assert!(b.strategy.balance(&b.user) >= staying_before);
 }
 
 #[test]

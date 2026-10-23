@@ -566,30 +566,45 @@ export function Fees({ events, code }: { events: ChainEvent[]; code: string }) {
 
 export function Sources({
   feed,
+  contracts,
+  labels,
   gaps,
+  lastSeq,
   archiveUrl,
 }: {
   feed: AuditFeed;
+  contracts: string[];
+  labels: Labels;
   gaps: bigint[];
+  lastSeq: bigint | null;
   archiveUrl: string;
 }) {
   const fromArchive = feed.events.filter((e) => e.source === "archive").length;
   return (
     <ul className="sources">
-      <li>
+      <li className={gaps.length > 0 ? "warn" : undefined}>
         <strong>Completeness:</strong>{" "}
-        {gaps.length === 0
-          ? "vault record numbers (seq) run without a gap."
-          : `missing seq ${gaps.join(", ")}: an event was not ingested.`}
+        {lastSeq === null
+          ? "record count unavailable from the vault."
+          : gaps.length === 0
+            ? `vault record numbers (seq) run from 1 to ${lastSeq} without a gap.`
+            : `missing seq ${gaps.join(", ")} of ${lastSeq}: an event was not ingested.`}
       </li>
       <li>
-        <strong>Archive:</strong> {fromArchive} events up to ledger{" "}
-        {feed.archivedUntil || "none yet"}, from{" "}
+        <strong>Archive:</strong> {fromArchive} events from{" "}
         <a href={archiveUrl} target="_blank" rel="noreferrer">
           the data/events branch
         </a>{" "}
         (daily ingestion; the RPC keeps events for about 7 days only).
       </li>
+      {contracts.map((c) => (
+        <li key={c} className="sub-item">
+          {labels.get(c) ?? short(c)}:{" "}
+          {feed.archivedUntil[c] === undefined
+            ? "no archive yet, read from the RPC window only."
+            : `archived up to ledger ${feed.archivedUntil[c]}.`}
+        </li>
+      ))}
       <li>
         <strong>Live:</strong> {feed.events.length - fromArchive} more events read from the
         Soroban RPC, up to ledger {feed.lastLedger}.

@@ -89,8 +89,18 @@ async function ingest(server, contract) {
   );
 }
 
+// Un contrat en echec n'empeche pas d'ecrire les autres : la tache commite
+// ce qui a ete lu, puis echoue pour qu'on le voie. Sans cela, des echecs
+// repetes sur un seul contrat feraient sortir les autres de la fenetre du RPC.
 await mkdir(outDir, { recursive: true });
 const server = new rpc.Server(RPC_URL);
+let failed = 0;
 for (const contract of contracts) {
-  await ingest(server, contract);
+  try {
+    await ingest(server, contract);
+  } catch (e) {
+    failed += 1;
+    console.error(`${contract}: ingestion failed`, e);
+  }
 }
+if (failed > 0) process.exit(1);

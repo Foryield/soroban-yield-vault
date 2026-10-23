@@ -88,10 +88,13 @@ reconstituent depuis `docs/evidence/archive/d5/*/decoded.json`.
 
 La même tâche GitHub Actions fait trois choses, dans cet ordre :
 
-1. `checkpoint()` sur le vault D5 : event `nav` du jour (D6a §8, réponse 4).
-2. Publication du prix de référence (`scripts/push_reference_price.sh`) : le
+1. Publication du prix de référence (`scripts/push_reference_price.sh`) : le
    prix ne périme plus tous les trois jours.
-3. Ingestion des events vers `data/events`.
+2. `checkpoint()` sur le vault D5 : event `nav` du jour (D6a §8, réponse 4).
+   Il valorise la stratégie Aquarius, donc il passe après le prix : après un
+   week-end manqué, un prix périmé le ferait échouer (revue du 23/10).
+3. Ingestion des events vers `data/events`, dans un job séparé, sans la clé :
+   la clé et le droit d'écriture sur le dépôt ne se croisent pas.
 
 Elle signe avec une clé dédiée, `fy-ops-bot`, nommée keeper du vault et de la
 stratégie Aquarius (`set_keeper`, par l'admin), stockée en secret GitHub. Elle

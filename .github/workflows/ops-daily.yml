@@ -2,15 +2,21 @@ name: Ops daily
 
 # Tache quotidienne de l'allocateur D5 testnet (plan
 # docs/plans/2026-10-23-d6c-dashboard.md, section 4), dans cet ordre :
-#   1. checkpoint() : event `nav` du jour (D6a, section 8, reponse 4) ;
-#   2. prix de reference de la strategie Aquarius au taux BCE du jour : sans
+#   1. prix de reference de la strategie Aquarius au taux BCE du jour : sans
 #      publication, il perime au bout de 72 h et gele tout le vault ;
+#   2. checkpoint() : event `nav` du jour (D6a, section 8, reponse 4). Il
+#      valorise la strategie Aquarius, donc il passe APRES le prix : apres un
+#      week-end manque, un prix perime le ferait echouer ;
 #   3. ingestion des events vers la branche `data/events`, que lit le
 #      dashboard : le RPC ne les garde qu'environ 7 jours.
 #
-# Signe avec la cle `fy-ops-bot` (secret FY_OPS_BOT_SECRET), keeper du vault
-# et de la strategie, sans aucun pouvoir d'admin. Chaque etape tourne meme si
-# la precedente echoue, mais le job finit en echec pour qu'on le voie.
+# Deux jobs, pour que la cle et le droit d'ecriture ne se croisent jamais :
+# - `sign` detient la cle `fy-ops-bot` (secret FY_OPS_BOT_SECRET), keeper du
+#   vault et de la strategie, sans pouvoir d'admin. Il lit le depot sans
+#   pouvoir y ecrire et n'installe que la CLI stellar : aucun paquet npm ne
+#   s'execute a cote de la cle ;
+# - `ingest` n'a aucun secret. Il ecrit la branche d'archive, et installe les
+#   paquets npm sans leurs scripts d'installation.
 #
 # Le taux BCE parait vers 16 h CET : 17 h 30 UTC le trouve publie.
 
@@ -20,7 +26,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ops-daily
@@ -32,16 +38,18 @@ env:
   STELLAR_CLI_VERSION: 27.1.0
 
 jobs:
-  ops:
-    name: Checkpoint, price, events
+  sign:
+    name: Reference price and NAV
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install stellar CLI
         run: |
           curl -fsSL "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
-            | tar -xz -C /usr/local/bin stellar
+            | sudo tar -xz -C /usr/local/bin stellar
           stellar --version
 
       - name: Load keeper key
@@ -51,7 +59,11 @@ jobs:
           printf '%s' "$FY_OPS_BOT_SECRET" | stellar keys add fy-ops-bot --secret-key > /dev/null
           echo "keeper $(stellar keys address fy-ops-bot)"
 
+      - name: Reference price
+        run: scripts/push_reference_price.sh fy-ops-bot "$AQUARIUS_STRATEGY"
+
       - name: Daily NAV checkpoint
+        if: ${{ !cancelled() }}
         run: |
           # Un second appel le meme jour UTC est refuse (NavAlreadyPublished,
           # erreur 22) : apres un relancement a la main, ce n'est pas un echec.
@@ -64,19 +76,25 @@ jobs:
             exit 1
           fi
 
-      - name: Reference price
-        if: ${{ !cancelled() }}
-        run: scripts/push_reference_price.sh fy-ops-bot "$AQUARIUS_STRATEGY"
+  ingest:
+    name: Event archive
+    needs: sign
+    # Les events se recopient meme si une signature a echoue : c'est
+    # justement ce qui se perd au bout de 7 jours.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
-        if: ${{ !cancelled() }}
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: web/package-lock.json
 
       - name: Ingest events
-        if: ${{ !cancelled() }}
         run: |
           git config user.name "foryield-ops-bot"
           git config user.email "ops-bot@users.noreply.github.com"
@@ -89,12 +107,17 @@ jobs:
             git worktree add --detach archive
             git -C archive switch --orphan data/events
           fi
-          (cd web && npm ci && node scripts/ingest-events.mjs ../archive/testnet)
+          (cd web && npm ci --ignore-scripts)
+          # Un contrat en echec n'empeche pas de publier les autres : on
+          # commite ce qui a ete lu, puis on rend l'echec.
+          status=0
+          (cd web && node scripts/ingest-events.mjs ../archive/testnet) || status=$?
           cd archive
           git add testnet
-          if git diff --cached --quiet; then
-            echo "aucun nouvel event"
-          else
+          # Le dernier ledger lu avance a chaque passage : un commit par jour,
+          # meme sans event, date la couverture de l'archive.
+          if ! git diff --cached --quiet; then
             git commit -q -m "events: ingestion du $(date -u +%F)"
             git push origin data/events
           fi
+          exit $status

@@ -612,3 +612,8 @@ ul.sources .warn {
   color: var(--accent);
   text-decoration: none;
 }
+
+ul.sources .sub-item {
+  padding-left: 16px;
+  color: var(--muted);
+}

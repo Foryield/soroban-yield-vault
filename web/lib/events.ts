@@ -47,8 +47,9 @@ export type AuditFeed = {
   events: ChainEvent[];
   /// Dernier ledger lu, archive et RPC confondus : point de reprise.
   lastLedger: number;
-  /// Dernier ledger couvert par l'archive (0 si aucune archive lisible).
-  archivedUntil: number;
+  /// Dernier ledger couvert par l'archive, par contrat (absent : aucune
+  /// archive lisible pour ce contrat).
+  archivedUntil: Record<string, number>;
   /// Ledgers sortis de la fenetre du RPC sans avoir ete lus.
   missed: MissedRange[];
 };
@@ -130,18 +131,21 @@ export async function loadAuditFeed(contracts: string[]): Promise<AuditFeed> {
   const archived = archives.flatMap((a) =>
     a ? a.events.map((e) => toChainEvent(e, "archive")) : [],
   );
-  const missed = archives.flatMap((a) =>
+  const missed: MissedRange[] = archives.flatMap((a) =>
     a ? a.missed.map((m) => ({ contract: a.contract, ...m })) : [],
   );
-  const archivedUntil = Math.min(...archives.map((a) => a?.lastLedger ?? 0));
+  const archivedUntil: Record<string, number> = {};
+  for (const a of archives) if (a) archivedUntil[a.contract] = a.lastLedger;
+  const from = Math.min(...contracts.map((c) => archivedUntil[c] ?? 0)) + 1;
 
-  const page = await fetchContractEvents(rpcServer(), contracts, archivedUntil + 1);
+  const page = await fetchContractEvents(rpcServer(), contracts, from);
   const live = page.events.map((e) => toChainEvent(e, "rpc"));
-  if (archivedUntil > 0 && page.startLedger > archivedUntil + 1) {
-    // L'archive a pris du retard au-dela de la fenetre du RPC : le trou est
-    // reel, il doit se voir.
-    for (const contract of contracts) {
-      missed.push({ contract, fromLedger: archivedUntil + 1, toLedger: page.startLedger - 1 });
+  // Une archive en retard au-dela de la fenetre du RPC laisse un trou reel,
+  // propre a son contrat : il doit se voir.
+  for (const contract of contracts) {
+    const until = archivedUntil[contract];
+    if (until !== undefined && page.startLedger > until + 1) {
+      missed.push({ contract, fromLedger: until + 1, toLedger: page.startLedger - 1 });
     }
   }
 
@@ -160,8 +164,21 @@ export async function refreshAuditFeed(
 ): Promise<AuditFeed> {
   const page = await fetchContractEvents(rpcServer(), contracts, feed.lastLedger + 1);
   if (page.events.length === 0 && page.latestLedger === feed.lastLedger) return feed;
+  // Onglet reste en arriere-plan plus longtemps que la fenetre du RPC.
+  const missed =
+    page.startLedger > feed.lastLedger + 1
+      ? [
+          ...feed.missed,
+          ...contracts.map((contract) => ({
+            contract,
+            fromLedger: feed.lastLedger + 1,
+            toLedger: page.startLedger - 1,
+          })),
+        ]
+      : feed.missed;
   return {
     ...feed,
+    missed,
     events: mergeEvents(
       feed.events,
       page.events.map((e) => toChainEvent(e, "rpc")),
@@ -170,9 +187,10 @@ export async function refreshAuditFeed(
   };
 }
 
-// Controle de completude D6a : les `seq` d'un vault vont de 1 a N sans trou.
-// Rend les numeros absents ; un trou signale un event manque par l'ingestion.
-export function seqGaps(events: ChainEvent[]): bigint[] {
+// Controle de completude D6a : les `seq` d'un vault vont de 1 a `last_seq`
+// (lu sur le contrat) sans trou. Rend les numeros absents ; un trou signale
+// un event manque par l'ingestion, y compris le dernier.
+export function seqGaps(events: ChainEvent[], lastSeq: bigint): bigint[] {
   const seqs = events
     .map((e) => e.seq)
     .filter((s): s is bigint => s !== undefined)
@@ -183,6 +201,7 @@ export function seqGaps(events: ChainEvent[]): bigint[] {
     while (expected < s) gaps.push(expected++);
     if (s === expected) expected++;
   }
+  while (expected <= lastSeq) gaps.push(expected++);
   return gaps;
 }
 

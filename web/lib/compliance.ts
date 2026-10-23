@@ -69,15 +69,21 @@ export function unitPrice(event: ChainEvent): number | undefined {
 
 /// Valeur liquidative par part apres chaque event du vault qui porte
 /// `total_assets`, cles = id d'event. Les parts ne changent qu'au depot et au
-/// retrait : un `allocate` ou un `deallocate`, qui ne porte que l'actif, se
-/// valorise avec le dernier `total_shares` connu. C'est la que se lit le cout
-/// d'entree d'une strategie.
+/// retrait : un `allocate` ou un `deallocate` de reequilibrage, qui ne porte
+/// que l'actif, se valorise avec le dernier `total_shares` connu. C'est la que
+/// se lit le cout d'entree d'une strategie.
+///
+/// Exception : un `deallocate` de raison `redeem` sert un retrait. Il est
+/// emis avant le `withdraw` et porte deja l'actif d'APRES le retrait, alors
+/// que les parts brulees n'apparaissent qu'au `withdraw` : le diviser par les
+/// parts d'avant afficherait un creux factice. Il ne se valorise pas.
 export function unitPrices(events: ChainEvent[]): Map<string, number> {
   const prices = new Map<string, number>();
   let shares: bigint | undefined;
   for (const e of events) {
     const totalShares = field<bigint>(e, "total_shares");
     if (totalShares !== undefined) shares = BigInt(totalShares);
+    if (e.name === "deallocate" && field<string>(e, "reason") === "redeem") continue;
     const assets = field<bigint>(e, "total_assets");
     if (assets !== undefined && shares !== undefined && shares > 0n) {
       prices.set(e.id, Number(BigInt(assets)) / Number(shares));

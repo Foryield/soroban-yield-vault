@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getStrategies, type StrategyConfig } from "@/lib/allocator";
+import { readContract } from "@/lib/stellar";
 import { registerRow, toCsv } from "@/lib/compliance";
 import {
   ARCHIVE_URL,
@@ -53,7 +54,12 @@ export default function Dashboard() {
   const [vault, setVault] = useState<VaultConfig | undefined>(ALLOCATOR_VAULTS[0]);
   const [strategies, setStrategies] = useState<StrategyConfig[] | null>(null);
   const [feed, setFeed] = useState<AuditFeed | null>(null);
+  // Nombre d'enregistrements du vault (`last_seq`) : borne du controle de
+  // completude, pour qu'un dernier event manquant se voie aussi.
+  const [lastSeq, setLastSeq] = useState<bigint | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Incremente pour relancer un chargement initial en echec.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const wanted = vaultFromKey(new URLSearchParams(window.location.search).get("vault"));
@@ -74,41 +80,53 @@ export default function Dashboard() {
       .then((s) => !cancelled && setStrategies(s))
       .catch((e) => {
         console.error("strategies read failed", e);
-        if (!cancelled) setError("Could not read the vault configuration from the RPC.");
+        if (!cancelled) setError("Could not read the vault configuration from the RPC. Retrying.");
       });
     return () => {
       cancelled = true;
     };
-  }, [vault]);
+  }, [vault, attempt]);
 
   useEffect(() => {
     if (contracts.length === 0) return;
     let cancelled = false;
-    loadAuditFeed(contracts)
-      .then((f) => {
+    // `last_seq` AVANT les events : les events lus ensuite vont au moins
+    // jusqu'au meme ledger, un event recent n'est jamais pris pour un trou.
+    (readContract(contracts[0], "last_seq") as Promise<bigint>)
+      .then(async (seq) => [await loadAuditFeed(contracts), seq] as const)
+      .then(([f, seq]) => {
         if (!cancelled) {
           setFeed(f);
+          setLastSeq(BigInt(seq));
           setError(null);
         }
       })
       .catch((e) => {
         console.error("audit feed load failed", e);
-        if (!cancelled) setError("Could not load the audit trail from the RPC.");
+        if (!cancelled) setError("Could not load the audit trail from the RPC. Retrying.");
       });
     return () => {
       cancelled = true;
     };
-  }, [contracts]);
+  }, [contracts, attempt]);
 
   const refresh = useCallback(async () => {
-    if (!feed || document.visibilityState !== "visible") return;
+    if (document.visibilityState !== "visible") return;
+    // Chargement initial en echec (RPC sature) : on le relance plutot que de
+    // laisser la page figee jusqu'a un rechargement manuel.
+    if (!strategies || !feed) {
+      if (error) setAttempt((n) => n + 1);
+      return;
+    }
     try {
+      const seq = (await readContract(contracts[0], "last_seq")) as bigint;
       const next = await refreshAuditFeed(feed, contracts);
       if (next !== feed) setFeed(next);
+      setLastSeq(BigInt(seq));
     } catch (e) {
       console.error("audit feed refresh failed", e);
     }
-  }, [feed, contracts]);
+  }, [strategies, feed, error, contracts]);
 
   useEffect(() => {
     const timer = setInterval(refresh, REFRESH_MS);
@@ -134,7 +152,7 @@ export default function Dashboard() {
     ? feed.events.filter((e) => e.contract !== vault.contractId)
     : [];
   const labels = buildLabels(vault.contractId, strategies ?? [], feed?.events ?? []);
-  const gaps = seqGaps(vaultEvents);
+  const gaps = lastSeq === null ? [] : seqGaps(vaultEvents, lastSeq);
 
   function exportCsv() {
     const rows = vaultEvents.map((e) => registerRow(e, vault!.contractId, NETWORK));
@@ -301,7 +319,14 @@ export default function Dashboard() {
       <section className="card">
         <div className="section-title">Sources</div>
         {feed ? (
-          <Sources feed={feed} gaps={gaps} archiveUrl={ARCHIVE_URL} />
+          <Sources
+            feed={feed}
+            contracts={contracts}
+            labels={labels}
+            gaps={gaps}
+            lastSeq={lastSeq}
+            archiveUrl={ARCHIVE_URL}
+          />
         ) : (
           <div className="muted-line">Reading the archive and the RPC...</div>
         )}

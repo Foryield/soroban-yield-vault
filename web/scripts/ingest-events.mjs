@@ -15,7 +15,7 @@
 // `missed` : l'archive dit ce qu'elle n'a pas pu voir, plutot que de le taire.
 //
 // Usage : node scripts/ingest-events.mjs <dossier_archive> [contrat...]
-//   sans contrat : ceux de l'allocateur D5 testnet (vault et strategies).
+//   sans contrat : ceux de l'allocateur D5 et de l'instance D6b, testnet.
 //   RPC_URL surcharge le RPC testnet public.
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -27,11 +27,13 @@ const RPC_URL = process.env.RPC_URL || "https://soroban-testnet.stellar.org";
 const NETWORK = "testnet";
 
 // Allocateur D5 testnet : le vault et ses deux strategies (prix de reference
-// de la strategie Aquarius, depots et retraits vus par chaque strategie).
+// de la strategie Aquarius, depots et retraits vus par chaque strategie) ;
+// instance EURC a frais D6b.
 const DEFAULT_CONTRACTS = [
   "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
   "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5",
   "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+  "CCXPS66KJHVMXRFHYXVPGOJKPH3LWBIAA4WVNV6BYJXFYKKEBCCLYVMP",
 ];
 
 const [outDir, ...args] = process.argv.slice(2);

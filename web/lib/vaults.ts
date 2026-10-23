@@ -37,15 +37,20 @@ export type VaultConfig = {
   subtitle: string;
   /// Ou se procurer l'actif de test quand Friendbot ne le distribue pas.
   faucet?: FaucetHint;
-  /// Instance a strategies (allocateur D5) : la page lit sa repartition et
-  /// le dashboard sa piste d'audit. Les instances D1 a D3 n'en ont pas et
-  /// restent sur leur bytecode d'avant le schema D6a.
+  /// Instance a strategies (allocateur D5) : la page lit sa repartition.
   allocator?: boolean;
+  /// Instance a frais (D6b) : la page et le dashboard lisent son reglage.
+  fees?: boolean;
+  /// Instance au schema d'events D6a : le dashboard lit sa piste d'audit.
+  /// Les instances D1 a D3 restent sur leur bytecode d'avant le schema.
+  audited?: boolean;
 };
 
 const TESTNET_DEFAULTS: Record<VaultKey, string> = {
   xlm: "CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN",
-  eurc: "CDZR2IY4V3GXUONLTVXJNCMTIR2LLFC55ZRPPEHCTI4RM7LVF25UKG5K",
+  // Instance a frais D6b ; l'instance D3 (CDZR2IY4...KG5K) garde son bytecode
+  // et ses preuves.
+  eurc: "CCXPS66KJHVMXRFHYXVPGOJKPH3LWBIAA4WVNV6BYJXFYKKEBCCLYVMP",
   usdc: "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
 };
 
@@ -81,11 +86,13 @@ const ALL: VaultConfig[] = [
       ? { kind: "classic", code: "EURC", issuer: EURC_TESTNET_ISSUER }
       : { kind: "classic", code: "EURC", issuer: "" },
     subtitle:
-      "Deposit EURC, a Classic Stellar asset held through its StellarAssetContract wrapper. The vault takes custody with no lending strategy attached, since no EURC pool exists on testnet.",
+      "Deposit EURC, a Classic Stellar asset held through its StellarAssetContract wrapper. The vault takes custody with no lending strategy attached, since no EURC pool exists on testnet, and charges a performance fee above its high-water mark plus a management fee, both paid in vault shares to the treasury.",
     faucet: {
       label: "Get testnet EURC from Circle",
       url: "https://faucet.circle.com/",
     },
+    fees: true,
+    audited: true,
   },
   {
     key: "usdc",
@@ -97,6 +104,7 @@ const ALL: VaultConfig[] = [
     subtitle:
       "Deposit USDC into the multi-strategy vault. Deposits wait in the idle pocket until the keeper rebalances them across Blend lending and an Aquarius liquidity position, in one batch, against fixed targets.",
     allocator: true,
+    audited: true,
   },
 ];
 

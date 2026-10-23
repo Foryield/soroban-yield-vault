@@ -1,0 +1,115 @@
+{
+  "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+  "network": "testnet",
+  "lastLedger": 5348611,
+  "missed": [],
+  "events": [
+    {
+      "id": "0022822116181221376-0000000015",
+      "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "ledger": 5313688,
+      "closedAt": "2026-10-21T14:13:47Z",
+      "txHash": "0983f9779b7f4f15ca597039ee7899a55c1fe5f61eac6f4f79e61792c8387e7e",
+      "topics": [
+        "AAAADwAAAA1kZXBvc2l0X2V2ZW50AAAA",
+        "AAAADgAAABJBcXVhcml1c0xwU3RyYXRlZ3kAAA=="
+      ],
+      "value": "AAAAEQAAAAEAAAACAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAAAAYagAAAADwAAAARmcm9tAAAAEgAAAAAAAAAAhcyFYcJSPe7OvwiVDjCWUsnf4jBKmw6H4IdL6ESdD2M=",
+      "decoded": {
+        "topics": [
+          "deposit_event",
+          "AquariusLpStrategy"
+        ],
+        "value": {
+          "amount": "100000",
+          "from": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG"
+        }
+      }
+    },
+    {
+      "id": "0022954920864935936-0000000000",
+      "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "ledger": 5344609,
+      "closedAt": "2026-10-23T09:10:32Z",
+      "txHash": "579303de0799d07b7cfeb28f58c03aab8e995d2ac14d17e3597f6569d33da8c5",
+      "topics": [
+        "AAAADwAAAAVwcmljZQAAAA==",
+        "AAAAEgAAAAAAAAAAhcyFYcJSPe7OvwiVDjCWUsnf4jBKmw6H4IdL6ESdD2M="
+      ],
+      "value": "AAAAEAAAAAEAAAADAAAACgAAAAAAAAAAAAAAAELJeSAAAAAFAAAAAGrZUgAAAAAKAAAAAAAAAAAAAAAAQvW5QA==",
+      "decoded": {
+        "topics": [
+          "price",
+          "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG"
+        ],
+        "value": [
+          "1120500000",
+          "1792627200",
+          "1123400000"
+        ]
+      }
+    },
+    {
+      "id": "0022956428398448640-0000000000",
+      "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "ledger": 5344960,
+      "closedAt": "2026-10-23T09:39:47Z",
+      "txHash": "a2d0510b3463a9abd32859f9602e454bac7756b62e0202cc2c236cddf95b7f99",
+      "topics": [
+        "AAAADwAAAAZrZWVwZXIAAA=="
+      ],
+      "value": "AAAAEgAAAAAAAAAAsKEDhWM4aCgIpDWWuVjQf8uy1296yrJk/gcAHol0sXk=",
+      "decoded": {
+        "topics": [
+          "keeper"
+        ],
+        "value": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+      }
+    },
+    {
+      "id": "0022956698981392384-0000000019",
+      "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "ledger": 5345023,
+      "closedAt": "2026-10-23T09:45:02Z",
+      "txHash": "e6ebfe6d91b159cc06c0728808cc24051dfb07948a455a64a301ff0ec42f0c15",
+      "topics": [
+        "AAAADwAAAA1kZXBvc2l0X2V2ZW50AAAA",
+        "AAAADgAAABJBcXVhcml1c0xwU3RyYXRlZ3kAAA=="
+      ],
+      "value": "AAAAEQAAAAEAAAACAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAAAPQkAAAAADwAAAARmcm9tAAAAEgAAAAFJKyeCuuxC03s5CMSWfJAxXr7eW8gQYjAIHqQaJZVDaw==",
+      "decoded": {
+        "topics": [
+          "deposit_event",
+          "AquariusLpStrategy"
+        ],
+        "value": {
+          "amount": "4000000",
+          "from": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+        }
+      }
+    },
+    {
+      "id": "0022972079259316224-0000000000",
+      "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "ledger": 5348604,
+      "closedAt": "2026-10-23T14:43:27Z",
+      "txHash": "e14204b5c983463b3843f16d6e8a8f20ae48f708a95798655f843a6d5096d4b0",
+      "topics": [
+        "AAAADwAAAAVwcmljZQAAAA==",
+        "AAAAEgAAAAAAAAAAsKEDhWM4aCgIpDWWuVjQf8uy1296yrJk/gcAHol0sXk="
+      ],
+      "value": "AAAAEAAAAAEAAAADAAAACgAAAAAAAAAAAAAAAEK3KaAAAAAFAAAAAGrao4AAAAAKAAAAAAAAAAAAAAAAQsl5IA==",
+      "decoded": {
+        "topics": [
+          "price",
+          "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+        ],
+        "value": [
+          "1119300000",
+          "1792713600",
+          "1120500000"
+        ]
+      }
+    }
+  ]
+}

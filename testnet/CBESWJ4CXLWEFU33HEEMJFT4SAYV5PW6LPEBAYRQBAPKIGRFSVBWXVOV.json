@@ -1,0 +1,132 @@
+{
+  "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+  "network": "testnet",
+  "lastLedger": 5348611,
+  "missed": [],
+  "events": [
+    {
+      "id": "0022952769086357504-0000000001",
+      "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "ledger": 5344108,
+      "closedAt": "2026-10-23T08:28:47Z",
+      "txHash": "d42bc23001b4ec2a12e13ca34c41a853c77e016f035110e1fea18fe7f02c1a36",
+      "topics": [
+        "AAAADwAAAAdkZXBvc2l0AA==",
+        "AAAAEgAAAAAAAAAAhcyFYcJSPe7OvwiVDjCWUsnf4jBKmw6H4IdL6ESdD2M="
+      ],
+      "value": "AAAAEQAAAAEAAAAFAAAADwAAAAZhc3NldHMAAAAAAAoAAAAAAAAAAAAAAAABMS0AAAAADwAAAANzZXEAAAAABQAAAAAAAAABAAAADwAAAAZzaGFyZXMAAAAAAAoAAAAAAAAAAAAAAAABMSkYAAAADwAAAAx0b3RhbF9hc3NldHMAAAAKAAAAAAAAAAAAAAAAATEtAAAAAA8AAAAMdG90YWxfc2hhcmVzAAAACgAAAAAAAAAAAAAAAAExLQA=",
+      "decoded": {
+        "topics": [
+          "deposit",
+          "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG"
+        ],
+        "value": {
+          "assets": "20000000",
+          "seq": "1",
+          "shares": "19999000",
+          "total_assets": "20000000",
+          "total_shares": "20000000"
+        }
+      }
+    },
+    {
+      "id": "0022956424103485440-0000000000",
+      "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "ledger": 5344959,
+      "closedAt": "2026-10-23T09:39:42Z",
+      "txHash": "e02e76e1a9b7b044b015b0b391db58a8f9170fb7ebad2961fcb0f8c2aeb4b4b0",
+      "topics": [
+        "AAAADwAAAAprZWVwZXJfc2V0AAA="
+      ],
+      "value": "AAAAEQAAAAEAAAAEAAAADwAAAAVhZG1pbgAAAAAAABIAAAAAAAAAAIXMhWHCUj3uzr8IlQ4wllLJ3+IwSpsOh+CHS+hEnQ9jAAAADwAAAANuZXcAAAAAEgAAAAAAAAAAsKEDhWM4aCgIpDWWuVjQf8uy1296yrJk/gcAHol0sXkAAAAPAAAAA29sZAAAAAASAAAAAAAAAACFzIVhwlI97s6/CJUOMJZSyd/iMEqbDofgh0voRJ0PYwAAAA8AAAADc2VxAAAAAAUAAAAAAAAAAg==",
+      "decoded": {
+        "topics": [
+          "keeper_set"
+        ],
+        "value": {
+          "admin": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+          "new": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR",
+          "old": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+          "seq": "2"
+        }
+      }
+    },
+    {
+      "id": "0022956445578346496-0000000000",
+      "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "ledger": 5344964,
+      "closedAt": "2026-10-23T09:40:07Z",
+      "txHash": "8edbd8f785f0d304ea907beba5ecd59a5079d5bacfdbf77ffdcb365c82194971",
+      "topics": [
+        "AAAADwAAAANuYXYA"
+      ],
+      "value": "AAAAEQAAAAEAAAADAAAADwAAAANzZXEAAAAABQAAAAAAAAADAAAADwAAAAx0b3RhbF9hc3NldHMAAAAKAAAAAAAAAAAAAAAAATEtAAAAAA8AAAAMdG90YWxfc2hhcmVzAAAACgAAAAAAAAAAAAAAAAExLQA=",
+      "decoded": {
+        "topics": [
+          "nav"
+        ],
+        "value": {
+          "seq": "3",
+          "total_assets": "20000000",
+          "total_shares": "20000000"
+        }
+      }
+    },
+    {
+      "id": "0022956698981392384-0000000020",
+      "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "ledger": 5345023,
+      "closedAt": "2026-10-23T09:45:02Z",
+      "txHash": "e6ebfe6d91b159cc06c0728808cc24051dfb07948a455a64a301ff0ec42f0c15",
+      "topics": [
+        "AAAADwAAAAhhbGxvY2F0ZQ==",
+        "AAAAEgAAAAGHnPG3XYt7ISgsnG39W2oYieXsokB1kXGR3fu7tQdzgQ=="
+      ],
+      "value": "AAAAEQAAAAEAAAAIAAAADwAAAARhbGdvAAAADwAAAAtmeV9hbGxvY192MQAAAAAPAAAABmFzc2V0cwAAAAAACgAAAAAAAAAAAAAAAADVn4AAAAAPAAAACmRlY2lkZWRfYnkAAAAAABIAAAAAAAAAALChA4VjOGgoCKQ1lrlY0H/LstdvesqyZP4HAB6JdLF5AAAADwAAAA5wb3NpdGlvbl9hZnRlcgAAAAAACgAAAAAAAAAAAAAAAADVn38AAAAPAAAACHByb3RvY29sAAAADwAAAAVibGVuZAAAAAAAAA8AAAAGcmVhc29uAAAAAAAPAAAABWRyaWZ0AAAAAAAADwAAAANzZXEAAAAABQAAAAAAAAAEAAAADwAAAAx0b3RhbF9hc3NldHMAAAAKAAAAAAAAAAAAAAAAATEHsA==",
+      "decoded": {
+        "topics": [
+          "allocate",
+          "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5"
+        ],
+        "value": {
+          "algo": "fy_alloc_v1",
+          "assets": "14000000",
+          "decided_by": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR",
+          "position_after": "13999999",
+          "protocol": "blend",
+          "reason": "drift",
+          "seq": "4",
+          "total_assets": "19990448"
+        }
+      }
+    },
+    {
+      "id": "0022956698981392384-0000000021",
+      "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "ledger": 5345023,
+      "closedAt": "2026-10-23T09:45:02Z",
+      "txHash": "e6ebfe6d91b159cc06c0728808cc24051dfb07948a455a64a301ff0ec42f0c15",
+      "topics": [
+        "AAAADwAAAAhhbGxvY2F0ZQ==",
+        "AAAAEgAAAAEFknddR52PgkvVKSOK2OdgDj752EO8kpP1KUwIpx1gSQ=="
+      ],
+      "value": "AAAAEQAAAAEAAAAIAAAADwAAAARhbGdvAAAADwAAAAtmeV9hbGxvY192MQAAAAAPAAAABmFzc2V0cwAAAAAACgAAAAAAAAAAAAAAAAA9CQAAAAAPAAAACmRlY2lkZWRfYnkAAAAAABIAAAAAAAAAALChA4VjOGgoCKQ1lrlY0H/LstdvesqyZP4HAB6JdLF5AAAADwAAAA5wb3NpdGlvbl9hZnRlcgAAAAAACgAAAAAAAAAAAAAAAAA847EAAAAPAAAACHByb3RvY29sAAAADwAAAAhhcXVhcml1cwAAAA8AAAAGcmVhc29uAAAAAAAPAAAABWRyaWZ0AAAAAAAADwAAAANzZXEAAAAABQAAAAAAAAAFAAAADwAAAAx0b3RhbF9hc3NldHMAAAAKAAAAAAAAAAAAAAAAATEHsA==",
+      "decoded": {
+        "topics": [
+          "allocate",
+          "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF"
+        ],
+        "value": {
+          "algo": "fy_alloc_v1",
+          "assets": "4000000",
+          "decided_by": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR",
+          "position_after": "3990449",
+          "protocol": "aquarius",
+          "reason": "drift",
+          "seq": "5",
+          "total_assets": "19990448"
+        }
+      }
+    }
+  ]
+}

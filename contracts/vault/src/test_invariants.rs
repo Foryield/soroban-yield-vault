@@ -1,10 +1,12 @@
 #![cfg(test)]
 // Montants en convention Stellar 7 decimales (X_XXXXXXX, ex. 0_1000000 = 0,1).
 #![allow(clippy::inconsistent_digit_grouping, clippy::zero_prefixed_literal)]
-//! Invariants D5 (proptest) : sequences aleatoires de depots, retraits,
-//! rendements, reequilibrages, nouvelles cibles et sorties d'urgence sur un
-//! vault a deux strategies factices, l'une qui retient une part de ses
-//! retraits, l'autre a frais d'entree.
+//! Invariants D5 et D6b (proptest) : sequences aleatoires de depots,
+//! retraits, rendements, reequilibrages, nouvelles cibles, sorties d'urgence,
+//! reglages de frais, ecoulement du temps et `checkpoint` sur un vault a deux
+//! strategies factices, l'une qui retient une part de ses retraits, l'autre a
+//! frais d'entree. La tresorerie des frais est l'un des porteurs : ses parts
+//! de frais se rachetent comme les autres.
 //!
 //! Avant chaque operation, un modele ecrit depuis la specification predit son
 //! issue exacte a partir de l'etat lu sur la chaine : montant rendu, parts
@@ -16,14 +18,14 @@
 extern crate std;
 
 use super::{
-    StrategyConfig, VaultError, YieldVault, YieldVaultClient, BPS, MAX_REBALANCE_LOSS_BPS,
-    MINIMUM_LIQUIDITY,
+    FeeConfig, StrategyConfig, VaultError, YieldVault, YieldVaultClient, BPS, MAX_MGMT_FEE_BPS,
+    MAX_PERF_FEE_BPS, MAX_REBALANCE_LOSS_BPS, MINIMUM_LIQUIDITY, PRICE_SCALE, SECONDS_PER_YEAR,
 };
 use crate::test_mock_strategy::{MockStrategy, MockStrategyClient};
 use proptest::prelude::*;
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, EnvTestConfig},
+    testutils::{Address as _, EnvTestConfig, Ledger as _},
     token::{StellarAssetClient, TokenClient},
     vec, Address, Env, Error, InvokeError, Val, Vec,
 };
@@ -35,6 +37,8 @@ const FUNDS: i128 = 10_000_0000000;
 const CAPS: [u32; 2] = [9_000, 3_000];
 const DRIFT_BPS: u32 = 500;
 const B: i128 = BPS as i128;
+/// Porteur qui recoit aussi les parts de frais.
+const TREASURY: usize = USERS - 1;
 
 #[derive(Clone, Copy, Debug)]
 enum Size {
@@ -57,6 +61,9 @@ enum Op {
     Rebalance { by: Caller },
     SetTargets { t0: u32, t1: u32 },
     EmergencyExit { strategy: usize, write_off: bool },
+    SetFees { perf_bps: u32, mgmt_bps: u32 },
+    Elapse { seconds: u64 },
+    Checkpoint,
 }
 
 /// Montants d'une sequence. Un vault minuscule (quelques milliers d'unites)
@@ -93,6 +100,14 @@ fn op(tiny: bool) -> impl Strategy<Value = Op> {
         // Chacune sous son plafond, mais leur somme au-dessus de 100 %.
         Just((8_000, 3_000)),
     ];
+    // Des taux valides, et parfois au-dessus des plafonds.
+    let fees = prop_oneof![
+        4 => (0..=MAX_PERF_FEE_BPS, 0..=MAX_MGMT_FEE_BPS),
+        1 => (0..=MAX_PERF_FEE_BPS + 1_000, 0..=MAX_MGMT_FEE_BPS + 100),
+    ];
+    // Des secondes (frais de gestion tronques a zero), des heures, et des
+    // durees au-dela d'un an (borne d'un prelevement).
+    let seconds = prop_oneof![1u64..120, 3_600u64..259_200, 2_592_000u64..40_000_000];
     prop_oneof![
         4 => (0..USERS, amount(tiny)).prop_map(|(user, amount)| Op::Deposit { user, amount }),
         3 => (0..USERS, size).prop_map(|(user, size)| Op::Withdraw { user, size }),
@@ -102,6 +117,9 @@ fn op(tiny: bool) -> impl Strategy<Value = Op> {
         1 => targets.prop_map(|(t0, t1)| Op::SetTargets { t0, t1 }),
         1 => (0..2usize, any::<bool>())
             .prop_map(|(strategy, write_off)| Op::EmergencyExit { strategy, write_off }),
+        1 => fees.prop_map(|(perf_bps, mgmt_bps)| Op::SetFees { perf_bps, mgmt_bps }),
+        2 => seconds.prop_map(|seconds| Op::Elapse { seconds }),
+        1 => Just(Op::Checkpoint),
     ]
 }
 
@@ -212,6 +230,7 @@ fn price_did_not_decrease(before: (i128, i128), after: (i128, i128)) -> bool {
 #[derive(Debug, PartialEq)]
 struct Snapshot {
     configs: StdVec<StrategyConfig>,
+    fees: Option<FeeConfig>,
     idle: i128,
     holdings: [i128; 2],
     total_shares: i128,
@@ -222,6 +241,8 @@ struct Snapshot {
 /// Ce que le modele lit de la chaine avant une operation.
 struct Chain {
     configs: StdVec<StrategyConfig>,
+    fees: Option<FeeConfig>,
+    now: u64,
     idle: i128,
     holdings: [i128; 2],
     total_shares: i128,
@@ -240,6 +261,50 @@ impl Chain {
     fn assets(&self) -> i128 {
         self.idle + self.value(0) + self.value(1)
     }
+
+    /// Parts de frais dues maintenant, gestion puis performance (plan D6b,
+    /// section 5) : dilution exacte, troncature en faveur des porteurs.
+    fn fee_shares(&self) -> (i128, i128) {
+        let Some(c) = &self.fees else {
+            return (0, 0);
+        };
+        let assets = self.assets();
+        if self.total_shares == 0 || assets <= 0 {
+            return (0, 0);
+        }
+        let dilute = |fee: i128, total: i128| {
+            if fee > 0 {
+                fee * total / (assets - fee)
+            } else {
+                0
+            }
+        };
+        let elapsed = (self.now - c.accrued_at).min(SECONDS_PER_YEAR) as i128;
+        let fee = assets * c.mgmt_bps as i128 * elapsed / (B * SECONDS_PER_YEAR as i128);
+        let mgmt = dilute(fee, self.total_shares);
+        let total = self.total_shares + mgmt;
+        let price = assets * PRICE_SCALE / total;
+        let perf = if c.perf_bps > 0 && price > c.hwm {
+            let gain = (price - c.hwm) * total / PRICE_SCALE;
+            dilute(gain * c.perf_bps as i128 / B, total)
+        } else {
+            0
+        };
+        (mgmt, perf)
+    }
+
+    /// L'etat que voit l'operation, une fois les frais dus preleves.
+    fn after_fees(&self) -> Chain {
+        let (mgmt, perf) = self.fee_shares();
+        Chain {
+            configs: self.configs.clone(),
+            fees: self.fees.clone(),
+            now: self.now,
+            idle: self.idle,
+            holdings: self.holdings,
+            total_shares: self.total_shares + mgmt + perf,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -253,6 +318,8 @@ struct Ledger {
     deposited: i128,
     withdrawn: i128,
     yielded: i128,
+    /// Dernier jour UTC publie par `checkpoint`.
+    nav_day: Option<u64>,
 }
 
 impl World<'_> {
@@ -262,6 +329,8 @@ impl World<'_> {
             idle: self.token.balance(&self.vault.address),
             holdings: [0, 1].map(|i| self.token.balance(&self.strategies[i].address)),
             total_shares: self.vault.total_shares(),
+            fees: self.vault.fees(),
+            now: self.env.ledger().timestamp(),
             configs,
         }
     }
@@ -270,6 +339,7 @@ impl World<'_> {
         let chain = self.chain();
         Snapshot {
             configs: chain.configs,
+            fees: chain.fees,
             idle: chain.idle,
             holdings: chain.holdings,
             total_shares: chain.total_shares,
@@ -312,7 +382,8 @@ impl World<'_> {
         }
         assert!(targets <= BPS);
 
-        // Les parts emises sont celles des porteurs plus les parts mortes.
+        // Les parts emises sont celles des porteurs, tresorerie comprise, plus
+        // les parts mortes : aucune part de frais ne se perd.
         let held: i128 = self.users.iter().map(|u| self.vault.shares_of(u)).sum();
         assert!(chain.total_shares == 0 || chain.total_shares == held + MINIMUM_LIQUIDITY);
 
@@ -329,6 +400,11 @@ impl World<'_> {
         let before = self.state();
         let snapshot = self.snapshot();
         let chain = self.chain();
+        // Un retrait de zero part n'appelle pas le vault.
+        let called = match *op {
+            Op::Withdraw { user, size } => self.shares_for(user, size) > 0,
+            _ => true,
+        };
         let refused = match *op {
             Op::Deposit { user, amount } => self.deposit(&chain, user, amount, ledger),
             Op::Withdraw { user, size } => self.withdraw(&chain, user, size, ledger),
@@ -347,17 +423,65 @@ impl World<'_> {
                 strategy,
                 write_off,
             } => self.emergency_exit(&chain, strategy, write_off),
+            Op::SetFees { perf_bps, mgmt_bps } => self.set_fees(&chain, perf_bps, mgmt_bps),
+            Op::Elapse { seconds } => {
+                self.env.ledger().set_timestamp(chain.now + seconds);
+                false
+            }
+            Op::Checkpoint => self.checkpoint(&chain, ledger),
         };
         if refused {
             assert_eq!(self.snapshot(), snapshot, "un refus a laisse une trace");
         }
-        // Le prix de la part ne baisse que par un lot a frais d'entree ou
-        // par la retenue d'une strategie sortie en urgence.
+
+        // Frais : exactement les parts du modele, toutes a la tresorerie, et
+        // seulement par les operations qui les cristallisent.
+        let charges = matches!(
+            op,
+            Op::Deposit { .. } | Op::Withdraw { .. } | Op::SetFees { .. } | Op::Checkpoint
+        );
+        let (mgmt, perf) = if refused || !charges || !called {
+            (0, 0)
+        } else {
+            chain.fee_shares()
+        };
+        let fee_shares = mgmt + perf;
+        let held = |w: &Snapshot| w.shares[TREASURY];
+        let after = self.snapshot();
+        let paid_in = match *op {
+            // Au depot de genese, le total compte aussi les parts mortes.
+            Op::Deposit { user, .. } if user == TREASURY && !refused => {
+                let dead = if snapshot.total_shares == 0 {
+                    MINIMUM_LIQUIDITY
+                } else {
+                    0
+                };
+                after.total_shares - snapshot.total_shares - fee_shares - dead
+            }
+            Op::Withdraw { user, .. } if user == TREASURY && !refused => {
+                after.total_shares - snapshot.total_shares - fee_shares
+            }
+            _ => 0,
+        };
+        assert_eq!(
+            held(&after) - held(&snapshot),
+            fee_shares + paid_in,
+            "parts de frais"
+        );
+        // Le HWM ne baisse jamais.
+        if let (Some(old), Some(new)) = (&snapshot.fees, &after.fees) {
+            assert!(new.hwm >= old.hwm, "le HWM a baisse");
+        }
+
+        // Le prix de la part ne baisse que des frais preleves, par un lot a
+        // frais d'entree ou par la retenue d'une strategie sortie en urgence.
         let may_lower = matches!(op, Op::Rebalance { .. } | Op::EmergencyExit { .. });
-        assert!(may_lower || price_did_not_decrease(before, self.state()));
+        let net = (before.0, before.1 + fee_shares);
+        assert!(may_lower || price_did_not_decrease(net, self.state()));
     }
 
     fn deposit(&self, chain: &Chain, user: usize, amount: i128, ledger: &mut Ledger) -> bool {
+        let chain = &chain.after_fees();
         let assets = chain.assets();
         let expected = if chain.total_shares == 0 {
             let genesis = assets + amount;
@@ -411,17 +535,22 @@ impl World<'_> {
         Ok(due - need.max(0))
     }
 
-    fn withdraw(&self, chain: &Chain, user: usize, size: Size, ledger: &mut Ledger) -> bool {
-        let user = &self.users[user];
-        let held = self.vault.shares_of(user);
-        let shares = match size {
+    /// Parts qu'un retrait demande ; 0 : le retrait n'est pas tente.
+    fn shares_for(&self, user: usize, size: Size) -> i128 {
+        let held = self.vault.shares_of(&self.users[user]);
+        match size {
             Size::Pct(pct) => held * pct / 100,
             Size::Units(units) => units.min(held),
-        };
+        }
+    }
+
+    fn withdraw(&self, chain: &Chain, user: usize, size: Size, ledger: &mut Ledger) -> bool {
+        let shares = self.shares_for(user, size);
+        let user = &self.users[user];
         if shares == 0 {
             return false;
         }
-        let expected = self.expected_withdrawal(chain, shares);
+        let expected = self.expected_withdrawal(&chain.after_fees(), shares);
         let wallet = self.token.balance(user);
         let got = outcome(self.vault.try_withdraw(user, &shares));
         assert_outcome("retrait", got, expected);
@@ -490,6 +619,8 @@ impl World<'_> {
         }
         let after = Chain {
             configs: chain.configs.clone(),
+            fees: chain.fees.clone(),
+            now: chain.now,
             idle,
             holdings,
             total_shares: chain.total_shares,
@@ -591,6 +722,51 @@ impl World<'_> {
         }
         expected.is_err()
     }
+
+    fn set_fees(&self, chain: &Chain, perf_bps: u32, mgmt_bps: u32) -> bool {
+        let valid = perf_bps <= MAX_PERF_FEE_BPS && mgmt_bps <= MAX_MGMT_FEE_BPS;
+        let treasury = &self.users[TREASURY];
+        let got = outcome(self.vault.try_set_fees(treasury, &perf_bps, &mgmt_bps));
+        let expected = if valid {
+            Ok(())
+        } else {
+            Err(VaultError::InvalidFeeConfig)
+        };
+        assert_outcome("frais", got, expected);
+        if valid {
+            // Taux appliques, temps de gestion repartant de maintenant, HWM
+            // jamais sous le prix courant : rien n'est facture au passe.
+            let net = chain.after_fees();
+            let c = self.vault.fees().unwrap();
+            assert_eq!(
+                (c.perf_bps, c.mgmt_bps, c.accrued_at),
+                (perf_bps, mgmt_bps, chain.now)
+            );
+            assert_eq!(c.treasury, *treasury);
+            if net.total_shares > 0 && net.assets() > 0 {
+                assert!(c.hwm >= net.assets() * PRICE_SCALE / net.total_shares);
+            }
+            if chain.fees.is_none() {
+                assert!(c.hwm >= PRICE_SCALE);
+            }
+        }
+        !valid
+    }
+
+    fn checkpoint(&self, chain: &Chain, ledger: &mut Ledger) -> bool {
+        let day = chain.now / 86_400;
+        let refused = ledger.nav_day.is_some_and(|last| day <= last);
+        let expected = if refused {
+            Err(VaultError::NavAlreadyPublished)
+        } else {
+            Ok(())
+        };
+        assert_outcome("checkpoint", outcome(self.vault.try_checkpoint()), expected);
+        if !refused {
+            ledger.nav_day = Some(day);
+        }
+        refused
+    }
 }
 
 proptest! {
@@ -616,6 +792,12 @@ proptest! {
 
         w.strategies[0].set_skew_bps(&0);
         w.skew[0] = 0;
+        // Frais arretes : ce qui reste du est preleve une derniere fois, et
+        // aucun retrait n'en cristallise plus (la tresorerie sort en entier).
+        if w.vault.fees().is_some() {
+            w.apply(&Op::SetFees { perf_bps: 0, mgmt_bps: 0 }, &mut ledger);
+            w.check(&ledger);
+        }
         for user in 0..USERS {
             let shares = w.vault.shares_of(&w.users[user]);
             if shares > 0 {

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Sequence filmee du livrable D5 (plan D5 section 13, brief de tournage
+# Sequence du livrable D5 en ligne de commande (plan D5 section 13), pour
+# l'ops : repetition de la seance filmee, ou preuve rejouee apres un reset du
+# testnet. La video, elle, se tourne dans le navigateur (brief
 # docs/plans/2026-10-23-d5-tournage.md).
 #
-# Le testeur la deroule de bout en bout avec deux cles de demo a lui : un
-# deposant et la cle keeper du vault, posee par l'admin avant le tournage. La
-# cle d'ops ne quitte jamais sa machine.
+# Deux cles : un deposant et la cle keeper du vault (fy-ops-bot).
 #
 # Six etapes, une pause avant chacune pour laisser le temps de cadrer :
 #   1. depot de 1 USDC, reste oisif ;
@@ -18,9 +18,9 @@
 # realigne sur le prix de reference avant chaque reequilibrage (plan D5
 # section 5) : le script n'echange rien si l'ecart est sous 0,1 %.
 #
-# Valeurs calculees pour un vault qui detient deja 2 USDC oisifs (depot d'ops
-# du 23/10) : 3 USDC apres l'etape 1, ecart de 1,5 point a l'etape 3 et de
-# 6,9 points a l'etape 4, pour un seuil de 5.
+# Valeurs calculees pour un vault qui detient deja 2 USDC d'ops, repartis ou
+# non : 3 USDC apres l'etape 1, ecart de 1,5 point a l'etape 3 et de 6,9 points
+# a l'etape 4, pour un seuil de 5.
 #
 # Chaque transaction est journalisee dans d5-demo-<horodatage>.log, a envoyer
 # a l'ops le jour meme pour archivage (scripts/archive_proof.sh).
@@ -30,6 +30,9 @@ set -euo pipefail
 
 DEPOSITOR="${1:?usage: d5_demo_sequence.sh <cle_deposant> <cle_keeper> [etape]}"
 KEEPER="${2:?cle keeper du vault}"
+# Le realignement echange sur le pool : il faut une cle qui detient USDC et
+# FYEUR, ce qui n'est pas le cas de la cle keeper.
+ALIGN_KEY="${ALIGN_KEY:-d1-ops}"
 START="${3:-1}"
 NETWORK=testnet
 VAULT=CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV
@@ -105,7 +108,7 @@ pause() {
 align_pool() {
   echo "  Realignement du pool Aquarius sur le prix de reference"
   local out
-  out=$(logged "alignement du pool" "$HERE/align_aquarius_pool.sh" "$KEEPER" "$AQUARIUS")
+  out=$(logged "alignement du pool" "$HERE/align_aquarius_pool.sh" "$ALIGN_KEY" "$AQUARIUS")
   printf '%s\n' "$out" | grep -E "ecart|rien a faire|stellar.expert" || true
 }
 

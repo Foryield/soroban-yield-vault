@@ -1,0 +1,1397 @@
+{
+ "hash": "8edbd8f785f0d304ea907beba5ecd59a5079d5bacfdbf77ffdcb365c82194971",
+ "ledger": 5344964,
+ "envelope": {
+  "tx": {
+   "tx": {
+    "source_account": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR",
+    "fee": 831733,
+    "seq_num": "22956411218558977",
+    "cond": "none",
+    "memo": "none",
+    "operations": [
+     {
+      "source_account": null,
+      "body": {
+       "invoke_host_function": {
+        "host_function": {
+         "invoke_contract": {
+          "contract_address": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+          "function_name": "checkpoint",
+          "args": []
+         }
+        },
+        "auth": []
+       }
+      }
+     }
+    ],
+    "ext": {
+     "v1": {
+      "ext": "v0",
+      "resources": {
+       "footprint": {
+        "read_only": [
+         {
+          "contract_data": {
+           "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+           "key": {
+            "vec": [
+             {
+              "symbol": "Shares"
+             },
+             {
+              "address": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+             }
+            ]
+           },
+           "durability": "persistent"
+          }
+         },
+         {
+          "contract_data": {
+           "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+           "key": "ledger_key_contract_instance",
+           "durability": "persistent"
+          }
+         },
+         {
+          "contract_data": {
+           "contract": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU",
+           "key": {
+            "vec": [
+             {
+              "symbol": "Balance"
+             },
+             {
+              "address": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+             }
+            ]
+           },
+           "durability": "persistent"
+          }
+         },
+         {
+          "contract_data": {
+           "contract": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU",
+           "key": "ledger_key_contract_instance",
+           "durability": "persistent"
+          }
+         },
+         {
+          "contract_data": {
+           "contract": "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5",
+           "key": {
+            "vec": [
+             {
+              "symbol": "VaultPos"
+             },
+             {
+              "address": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+             }
+            ]
+           },
+           "durability": "persistent"
+          }
+         },
+         {
+          "contract_data": {
+           "contract": "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5",
+           "key": "ledger_key_contract_instance",
+           "durability": "persistent"
+          }
+         },
+         {
+          "contract_code": {
+           "hash": "5dcc905bbeddfc94046bfd26346146e08ef587c3bc061bfb1b12bd462b64a8fb"
+          }
+         },
+         {
+          "contract_code": {
+           "hash": "9364a31e8d0b0467690104f4c5bb66d62ca27d6fecdc6dfdf05d9059aa2a0b2e"
+          }
+         },
+         {
+          "contract_code": {
+           "hash": "e6e387bcedccd60a051b9fb64ee0d097f44c69777bcdff3315f0950512b2fedc"
+          }
+         }
+        ],
+        "read_write": [
+         {
+          "contract_data": {
+           "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+           "key": "ledger_key_contract_instance",
+           "durability": "persistent"
+          }
+         }
+        ]
+       },
+       "instructions": 2349798,
+       "disk_read_bytes": 0,
+       "write_bytes": 920
+      },
+      "resource_fee": "831633"
+     }
+    }
+   },
+   "signatures": [
+    {
+     "hint": "8974b179",
+     "signature": "1e252b9a287effa9e331b8d298e0dbcb701f752aede43f656e1be4778fa73aa21fcd4a2b2921c25b6b5e3f837e7c50557d1dfc6145bbb8acaf2f3ed10b7a8000"
+    }
+   ]
+  }
+ },
+ "result": {
+  "fee_charged": "719687",
+  "result": {
+   "tx_success": [
+    {
+     "op_inner": {
+      "invoke_host_function": {
+       "success": "2fe22f6bf6edd95f3cea5ad3d10c1b0b03bfff683a493bef9345646aaa8533cb"
+      }
+     }
+    }
+   ]
+  },
+  "ext": "v0"
+ },
+ "meta": {
+  "v4": {
+   "ext": "v0",
+   "tx_changes_before": [
+    {
+     "state": {
+      "last_modified_ledger_seq": 5344964,
+      "data": {
+       "account": {
+        "account_id": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR",
+        "balance": "99999168267",
+        "seq_num": "22956411218558976",
+        "num_sub_entries": 0,
+        "inflation_dest": null,
+        "flags": 0,
+        "home_domain": "",
+        "thresholds": "01000000",
+        "signers": [],
+        "ext": "v0"
+       }
+      },
+      "ext": "v0"
+     }
+    },
+    {
+     "updated": {
+      "last_modified_ledger_seq": 5344964,
+      "data": {
+       "account": {
+        "account_id": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR",
+        "balance": "99999168267",
+        "seq_num": "22956411218558977",
+        "num_sub_entries": 0,
+        "inflation_dest": null,
+        "flags": 0,
+        "home_domain": "",
+        "thresholds": "01000000",
+        "signers": [],
+        "ext": {
+         "v1": {
+          "liabilities": {
+           "buying": "0",
+           "selling": "0"
+          },
+          "ext": {
+           "v2": {
+            "num_sponsored": 0,
+            "num_sponsoring": 0,
+            "signer_sponsoring_i_ds": [],
+            "ext": {
+             "v3": {
+              "ext": "v0",
+              "seq_ledger": 5344964,
+              "seq_time": "1792748407"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      },
+      "ext": "v0"
+     }
+    }
+   ],
+   "operations": [
+    {
+     "ext": "v0",
+     "changes": [
+      {
+       "state": {
+        "last_modified_ledger_seq": 5344959,
+        "data": {
+         "contract_data": {
+          "ext": "v0",
+          "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+          "key": "ledger_key_contract_instance",
+          "durability": "persistent",
+          "val": {
+           "contract_instance": {
+            "executable": {
+             "wasm": "9364a31e8d0b0467690104f4c5bb66d62ca27d6fecdc6dfdf05d9059aa2a0b2e"
+            },
+            "storage": [
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Admin"
+                }
+               ]
+              },
+              "val": {
+               "address": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Asset"
+                }
+               ]
+              },
+              "val": {
+               "address": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "DriftBps"
+                }
+               ]
+              },
+              "val": {
+               "u32": 500
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Keeper"
+                }
+               ]
+              },
+              "val": {
+               "address": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Paused"
+                }
+               ]
+              },
+              "val": {
+               "bool": false
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Seq"
+                }
+               ]
+              },
+              "val": {
+               "u64": "2"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Strategies"
+                }
+               ]
+              },
+              "val": {
+               "vec": [
+                {
+                 "map": [
+                  {
+                   "key": {
+                    "symbol": "active"
+                   },
+                   "val": {
+                    "bool": true
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "address"
+                   },
+                   "val": {
+                    "address": "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5"
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "cap_bps"
+                   },
+                   "val": {
+                    "u32": 9000
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "protocol"
+                   },
+                   "val": {
+                    "symbol": "blend"
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "target_bps"
+                   },
+                   "val": {
+                    "u32": 7000
+                   }
+                  }
+                 ]
+                },
+                {
+                 "map": [
+                  {
+                   "key": {
+                    "symbol": "active"
+                   },
+                   "val": {
+                    "bool": true
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "address"
+                   },
+                   "val": {
+                    "address": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF"
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "cap_bps"
+                   },
+                   "val": {
+                    "u32": 3000
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "protocol"
+                   },
+                   "val": {
+                    "symbol": "aquarius"
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "target_bps"
+                   },
+                   "val": {
+                    "u32": 2000
+                   }
+                  }
+                 ]
+                }
+               ]
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "TotalShares"
+                }
+               ]
+              },
+              "val": {
+               "i128": "20000000"
+              }
+             }
+            ]
+           }
+          }
+         }
+        },
+        "ext": "v0"
+       }
+      },
+      {
+       "updated": {
+        "last_modified_ledger_seq": 5344964,
+        "data": {
+         "contract_data": {
+          "ext": "v0",
+          "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+          "key": "ledger_key_contract_instance",
+          "durability": "persistent",
+          "val": {
+           "contract_instance": {
+            "executable": {
+             "wasm": "9364a31e8d0b0467690104f4c5bb66d62ca27d6fecdc6dfdf05d9059aa2a0b2e"
+            },
+            "storage": [
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Admin"
+                }
+               ]
+              },
+              "val": {
+               "address": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Asset"
+                }
+               ]
+              },
+              "val": {
+               "address": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "DriftBps"
+                }
+               ]
+              },
+              "val": {
+               "u32": 500
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Keeper"
+                }
+               ]
+              },
+              "val": {
+               "address": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "LastNavDay"
+                }
+               ]
+              },
+              "val": {
+               "u64": "20749"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Paused"
+                }
+               ]
+              },
+              "val": {
+               "bool": false
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Seq"
+                }
+               ]
+              },
+              "val": {
+               "u64": "3"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Strategies"
+                }
+               ]
+              },
+              "val": {
+               "vec": [
+                {
+                 "map": [
+                  {
+                   "key": {
+                    "symbol": "active"
+                   },
+                   "val": {
+                    "bool": true
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "address"
+                   },
+                   "val": {
+                    "address": "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5"
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "cap_bps"
+                   },
+                   "val": {
+                    "u32": 9000
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "protocol"
+                   },
+                   "val": {
+                    "symbol": "blend"
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "target_bps"
+                   },
+                   "val": {
+                    "u32": 7000
+                   }
+                  }
+                 ]
+                },
+                {
+                 "map": [
+                  {
+                   "key": {
+                    "symbol": "active"
+                   },
+                   "val": {
+                    "bool": true
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "address"
+                   },
+                   "val": {
+                    "address": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF"
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "cap_bps"
+                   },
+                   "val": {
+                    "u32": 3000
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "protocol"
+                   },
+                   "val": {
+                    "symbol": "aquarius"
+                   }
+                  },
+                  {
+                   "key": {
+                    "symbol": "target_bps"
+                   },
+                   "val": {
+                    "u32": 2000
+                   }
+                  }
+                 ]
+                }
+               ]
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "TotalShares"
+                }
+               ]
+              },
+              "val": {
+               "i128": "20000000"
+              }
+             }
+            ]
+           }
+          }
+         }
+        },
+        "ext": "v0"
+       }
+      }
+     ],
+     "events": [
+      {
+       "ext": "v0",
+       "contract_id": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+       "type_": "contract",
+       "body": {
+        "v0": {
+         "topics": [
+          {
+           "symbol": "nav"
+          }
+         ],
+         "data": {
+          "map": [
+           {
+            "key": {
+             "symbol": "seq"
+            },
+            "val": {
+             "u64": "3"
+            }
+           },
+           {
+            "key": {
+             "symbol": "total_assets"
+            },
+            "val": {
+             "i128": "20000000"
+            }
+           },
+           {
+            "key": {
+             "symbol": "total_shares"
+            },
+            "val": {
+             "i128": "20000000"
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "tx_changes_after": [],
+   "soroban_meta": {
+    "ext": {
+     "v1": {
+      "ext": "v0",
+      "total_non_refundable_resource_fee_charged": "4871",
+      "total_refundable_resource_fee_charged": "714716",
+      "rent_fee_charged": "714266"
+     }
+    },
+    "return_value": "void"
+   },
+   "events": [],
+   "diagnostic_events": [
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "fn_call"
+         },
+         {
+          "bytes": "492b2782baec42d37b3908c4967c90315ebede5bc8106230081ea41a2595436b"
+         },
+         {
+          "symbol": "checkpoint"
+         }
+        ],
+        "data": "void"
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "fn_call"
+         },
+         {
+          "bytes": "2022d56e0aba64516f6e62604d296232be864ffdfb84d58613e7423cace02b28"
+         },
+         {
+          "symbol": "balance"
+         }
+        ],
+        "data": {
+         "address": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU",
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "fn_return"
+         },
+         {
+          "symbol": "balance"
+         }
+        ],
+        "data": {
+         "i128": "20000000"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "fn_call"
+         },
+         {
+          "bytes": "879cf1b75d8b7b21282c9c6dfd5b6a1889e5eca24075917191ddfbbbb5077381"
+         },
+         {
+          "symbol": "balance"
+         }
+        ],
+        "data": {
+         "address": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5",
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "fn_return"
+         },
+         {
+          "symbol": "balance"
+         }
+        ],
+        "data": {
+         "i128": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "fn_call"
+         },
+         {
+          "bytes": "0592775d479d8f824bd529238ad8e7600e3ef9d843bc9293f5294c08a71d6049"
+         },
+         {
+          "symbol": "balance"
+         }
+        ],
+        "data": {
+         "address": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "fn_return"
+         },
+         {
+          "symbol": "balance"
+         }
+        ],
+        "data": {
+         "i128": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "type_": "contract",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "nav"
+         }
+        ],
+        "data": {
+         "map": [
+          {
+           "key": {
+            "symbol": "seq"
+           },
+           "val": {
+            "u64": "3"
+           }
+          },
+          {
+           "key": {
+            "symbol": "total_assets"
+           },
+           "val": {
+            "i128": "20000000"
+           }
+          },
+          {
+           "key": {
+            "symbol": "total_shares"
+           },
+           "val": {
+            "i128": "20000000"
+           }
+          }
+         ]
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "fn_return"
+         },
+         {
+          "symbol": "checkpoint"
+         }
+        ],
+        "data": "void"
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "read_entry"
+         }
+        ],
+        "data": {
+         "u64": "10"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "write_entry"
+         }
+        ],
+        "data": {
+         "u64": "1"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "ledger_read_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "ledger_write_byte"
+         }
+        ],
+        "data": {
+         "u64": "920"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "read_key_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "write_key_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "read_data_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "write_data_byte"
+         }
+        ],
+        "data": {
+         "u64": "920"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "read_code_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "write_code_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "emit_event"
+         }
+        ],
+        "data": {
+         "u64": "1"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "emit_event_byte"
+         }
+        ],
+        "data": {
+         "u64": "184"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "cpu_insn"
+         }
+        ],
+        "data": {
+         "u64": "2237934"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "mem_byte"
+         }
+        ],
+        "data": {
+         "u64": "2844333"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "invoke_time_nsecs"
+         }
+        ],
+        "data": {
+         "u64": "435819"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "max_rw_key_byte"
+         }
+        ],
+        "data": {
+         "u64": "48"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "max_rw_data_byte"
+         }
+        ],
+        "data": {
+         "u64": "920"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "max_rw_code_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "max_emit_event_byte"
+         }
+        ],
+        "data": {
+         "u64": "180"
+        }
+       }
+      }
+     }
+    }
+   ]
+  }
+ }
+}

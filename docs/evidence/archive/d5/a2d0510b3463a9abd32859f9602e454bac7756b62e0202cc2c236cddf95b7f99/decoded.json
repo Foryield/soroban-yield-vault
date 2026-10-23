@@ -1,0 +1,1146 @@
+{
+ "hash": "a2d0510b3463a9abd32859f9602e454bac7756b62e0202cc2c236cddf95b7f99",
+ "ledger": 5344960,
+ "envelope": {
+  "tx": {
+   "tx": {
+    "source_account": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+    "fee": 8857,
+    "seq_num": "16002013057777744",
+    "cond": "none",
+    "memo": "none",
+    "operations": [
+     {
+      "source_account": null,
+      "body": {
+       "invoke_host_function": {
+        "host_function": {
+         "invoke_contract": {
+          "contract_address": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+          "function_name": "set_keeper",
+          "args": [
+           {
+            "address": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+           }
+          ]
+         }
+        },
+        "auth": [
+         {
+          "credentials": "source_account",
+          "root_invocation": {
+           "function": {
+            "contract_fn": {
+             "contract_address": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+             "function_name": "set_keeper",
+             "args": [
+              {
+               "address": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+              }
+             ]
+            }
+           },
+           "sub_invocations": []
+          }
+         }
+        ]
+       }
+      }
+     }
+    ],
+    "ext": {
+     "v1": {
+      "ext": "v0",
+      "resources": {
+       "footprint": {
+        "read_only": [
+         {
+          "contract_code": {
+           "hash": "e6e387bcedccd60a051b9fb64ee0d097f44c69777bcdff3315f0950512b2fedc"
+          }
+         }
+        ],
+        "read_write": [
+         {
+          "contract_data": {
+           "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+           "key": "ledger_key_contract_instance",
+           "durability": "persistent"
+          }
+         }
+        ]
+       },
+       "instructions": 788674,
+       "disk_read_bytes": 0,
+       "write_bytes": 1044
+      },
+      "resource_fee": "8757"
+     }
+    }
+   },
+   "signatures": [
+    {
+     "hint": "449d0f63",
+     "signature": "f21f6ebacb6214312e7feca7b6f31bac17e7aa9dcfd69f916699ef59604e12dfcbf9c38a1bdf7477c1901d3a2576e411fe1604663b55cc2080aeee5daef5ce0e"
+    }
+   ]
+  }
+ },
+ "result": {
+  "fee_charged": "3976",
+  "result": {
+   "tx_success": [
+    {
+     "op_inner": {
+      "invoke_host_function": {
+       "success": "e1b1c84bc7c44e284fee783dd25804af5e3f122e7fe172b0ea833ff4f157c4d7"
+      }
+     }
+    }
+   ]
+  },
+  "ext": "v0"
+ },
+ "meta": {
+  "v4": {
+   "ext": "v0",
+   "tx_changes_before": [
+    {
+     "state": {
+      "last_modified_ledger_seq": 5344960,
+      "data": {
+       "account": {
+        "account_id": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+        "balance": "36100347674",
+        "seq_num": "16002013057777743",
+        "num_sub_entries": 4,
+        "inflation_dest": null,
+        "flags": 0,
+        "home_domain": "",
+        "thresholds": "01000000",
+        "signers": [],
+        "ext": {
+         "v1": {
+          "liabilities": {
+           "buying": "0",
+           "selling": "0"
+          },
+          "ext": {
+           "v2": {
+            "num_sponsored": 0,
+            "num_sponsoring": 0,
+            "signer_sponsoring_i_ds": [],
+            "ext": {
+             "v3": {
+              "ext": "v0",
+              "seq_ledger": 5344959,
+              "seq_time": "1792748382"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      },
+      "ext": "v0"
+     }
+    },
+    {
+     "updated": {
+      "last_modified_ledger_seq": 5344960,
+      "data": {
+       "account": {
+        "account_id": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG",
+        "balance": "36100347674",
+        "seq_num": "16002013057777744",
+        "num_sub_entries": 4,
+        "inflation_dest": null,
+        "flags": 0,
+        "home_domain": "",
+        "thresholds": "01000000",
+        "signers": [],
+        "ext": {
+         "v1": {
+          "liabilities": {
+           "buying": "0",
+           "selling": "0"
+          },
+          "ext": {
+           "v2": {
+            "num_sponsored": 0,
+            "num_sponsoring": 0,
+            "signer_sponsoring_i_ds": [],
+            "ext": {
+             "v3": {
+              "ext": "v0",
+              "seq_ledger": 5344960,
+              "seq_time": "1792748387"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      },
+      "ext": "v0"
+     }
+    }
+   ],
+   "operations": [
+    {
+     "ext": "v0",
+     "changes": [
+      {
+       "state": {
+        "last_modified_ledger_seq": 5344609,
+        "data": {
+         "contract_data": {
+          "ext": "v0",
+          "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+          "key": "ledger_key_contract_instance",
+          "durability": "persistent",
+          "val": {
+           "contract_instance": {
+            "executable": {
+             "wasm": "e6e387bcedccd60a051b9fb64ee0d097f44c69777bcdff3315f0950512b2fedc"
+            },
+            "storage": [
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Admin"
+                }
+               ]
+              },
+              "val": {
+               "address": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Config"
+                }
+               ]
+              },
+              "val": {
+               "map": [
+                {
+                 "key": {
+                  "symbol": "asset"
+                 },
+                 "val": {
+                  "address": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "fee_bps"
+                 },
+                 "val": {
+                  "u32": 30
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "max_age"
+                 },
+                 "val": {
+                  "u64": "259200"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "max_slippage_bps"
+                 },
+                 "val": {
+                  "u32": 100
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "max_step_bps"
+                 },
+                 "val": {
+                  "u32": 100
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "paired"
+                 },
+                 "val": {
+                  "address": "CDEU3YYGB2P5ZFDY7BJTLYAGPQEIQO5OPJCZUJNLACKKF2MFQYLGSTPP"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "pool"
+                 },
+                 "val": {
+                  "address": "CA2KS6SYWJNRSYSVSX5MO3MLCINHEXKW6FTCR3GGIAC6RQZ6R4OSPBU3"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "pool_hash"
+                 },
+                 "val": {
+                  "bytes": "9ac7a9cde23ac2ada11105eeaa42e43c2ea8332ca0aa8f41f58d7160274d718e"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "router"
+                 },
+                 "val": {
+                  "address": "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "share_token"
+                 },
+                 "val": {
+                  "address": "CASVPTKMHM6QIAL4VRIGCEFPVFSIFRSU6YI5KCAPMLG23WU7HB4B7SWY"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "tokens"
+                 },
+                 "val": {
+                  "vec": [
+                   {
+                    "address": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU"
+                   },
+                   {
+                    "address": "CDEU3YYGB2P5ZFDY7BJTLYAGPQEIQO5OPJCZUJNLACKKF2MFQYLGSTPP"
+                   }
+                  ]
+                 }
+                }
+               ]
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Keeper"
+                }
+               ]
+              },
+              "val": {
+               "address": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Price"
+                }
+               ]
+              },
+              "val": {
+               "map": [
+                {
+                 "key": {
+                  "symbol": "price"
+                 },
+                 "val": {
+                  "i128": "1120500000"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "source_date"
+                 },
+                 "val": {
+                  "u64": "1792627200"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "updated_at"
+                 },
+                 "val": {
+                  "u64": "1792746632"
+                 }
+                }
+               ]
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "TotalShares"
+                }
+               ]
+              },
+              "val": {
+               "i128": "99844"
+              }
+             }
+            ]
+           }
+          }
+         }
+        },
+        "ext": "v0"
+       }
+      },
+      {
+       "updated": {
+        "last_modified_ledger_seq": 5344960,
+        "data": {
+         "contract_data": {
+          "ext": "v0",
+          "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+          "key": "ledger_key_contract_instance",
+          "durability": "persistent",
+          "val": {
+           "contract_instance": {
+            "executable": {
+             "wasm": "e6e387bcedccd60a051b9fb64ee0d097f44c69777bcdff3315f0950512b2fedc"
+            },
+            "storage": [
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Admin"
+                }
+               ]
+              },
+              "val": {
+               "address": "GCC4ZBLBYJJD33WOX4EJKDRQSZJMTX7CGBFJWDUH4CDUX2CETUHWGCPG"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Config"
+                }
+               ]
+              },
+              "val": {
+               "map": [
+                {
+                 "key": {
+                  "symbol": "asset"
+                 },
+                 "val": {
+                  "address": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "fee_bps"
+                 },
+                 "val": {
+                  "u32": 30
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "max_age"
+                 },
+                 "val": {
+                  "u64": "259200"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "max_slippage_bps"
+                 },
+                 "val": {
+                  "u32": 100
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "max_step_bps"
+                 },
+                 "val": {
+                  "u32": 100
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "paired"
+                 },
+                 "val": {
+                  "address": "CDEU3YYGB2P5ZFDY7BJTLYAGPQEIQO5OPJCZUJNLACKKF2MFQYLGSTPP"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "pool"
+                 },
+                 "val": {
+                  "address": "CA2KS6SYWJNRSYSVSX5MO3MLCINHEXKW6FTCR3GGIAC6RQZ6R4OSPBU3"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "pool_hash"
+                 },
+                 "val": {
+                  "bytes": "9ac7a9cde23ac2ada11105eeaa42e43c2ea8332ca0aa8f41f58d7160274d718e"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "router"
+                 },
+                 "val": {
+                  "address": "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "share_token"
+                 },
+                 "val": {
+                  "address": "CASVPTKMHM6QIAL4VRIGCEFPVFSIFRSU6YI5KCAPMLG23WU7HB4B7SWY"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "tokens"
+                 },
+                 "val": {
+                  "vec": [
+                   {
+                    "address": "CAQCFVLOBK5GIULPNZRGATJJMIZL5BSP7X5YJVMGCPTUEPFM4AVSRCJU"
+                   },
+                   {
+                    "address": "CDEU3YYGB2P5ZFDY7BJTLYAGPQEIQO5OPJCZUJNLACKKF2MFQYLGSTPP"
+                   }
+                  ]
+                 }
+                }
+               ]
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Keeper"
+                }
+               ]
+              },
+              "val": {
+               "address": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "Price"
+                }
+               ]
+              },
+              "val": {
+               "map": [
+                {
+                 "key": {
+                  "symbol": "price"
+                 },
+                 "val": {
+                  "i128": "1120500000"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "source_date"
+                 },
+                 "val": {
+                  "u64": "1792627200"
+                 }
+                },
+                {
+                 "key": {
+                  "symbol": "updated_at"
+                 },
+                 "val": {
+                  "u64": "1792746632"
+                 }
+                }
+               ]
+              }
+             },
+             {
+              "key": {
+               "vec": [
+                {
+                 "symbol": "TotalShares"
+                }
+               ]
+              },
+              "val": {
+               "i128": "99844"
+              }
+             }
+            ]
+           }
+          }
+         }
+        },
+        "ext": "v0"
+       }
+      }
+     ],
+     "events": [
+      {
+       "ext": "v0",
+       "contract_id": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+       "type_": "contract",
+       "body": {
+        "v0": {
+         "topics": [
+          {
+           "symbol": "keeper"
+          }
+         ],
+         "data": {
+          "address": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "tx_changes_after": [],
+   "soroban_meta": {
+    "ext": {
+     "v1": {
+      "ext": "v0",
+      "total_non_refundable_resource_fee_charged": "3592",
+      "total_refundable_resource_fee_charged": "284",
+      "rent_fee_charged": "0"
+     }
+    },
+    "return_value": "void"
+   },
+   "events": [],
+   "diagnostic_events": [
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "fn_call"
+         },
+         {
+          "bytes": "0592775d479d8f824bd529238ad8e7600e3ef9d843bc9293f5294c08a71d6049"
+         },
+         {
+          "symbol": "set_keeper"
+         }
+        ],
+        "data": {
+         "address": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "type_": "contract",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "keeper"
+         }
+        ],
+        "data": {
+         "address": "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "fn_return"
+         },
+         {
+          "symbol": "set_keeper"
+         }
+        ],
+        "data": "void"
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "read_entry"
+         }
+        ],
+        "data": {
+         "u64": "2"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "write_entry"
+         }
+        ],
+        "data": {
+         "u64": "1"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "ledger_read_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "ledger_write_byte"
+         }
+        ],
+        "data": {
+         "u64": "1044"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "read_key_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "write_key_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "read_data_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "write_data_byte"
+         }
+        ],
+        "data": {
+         "u64": "1044"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "read_code_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "write_code_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "emit_event"
+         }
+        ],
+        "data": {
+         "u64": "1"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "emit_event_byte"
+         }
+        ],
+        "data": {
+         "u64": "116"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "cpu_insn"
+         }
+        ],
+        "data": {
+         "u64": "739480"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "mem_byte"
+         }
+        ],
+        "data": {
+         "u64": "1338387"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "invoke_time_nsecs"
+         }
+        ],
+        "data": {
+         "u64": "155245"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "max_rw_key_byte"
+         }
+        ],
+        "data": {
+         "u64": "48"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "max_rw_data_byte"
+         }
+        ],
+        "data": {
+         "u64": "1044"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "max_rw_code_byte"
+         }
+        ],
+        "data": {
+         "u64": "0"
+        }
+       }
+      }
+     }
+    },
+    {
+     "in_successful_contract_call": true,
+     "event": {
+      "ext": "v0",
+      "contract_id": null,
+      "type_": "diagnostic",
+      "body": {
+       "v0": {
+        "topics": [
+         {
+          "symbol": "core_metrics"
+         },
+         {
+          "symbol": "max_emit_event_byte"
+         }
+        ],
+        "data": {
+         "u64": "112"
+        }
+       }
+      }
+     }
+    }
+   ]
+  }
+ }
+}

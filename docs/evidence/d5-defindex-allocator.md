@@ -132,3 +132,30 @@ and strategies), [PR #35](https://github.com/Foryield/soroban-yield-vault/pull/3
   [`579303de…a8c5`](https://stellar.expert/explorer/testnet/tx/579303de0799d07b7cfeb28f58c03aab8e995d2ac14d17e3597f6569d33da8c5).
   The pool stays at 1.1234 until the next alignment, done right before the
   first Aquarius move.
+
+## 2026-10-23: ops keeper, first daily NAV, first rebalance
+
+- **What it proves**: the allocator spreads the vault across both strategies
+  in one batch, each move recorded with its decision maker and algorithm; the
+  keeper role sits on a dedicated key with no admin power.
+- **Keeper handed to `fy-ops-bot`**
+  (`GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR`), the key of the
+  daily ops job, on the vault
+  [`e02e76e1…b4b0`](https://stellar.expert/explorer/testnet/tx/e02e76e1a9b7b044b015b0b391db58a8f9170fb7ebad2961fcb0f8c2aeb4b4b0)
+  (`keeper_set`, seq 2, old and new keeper recorded) and on the Aquarius
+  strategy
+  [`a2d0510b…7f99`](https://stellar.expert/explorer/testnet/tx/a2d0510b3463a9abd32859f9602e454bac7756b62e0202cc2c236cddf95b7f99).
+  The ops account stays admin.
+- **First daily NAV** (`checkpoint`, unauthenticated):
+  [`8edbd8f7…4971`](https://stellar.expert/explorer/testnet/tx/8edbd8f785f0d304ea907beba5ecd59a5079d5bacfdbf77ffdcb365c82194971),
+  event `nav`, seq 3, 2 USDC for 2 shares.
+- **Pool aligned** on the reference price (1.1205) before the first Aquarius
+  move: 26 bps gap closed by a 0.1341784 FYEUR swap from the ops account
+  [`9670d479…9fcd`](https://stellar.expert/explorer/testnet/tx/9670d479d32ff1df4f0723976b723f45c201c081307e8077df38bc0872379fcd).
+- **First rebalance**, signed by the keeper
+  [`e6ebfe6d…0c15`](https://stellar.expert/explorer/testnet/tx/e6ebfe6d91b159cc06c0728808cc24051dfb07948a455a64a301ff0ec42f0c15):
+  two `allocate` events in one transaction, Blend +1.4 USDC (position
+  1.3999999, seq 4) and Aquarius +0.4 USDC (position 0.3990449, seq 5), both
+  `decided_by` the keeper, `algo` `fy_alloc_v1`, `reason` `drift`. Allocation
+  after: 70.0 / 19.9 / 10.0 %, `total_assets` 1.9990448 USDC (0.24 % entry
+  cost on the Aquarius leg, swap fee and price impact). Fee 0.50 XLM.

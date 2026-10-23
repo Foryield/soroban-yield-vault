@@ -4,9 +4,10 @@ name: Ops daily
 # docs/plans/2026-10-23-d6c-dashboard.md, section 4), dans cet ordre :
 #   1. prix de reference de la strategie Aquarius au taux BCE du jour : sans
 #      publication, il perime au bout de 72 h et gele tout le vault ;
-#   2. checkpoint() : event `nav` du jour (D6a, section 8, reponse 4). Il
-#      valorise la strategie Aquarius, donc il passe APRES le prix : apres un
-#      week-end manque, un prix perime le ferait echouer ;
+#   2. checkpoint() sur le vault D5 et sur l'instance a frais D6b : event `nav`
+#      du jour (D6a, section 8, reponse 4), precede des frais dus sur
+#      l'instance D6b. Il valorise la strategie Aquarius, donc il passe APRES
+#      le prix : apres un week-end manque, un prix perime le ferait echouer ;
 #   3. ingestion des events vers la branche `data/events`, que lit le
 #      dashboard : le RPC ne les garde qu'environ 7 jours.
 #
@@ -34,6 +35,7 @@ concurrency:
 
 env:
   VAULT: CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV
+  FEE_VAULT: CCXPS66KJHVMXRFHYXVPGOJKPH3LWBIAA4WVNV6BYJXFYKKEBCCLYVMP
   AQUARIUS_STRATEGY: CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF
   STELLAR_CLI_VERSION: 27.1.0
 
@@ -67,14 +69,19 @@ jobs:
         run: |
           # Un second appel le meme jour UTC est refuse (NavAlreadyPublished,
           # erreur 22) : apres un relancement a la main, ce n'est pas un echec.
-          if out=$(stellar contract invoke --id "$VAULT" --source fy-ops-bot --network testnet -- checkpoint 2>&1); then
-            echo "$out"
-          elif grep -q 'Error(Contract, #22)' <<< "$out"; then
-            echo "nav deja publie aujourd'hui"
-          else
-            echo "$out"
-            exit 1
-          fi
+          # Un vault en echec n'empeche pas l'autre ; la tache echoue ensuite.
+          status=0
+          for vault in "$VAULT" "$FEE_VAULT"; do
+            if out=$(stellar contract invoke --id "$vault" --source fy-ops-bot --network testnet -- checkpoint 2>&1); then
+              echo "$out"
+            elif grep -q 'Error(Contract, #22)' <<< "$out"; then
+              echo "$vault : nav deja publie aujourd'hui"
+            else
+              echo "$out"
+              status=1
+            fi
+          done
+          exit $status
 
   ingest:
     name: Event archive

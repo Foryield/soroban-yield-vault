@@ -1,9 +1,10 @@
 "use client";
 
 // Dashboard de conformite (livrable D6c, plan docs/plans/2026-10-23-d6c-
-// dashboard.md, section 6) : piste d'audit des events D6a d'une instance a
-// strategies, lue dans l'archive puis au RPC, et ce qui s'en deduit
-// (allocations par lot, valeur liquidative, releve mensuel, gouvernance).
+// dashboard.md, section 6) : piste d'audit des events D6a d'une instance au
+// schema (allocateur D5, instance a frais D6b), lue dans l'archive puis au
+// RPC, et ce qui s'en deduit (allocations par lot, valeur liquidative,
+// releve mensuel, gouvernance, frais).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getStrategies, type StrategyConfig } from "@/lib/allocator";
@@ -20,6 +21,7 @@ import {
 import { EXPLORER_CONTRACT, NETWORK, NETWORK_LABEL } from "@/lib/stellar";
 import { VAULTS, vaultFromKey, type VaultConfig } from "@/lib/vaults";
 import { AllocationPanel } from "../allocation";
+import { FeePanel } from "../fees";
 import {
   AlgorithmRegistry,
   Allocations,
@@ -34,7 +36,7 @@ import {
 // Pendant une seance filmee, un reequilibrage doit apparaitre sans recharger.
 const REFRESH_MS = 15_000;
 
-const ALLOCATOR_VAULTS = VAULTS.filter((v) => v.allocator);
+const AUDITED_VAULTS = VAULTS.filter((v) => v.audited);
 
 function download(name: string, type: string, content: string) {
   const url = URL.createObjectURL(new Blob([content], { type }));
@@ -51,7 +53,7 @@ function exactJson(value: unknown) {
 }
 
 export default function Dashboard() {
-  const [vault, setVault] = useState<VaultConfig | undefined>(ALLOCATOR_VAULTS[0]);
+  const [vault, setVault] = useState<VaultConfig | undefined>(AUDITED_VAULTS[0]);
   const [strategies, setStrategies] = useState<StrategyConfig[] | null>(null);
   const [feed, setFeed] = useState<AuditFeed | null>(null);
   // Nombre d'enregistrements du vault (`last_seq`) : borne du controle de
@@ -63,7 +65,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const wanted = vaultFromKey(new URLSearchParams(window.location.search).get("vault"));
-    if (wanted?.allocator) setVault(wanted);
+    if (wanted?.audited) setVault(wanted);
   }, []);
 
   const contracts = useMemo(
@@ -138,7 +140,7 @@ export default function Dashboard() {
       <div className="shell">
         <div className="card">
           <div className="title">Not configured</div>
-          <div className="subtitle">No multi-strategy vault is configured for this network.</div>
+          <div className="subtitle">No audited vault is configured for this network.</div>
         </div>
       </div>
     );
@@ -184,9 +186,9 @@ export default function Dashboard() {
         <div className="badge">{NETWORK_LABEL}</div>
       </div>
 
-      {ALLOCATOR_VAULTS.length > 1 && (
+      {AUDITED_VAULTS.length > 1 && (
         <div className="tabs" role="tablist" aria-label="Vault instance">
-          {ALLOCATOR_VAULTS.map((v) => (
+          {AUDITED_VAULTS.map((v) => (
             <button
               key={v.key}
               type="button"
@@ -242,7 +244,8 @@ export default function Dashboard() {
         </section>
 
         <section className="card">
-          <AllocationPanel vault={vault} />
+          {vault.allocator && <AllocationPanel vault={vault} />}
+          {vault.fees && <FeePanel vault={vault} />}
         </section>
       </div>
 
@@ -271,14 +274,17 @@ export default function Dashboard() {
         )}
       </section>
 
-      <section className="card">
-        <div className="section-title">Allocations</div>
-        <p className="note">
-          One row per batch: every move of a rebalance shares one transaction hash. Withdrawals
-          the idle pocket cannot cover pull from the strategies, decided by the client.
-        </p>
-        {feed && <Allocations events={vaultEvents} labels={labels} code={code} />}
-      </section>
+      {vault.allocator && (
+        <section className="card">
+          <div className="section-title">Allocations</div>
+          <p className="note">
+            One row per batch: every move of a rebalance shares one transaction hash.
+            Withdrawals the idle pocket cannot cover pull from the strategies, decided by the
+            client.
+          </p>
+          {feed && <Allocations events={vaultEvents} labels={labels} code={code} />}
+        </section>
+      )}
 
       <section className="card">
         <div className="section-title">Net asset value</div>
@@ -292,8 +298,8 @@ export default function Dashboard() {
       <section className="card">
         <div className="section-title">Governance</div>
         <p className="note">
-          Keeper and target changes keep the previous value; reference price publications of the
-          Aquarius strategy are bounded to 1 % per hour.
+          Keeper, target, fee rate and treasury changes keep the previous value; reference price
+          publications of the Aquarius strategy are bounded to 1 % per hour.
         </p>
         {feed && (
           <Governance

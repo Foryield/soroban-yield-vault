@@ -55,6 +55,8 @@ Amounts are raw units with 7 decimals (`0.1 XLM = 1000000`).
 | YieldVault, Deliverable 1 | `CCE5ITQQF4GWG5FA47D2XJBKXASWJ2E5V5AWW5U5BBAFWIXA77YYGWNI` | Blend testnet USDC (SAC) | Blend v2 TestnetV2 pool |
 | YieldVault, Deliverable 3 | `CDZR2IY4V3GXUONLTVXJNCMTIR2LLFC55ZRPPEHCTI4RM7LVF25UKG5K` | Circle EURC via SAC wrapper | none (pure custody) |
 | YieldVault, public demo | `CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN` | native XLM (SAC) | none (pure custody) |
+| YieldVault, Deliverable 5 | `CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV` | Blend testnet USDC (SAC) | DeFindex Blend strategy 70 %, Aquarius LP strategy 20 % |
+| YieldVault, Deliverable 6b | `CCXPS66KJHVMXRFHYXVPGOJKPH3LWBIAA4WVNV6BYJXFYKKEBCCLYVMP` | Circle EURC via SAC wrapper | none (pure custody), fees 20 % above HWM and 2 % a year |
 | SwapRouter, Deliverable 4 | `CCQJWT73HTZUVLM2UUPUA5VR53Z5MTHCRZDVF5RODH3ORMVALNQQY6EA` | USDC / EURC | Aquarius, single venue |
 
 | Referenced contract | Address |

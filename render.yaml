@@ -13,9 +13,10 @@ services:
     # Valeurs publiques (contract ID testnet + endpoints), aucun secret.
     #
     # Trois instances servies par la MEME page : l'onglet XLM (actif natif,
-    # tout compte finance par Friendbot peut deposer), l'onglet EURC (livrable
-    # 3, actif Classic detenu via son wrapper SAC) et l'onglet USDC (allocateur
-    # D5 a strategies, dont `/dashboard/` montre la piste d'audit D6c). Le
+    # tout compte finance par Friendbot peut deposer), l'onglet EURC (actif
+    # Classic detenu via son wrapper SAC, instance a frais D6b) et l'onglet USDC
+    # (allocateur D5 a strategies). `/dashboard/` montre la piste d'audit D6c
+    # des onglets EURC et USDC. Le
     # choix se transporte dans l'URL : `/?vault=eurc` ouvre directement
     # l'instance EURC, ce qui donne un lien a envoyer a un relecteur sans second
     # deploiement.
@@ -25,7 +26,7 @@ services:
       - key: NEXT_PUBLIC_VAULT_ID
         value: CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN
       - key: NEXT_PUBLIC_EURC_VAULT_ID
-        value: CDZR2IY4V3GXUONLTVXJNCMTIR2LLFC55ZRPPEHCTI4RM7LVF25UKG5K
+        value: CCXPS66KJHVMXRFHYXVPGOJKPH3LWBIAA4WVNV6BYJXFYKKEBCCLYVMP
       - key: NEXT_PUBLIC_USDC_VAULT_ID
         value: CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV
       # Archive des events tenue par la tache quotidienne (ops-daily.yml).

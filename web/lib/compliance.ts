@@ -7,6 +7,7 @@
 
 import { protocolLabel } from "./allocator";
 import { field, type ChainEvent } from "./events";
+import { formatPrice } from "./fees";
 import { fromStroops } from "./stellar";
 
 /// Algorithme de decision (champ 41 du reglement delegue 2025/1140). Le code
@@ -49,6 +50,13 @@ export type RegisterRow = {
   decision_by: string;
   algorithm: string;
   reason: string;
+  fee_type: string;
+  fee_rate_bps: string;
+  fee_recipient: string;
+  hwm_before: string;
+  hwm_after: string;
+  period_start: string;
+  period_end: string;
   trading_capacity: string;
   blockchain_tx_hash: string;
   blockchain_network: string;
@@ -57,6 +65,20 @@ export type RegisterRow = {
 function amount(value: unknown): string {
   return value === undefined || value === null ? "" : fromStroops(BigInt(value as bigint));
 }
+
+function text(value: unknown): string {
+  return value === undefined || value === null ? "" : String(value);
+}
+
+// Horodatage de ledger (secondes UTC) en ISO 8601.
+function instant(value: unknown): string {
+  return value === undefined || value === null
+    ? ""
+    : new Date(Number(value) * 1000).toISOString();
+}
+
+// `fee_type` de `fee_transactions` dans foryield-v2 (D6a section 5).
+const FEE_TYPES: Record<string, string> = { mgmt: "management", perf: "performance" };
 
 /// Valeur liquidative par part apres l'operation, quand l'event porte les
 /// deux totaux.
@@ -95,12 +117,16 @@ export function unitPrices(events: ChainEvent[]): Map<string, number> {
 // Une ligne par event du vault. Un depot ou un retrait est decide par le
 // client : champ 41 vide (reponse 3 de Julien). Une allocation porte le
 // decideur et le code d'algorithme ; un rapatriement `redeem` est decide par
-// le client, sans algorithme.
+// le client, sans algorithme. Un prelevement de frais applique le reglage en
+// vigueur : aucun decideur, et ses champs propres (type, taux, HWM, periode)
+// alimentent `fee_transactions`.
 export function registerRow(event: ChainEvent, vault: string, network: string): RegisterRow {
   const decidedBy = field<string>(event, "decided_by");
   const protocol = field<string>(event, "protocol");
   const price = unitPrice(event);
   const clientDecision = event.name === "deposit" || event.name === "withdraw";
+  const fee = event.name === "fee_minted";
+  const kind = field<string>(event, "kind");
   return {
     order_reference: `${event.txHash}:${event.seq ?? ""}`,
     execution_at: event.closedAt,
@@ -109,15 +135,24 @@ export function registerRow(event: ChainEvent, vault: string, network: string): 
     owner: field<string>(event, "owner") ?? "",
     strategy: field<string>(event, "strategy") ?? "",
     execution_platform: protocol ? `${vault} via ${protocolLabel(protocol)}` : vault,
-    quantity_assets: amount(field(event, "assets") ?? field(event, "assets_recovered")),
-    quantity_shares: amount(field(event, "shares")),
+    quantity_assets: amount(
+      field(event, "assets") ?? field(event, "assets_recovered") ?? field(event, "fee_assets"),
+    ),
+    quantity_shares: amount(field(event, "shares") ?? field(event, "fee_shares")),
     unit_price: price === undefined ? "" : price.toFixed(7),
     total_assets_after: amount(field(event, "total_assets")),
     total_shares_after: amount(field(event, "total_shares")),
     decision_by: clientDecision ? "" : decidedBy ?? field<string>(event, "admin") ?? "",
     algorithm: field<string>(event, "algo") ?? "",
     reason: field<string>(event, "reason") ?? "",
-    trading_capacity: clientDecision ? "" : TRADING_CAPACITY,
+    fee_type: kind && fee ? FEE_TYPES[kind] ?? kind : "",
+    fee_rate_bps: text(field(event, "rate_bps")),
+    fee_recipient: field<string>(event, "recipient") ?? "",
+    hwm_before: fee ? formatPrice(field(event, "hwm_before")) : "",
+    hwm_after: fee ? formatPrice(field(event, "hwm_after")) : "",
+    period_start: instant(field(event, "period_start")),
+    period_end: instant(field(event, "period_end")),
+    trading_capacity: clientDecision || fee ? "" : TRADING_CAPACITY,
     blockchain_tx_hash: event.txHash,
     blockchain_network: `stellar-${network}`,
   };

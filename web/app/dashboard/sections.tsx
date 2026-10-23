@@ -5,11 +5,13 @@ import { useMemo, useState } from "react";
 import { protocolLabel, type StrategyConfig } from "@/lib/allocator";
 import { ALGORITHMS, TRADING_CAPACITY, unitPrices } from "@/lib/compliance";
 import { field, type AuditFeed, type ChainEvent } from "@/lib/events";
+import { formatPrice } from "@/lib/fees";
 import { EXPLORER_ACCOUNT, EXPLORER_TX, fromStroops } from "@/lib/stellar";
 import { StepChart, type Point } from "./chart";
 
 // Libelles des adresses connues de l'instance : le vault, ses strategies, et
-// les comptes qui l'ont gouverne (admin, keeper), deduits des events.
+// les comptes qui l'ont gouverne (admin, keeper, tresorerie), deduits des
+// events.
 export type Labels = Map<string, string>;
 
 export function buildLabels(
@@ -25,6 +27,10 @@ export function buildLabels(
     if (e.name === "keeper_set") {
       const next = field<string>(e, "new");
       if (next) labels.set(next, "Keeper");
+    }
+    if (e.name === "treasury_set") {
+      const next = field<string>(e, "new");
+      if (next) labels.set(next, "Treasury");
     }
   }
   return labels;
@@ -75,6 +81,7 @@ function partyOf(e: ChainEvent): string | undefined {
   return (
     field<string>(e, "owner") ??
     field<string>(e, "strategy") ??
+    field<string>(e, "recipient") ??
     field<string>(e, "admin") ??
     undefined
   );
@@ -83,6 +90,11 @@ function partyOf(e: ChainEvent): string | undefined {
 function decisionOf(e: ChainEvent, labels: Labels) {
   if (e.name === "deposit" || e.name === "withdraw") {
     return <span className="muted">client</span>;
+  }
+  // Frais : appliques par le contrat selon le reglage en vigueur, sans
+  // decision au moment du prelevement.
+  if (e.name === "fee_minted") {
+    return <span className="muted">fee schedule</span>;
   }
   const by = field<string>(e, "decided_by") ?? field<string>(e, "admin");
   const algo = field<string>(e, "algo");
@@ -170,9 +182,12 @@ export function AuditTrail({
                     <Party address={partyOf(e)} labels={labels} />
                   </td>
                   <td className="num">
-                    {units(field(e, "assets") ?? field(e, "assets_recovered"), code)}
+                    {units(
+                      field(e, "assets") ?? field(e, "assets_recovered") ?? field(e, "fee_assets"),
+                      code,
+                    )}
                   </td>
-                  <td className="num">{units(field(e, "shares"))}</td>
+                  <td className="num">{units(field(e, "shares") ?? field(e, "fee_shares"))}</td>
                   <td className="num">{price === undefined ? "-" : price.toFixed(7)}</td>
                   <td>{decisionOf(e, labels)}</td>
                   <td>
@@ -272,6 +287,7 @@ type Statement = {
   aum: bigint;
   deposits: bigint;
   withdrawals: bigint;
+  fees: bigint;
   navPublications: number;
 };
 
@@ -292,6 +308,7 @@ function monthlyStatements(events: ChainEvent[]): Statement[] {
         aum: 0n,
         deposits: 0n,
         withdrawals: 0n,
+        fees: 0n,
         navPublications: 0,
       };
       out.push(current);
@@ -304,6 +321,7 @@ function monthlyStatements(events: ChainEvent[]): Statement[] {
     if (total !== undefined) current.aum = BigInt(total);
     if (e.name === "deposit") current.deposits += BigInt(field<bigint>(e, "assets") ?? 0n);
     if (e.name === "withdraw") current.withdrawals += BigInt(field<bigint>(e, "assets") ?? 0n);
+    if (e.name === "fee_minted") current.fees += BigInt(field<bigint>(e, "fee_assets") ?? 0n);
     if (e.name === "nav") current.navPublications += 1;
   }
   return out.reverse();
@@ -349,6 +367,7 @@ export function NavSection({ events, code }: { events: ChainEvent[]; code: strin
               <th className="num">AUM at close</th>
               <th className="num">Deposits</th>
               <th className="num">Withdrawals</th>
+              <th className="num">Fees</th>
               <th className="num">Daily NAV events</th>
             </tr>
           </thead>
@@ -361,6 +380,7 @@ export function NavSection({ events, code }: { events: ChainEvent[]; code: strin
                 <td className="num">{units(s.aum, code)}</td>
                 <td className="num">{units(s.deposits, code)}</td>
                 <td className="num">{units(s.withdrawals, code)}</td>
+                <td className="num">{units(s.fees, code)}</td>
                 <td className="num">{s.navPublications}</td>
               </tr>
             ))}
@@ -373,10 +393,30 @@ export function NavSection({ events, code }: { events: ChainEvent[]; code: strin
 
 // --- Gouvernance ---------------------------------------------------------------
 
-const GOVERNANCE = new Set(["keeper_set", "targets_set", "paused", "unpaused", "emergency_exit"]);
+const GOVERNANCE = new Set([
+  "keeper_set",
+  "targets_set",
+  "config_set",
+  "treasury_set",
+  "paused",
+  "unpaused",
+  "emergency_exit",
+]);
+
+// Cles de `config_set` (frais D6b), en points de base.
+const CONFIG_KEYS: Record<string, string> = {
+  perf_bps: "performance fee",
+  mgmt_bps: "management fee, yearly",
+};
 
 function governanceDetail(e: ChainEvent, labels: Labels, code: string) {
   switch (e.name) {
+    case "config_set": {
+      const key = field<string>(e, "key") ?? "";
+      const pct = (v: unknown) => `${Number(v ?? 0) / 100} %`;
+      return `${CONFIG_KEYS[key] ?? key}: ${pct(field(e, "old"))} → ${pct(field(e, "new"))}`;
+    }
+    case "treasury_set":
     case "keeper_set":
       return (
         <>
@@ -526,6 +566,7 @@ export function Fees({ events, code }: { events: ChainEvent[]; code: string }) {
       </div>
     );
   }
+  const date = (v: unknown) => new Date(Number(v ?? 0) * 1000).toISOString().slice(0, 10);
   return (
     <div className="table-wrap">
       <table className="grid">
@@ -533,6 +574,7 @@ export function Fees({ events, code }: { events: ChainEvent[]; code: string }) {
           <tr>
             <th>Time (UTC)</th>
             <th>Kind</th>
+            <th>Period</th>
             <th className="num">Fee shares</th>
             <th className="num">Fee assets</th>
             <th className="num">Rate</th>
@@ -544,12 +586,15 @@ export function Fees({ events, code }: { events: ChainEvent[]; code: string }) {
           {fees.map((e) => (
             <tr key={e.id}>
               <td className="mono">{utc(e.closedAt)}</td>
-              <td>{String(e.topics[1] ?? "")}</td>
+              <td>{field<string>(e, "kind") === "perf" ? "performance" : "management"}</td>
+              <td className="mono">
+                {date(field(e, "period_start"))} → {date(field(e, "period_end"))}
+              </td>
               <td className="num">{units(field(e, "fee_shares"))}</td>
               <td className="num">{units(field(e, "fee_assets"), code)}</td>
               <td className="num">{Number(field(e, "rate_bps") ?? 0) / 100} %</td>
               <td className="num">
-                {units(field(e, "hwm_before"))} → {units(field(e, "hwm_after"))}
+                {formatPrice(field(e, "hwm_before"))} → {formatPrice(field(e, "hwm_after"))}
               </td>
               <td>
                 <TxLink hash={e.txHash} />

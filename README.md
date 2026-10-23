@@ -58,6 +58,19 @@ the browser, with no command line. Testnet EURC comes from
 [Circle's faucet](https://faucet.circle.com/), since Friendbot only hands out
 XLM.
 
+**Deliverable 5 and 6 instances** (compliance event schema of deliverable 6a,
+audit trail at [vault.for-yield.com/dashboard/](https://vault.for-yield.com/dashboard/)):
+
+| Component | Contract ID |
+|---|---|
+| YieldVault (D5), USDC allocator over Blend and Aquarius | `CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV` |
+| YieldVault (D6b), EURC with performance and management fees | `CCXPS66KJHVMXRFHYXVPGOJKPH3LWBIAA4WVNV6BYJXFYKKEBCCLYVMP` |
+
+Evidence in [docs/evidence/d5-defindex-allocator.md](./docs/evidence/d5-defindex-allocator.md)
+and [docs/evidence/d6-fees-audit-trail.md](./docs/evidence/d6-fees-audit-trail.md).
+The EURC tab of the demo UI now serves the D6b instance; the D3 instance above
+keeps its bytecode and its evidence.
+
 **Deliverable 4 instance — SwapRouter, DEX routing (Aquarius)**:
 
 | Component | Contract ID |

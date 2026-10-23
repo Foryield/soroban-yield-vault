@@ -20,6 +20,7 @@ import {
 } from "@/lib/stellar";
 import { VAULTS, DEFAULT_VAULT, vaultFromKey, type VaultConfig } from "@/lib/vaults";
 import { AllocationPanel } from "./allocation";
+import { FeePanel } from "./fees";
 
 type Phase = "idle" | "signing" | "success" | "error";
 type Mode = "deposit" | "redeem";
@@ -452,11 +453,12 @@ export default function Home() {
         {error && <div className="status error">{error}</div>}
       </div>
 
-      {vault.allocator && (
+      {vault.audited && (
         <div className="card below">
-          <AllocationPanel vault={vault} refreshKey={operations} />
+          {vault.allocator && <AllocationPanel vault={vault} refreshKey={operations} />}
+          {vault.fees && <FeePanel vault={vault} refreshKey={operations} />}
           <a className="dashboard-link" href={`/dashboard/?vault=${vault.key}`}>
-            Compliance dashboard: audit trail, allocations, NAV &rarr;
+            Compliance dashboard: audit trail, {vault.fees ? "fees" : "allocations"}, NAV &rarr;
           </a>
         </div>
       )}

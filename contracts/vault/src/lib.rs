@@ -29,9 +29,16 @@
 //!   sans trou) et valeur liquidative quotidienne publiee par `checkpoint`,
 //!   sans authentification.
 //!
-//! Plan de conception : docs/plans/2026-10-20-d5-allocateur-conception.md.
+//! - frais D6b (`set_fees`, admin) : frais de gestion au prorata du temps et
+//!   commission de performance au-dessus d'un high-water mark, payes en parts
+//!   emises a la tresorerie, jamais en actif. Ils se cristallisent avant
+//!   chaque depot, chaque retrait et chaque `checkpoint` : l'entrant ne paie
+//!   jamais sur un gain anterieur a son entree. Sans `set_fees`, aucun frais.
 //!
-//! Hors scope : frais high-water mark (D6b), parts SEP-41 transferables.
+//! Plans de conception : docs/plans/2026-10-20-d5-allocateur-conception.md,
+//! docs/plans/2026-10-23-d6b-frais.md.
+//!
+//! Hors scope : parts SEP-41 transferables.
 
 use defindex_strategy_core::DeFindexStrategyClient;
 use soroban_sdk::{
@@ -72,6 +79,7 @@ pub enum VaultError {
     StrategyNotFound = 21,
     NavAlreadyPublished = 22,
     WriteOffRequiresPause = 23,
+    InvalidFeeConfig = 24,
 }
 
 /// Une strategie au trait DeFindex et sa place dans l'allocation, en points de
@@ -225,6 +233,72 @@ pub struct NavEvent {
     pub seq: u64,
 }
 
+/// Frais preleves, un event par type (`kind` = `mgmt` ou `perf`), avant
+/// l'event de l'operation qui les a cristallises. `fee_assets` : frais dus ;
+/// les parts emises valent au plus ce montant (troncature en faveur des
+/// porteurs). `hwm_before` et `hwm_after` : prix par part a l'echelle
+/// PRICE_SCALE, egaux pour `mgmt`. Periode : horodatages du ledger, en
+/// secondes UTC.
+#[contractevent(topics = ["fee_minted"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeeMintedEvent {
+    #[topic]
+    pub kind: Symbol,
+    pub fee_shares: i128,
+    pub fee_assets: i128,
+    pub recipient: Address,
+    pub rate_bps: u32,
+    pub hwm_before: i128,
+    pub hwm_after: i128,
+    pub period_start: u64,
+    pub period_end: u64,
+    pub seq: u64,
+    pub total_assets: i128,
+    pub total_shares: i128,
+}
+
+/// Taux de frais modifie (`key` = `perf_bps` ou `mgmt_bps`), ancienne valeur
+/// comprise (art. 2(1)(b)) : le `config_set` du schema D6a.
+#[contractevent(topics = ["config_set"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfigSetEvent {
+    #[topic]
+    pub key: Symbol,
+    pub old: u32,
+    pub new: u32,
+    pub admin: Address,
+    pub seq: u64,
+}
+
+/// Tresorerie modifiee. `old` vide au premier reglage des frais.
+#[contractevent(topics = ["treasury_set"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TreasurySetEvent {
+    pub old: Option<Address>,
+    pub new: Address,
+    pub admin: Address,
+    pub seq: u64,
+}
+
+/// Parametres et etat des frais D6b, en une seule entree d'instance.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeeConfig {
+    /// Beneficiaire des parts de frais.
+    pub treasury: Address,
+    /// Commission de performance, en points de base du gain.
+    pub perf_bps: u32,
+    /// Frais de gestion, en points de base de l'actif par an.
+    pub mgmt_bps: u32,
+    /// High-water mark : prix par part (echelle PRICE_SCALE) apres le dernier
+    /// prelevement de performance. Il ne baisse jamais.
+    pub hwm: i128,
+    /// Pose du HWM : debut de la periode de performance en cours.
+    pub hwm_at: u64,
+    /// Horodatage jusqu'auquel les frais de gestion sont factures.
+    pub accrued_at: u64,
+}
+
 contractmeta!(
     key = "desc",
     val = "ForYield YieldVault - depot/retrait, parts proportionnelles"
@@ -243,6 +317,7 @@ enum DataKey {
     Shares(Address),
     Seq,
     LastNavDay,
+    Fees,
 }
 
 /// Parts mortes verrouillées au premier dépôt (jamais rachetables) : borne le
@@ -269,6 +344,20 @@ const SECONDS_PER_DAY: u64 = 86_400;
 /// servi par les strategies (a la charge du client sortant) et une sortie
 /// d'urgence sans passage en perte. Au-dela, tout revert.
 pub(crate) const MAX_REBALANCE_LOSS_BPS: i128 = 100;
+
+/// Echelle du prix par part des frais (high-water mark) : 9 decimales, deux
+/// de plus que l'actif, pour que la troncature du prix ne cree ni n'efface
+/// un gain d'une unite.
+pub(crate) const PRICE_SCALE: i128 = 1_000_000_000;
+
+/// Annee de 365 jours, base des frais de gestion.
+pub(crate) const SECONDS_PER_YEAR: u64 = 31_536_000;
+
+/// Plafond de la commission de performance : 30 %, celui du vault EVM.
+pub(crate) const MAX_PERF_FEE_BPS: u32 = 3_000;
+
+/// Plafond des frais de gestion : 5 % par an.
+pub(crate) const MAX_MGMT_FEE_BPS: u32 = 500;
 
 /// Ledgers par jour, fermeture nominale a 5 secondes.
 const LEDGERS_PER_DAY: u32 = 17_280;
@@ -354,6 +443,9 @@ impl YieldVault {
             .checked_add(Self::strategy_assets(&env))
             .unwrap_or_else(|| panic_with_error!(&env, VaultError::MathOverflow));
 
+        // Frais dus d'abord, sur l'etat d'avant le depot : l'entrant achete au
+        // prix net et ne paie rien sur le gain des porteurs deja presents.
+        let fees = Self::accrue_fees(&env, assets_before);
         let total_before = Self::total_shares(env.clone());
         let (shares, total) = if total_before == 0 {
             // Genese : tout l'actif deja detenu (donation comprise) entre dans
@@ -397,6 +489,7 @@ impl YieldVault {
         // reequilibrage, par lot.
         token.transfer(&from, env.current_contract_address(), &amount);
 
+        Self::publish_fees(&env, fees, assets_before + amount, total);
         DepositEvent {
             owner: from,
             assets: amount,
@@ -417,12 +510,6 @@ impl YieldVault {
             panic_with_error!(&env, VaultError::SharesMustBePositive);
         }
 
-        let key = DataKey::Shares(from.clone());
-        let balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        if balance < shares {
-            panic_with_error!(&env, VaultError::InsufficientShares);
-        }
-
         // montant = parts x actifs / total_parts, sur l'etat AVANT burn,
         // tronque : l'arrondi est toujours en faveur du vault.
         let token = TokenClient::new(&env, &Self::asset(&env));
@@ -430,6 +517,19 @@ impl YieldVault {
         let strategies = Self::strategy_list(&env);
         let values = Self::strategy_values(&env, &strategies);
         let assets = Self::sum(&env, idle, &values);
+        // Frais dus d'abord : le sortant paie sa part du gain avant de partir,
+        // sans la reporter sur ceux qui restent.
+        let fees = Self::accrue_fees(&env, assets);
+
+        // Solde lu APRES les frais : si le sortant est la tresorerie, les
+        // parts qu'elle vient de recevoir en font partie, et l'ecriture du
+        // solde ne doit pas les effacer.
+        let key = DataKey::Shares(from.clone());
+        let balance: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        if balance < shares {
+            panic_with_error!(&env, VaultError::InsufficientShares);
+        }
+
         let total_before = Self::total_shares(env.clone());
         let amount = shares
             .checked_mul(assets)
@@ -464,6 +564,7 @@ impl YieldVault {
         // L'actif baisse du montant servi et, si les strategies ont ete
         // sollicitees, de leur cout de sortie.
         let total_assets = assets - amount + value_change;
+        Self::publish_fees(&env, fees, total_assets, total_before - shares);
         let redeem = symbol_short!("redeem");
         for (strategy, protocol, got, position_after) in pulled.iter() {
             DeallocateEvent {
@@ -871,7 +972,8 @@ impl YieldVault {
     /// de 24 h depuis le dernier appel, evite qu'un appel en avance sur la
     /// veille fasse sauter un jour. Fonctionne en pause : la valeur reste a
     /// publier quand tout est gele. Prolonge aussi la duree de vie de
-    /// l'instance.
+    /// l'instance. Preleve les frais dus avant de publier : la valeur
+    /// liquidative publiee est nette de frais.
     pub fn checkpoint(env: Env) {
         let day = env.ledger().timestamp() / SECONDS_PER_DAY;
         let last: Option<u64> = env.storage().instance().get(&DataKey::LastNavDay);
@@ -882,12 +984,104 @@ impl YieldVault {
         env.storage()
             .instance()
             .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        let assets = Self::total_assets(env.clone());
+        let fees = Self::accrue_fees(&env, assets);
+        let shares = Self::total_shares(env.clone());
+        Self::publish_fees(&env, fees, assets, shares);
         NavEvent {
-            total_assets: Self::total_assets(env.clone()),
-            total_shares: Self::total_shares(env.clone()),
+            total_assets: assets,
+            total_shares: shares,
             seq: Self::next_seq(&env),
         }
         .publish(&env);
+    }
+
+    /// Regle les frais (admin) : tresorerie, commission de performance en
+    /// points de base du gain, frais de gestion en points de base par an.
+    /// Les frais dus sont d'abord preleves aux taux et a la tresorerie
+    /// d'avant : un changement ne s'applique jamais au passe. Pour la meme
+    /// raison, le high-water mark ne descend jamais sous le prix courant : un
+    /// gain fait pendant que la commission etait nulle n'est pas facture
+    /// ensuite. Au premier reglage, il part du prix de genese (une unite
+    /// d'actif par part) ou du prix courant s'il est plus haut : des porteurs
+    /// en perte ne paient rien sur leur remontee.
+    pub fn set_fees(env: Env, treasury: Address, perf_bps: u32, mgmt_bps: u32) {
+        let admin = Self::admin(&env);
+        admin.require_auth();
+        // Des parts de frais emises au vault lui-meme seraient perdues : il
+        // ne peut pas signer leur rachat.
+        if perf_bps > MAX_PERF_FEE_BPS
+            || mgmt_bps > MAX_MGMT_FEE_BPS
+            || treasury == env.current_contract_address()
+        {
+            panic_with_error!(&env, VaultError::InvalidFeeConfig);
+        }
+
+        let assets = Self::total_assets(env.clone());
+        let fees = Self::accrue_fees(&env, assets);
+        let total = Self::total_shares(env.clone());
+        Self::publish_fees(&env, fees, assets, total);
+
+        let now = env.ledger().timestamp();
+        let old = Self::fees(env.clone());
+        let price = if total > 0 && assets > 0 {
+            Self::mul_div(&env, assets, PRICE_SCALE, total)
+        } else {
+            PRICE_SCALE
+        };
+        let (hwm, hwm_at) = match &old {
+            Some(c) if c.hwm >= price => (c.hwm, c.hwm_at),
+            Some(_) => (price, now),
+            None => (price.max(PRICE_SCALE), now),
+        };
+        // `accrued_at` repart de maintenant : le reliquat de temps que la
+        // troncature n'a pas facture au taux ancien n'est pas facture au
+        // nouveau.
+        env.storage().instance().set(
+            &DataKey::Fees,
+            &FeeConfig {
+                treasury: treasury.clone(),
+                perf_bps,
+                mgmt_bps,
+                hwm,
+                hwm_at,
+                accrued_at: now,
+            },
+        );
+
+        let (old_treasury, old_perf, old_mgmt) = match old {
+            Some(c) => (Some(c.treasury), c.perf_bps, c.mgmt_bps),
+            None => (None, 0, 0),
+        };
+        for (key, old, new) in [
+            (symbol_short!("perf_bps"), old_perf, perf_bps),
+            (symbol_short!("mgmt_bps"), old_mgmt, mgmt_bps),
+        ] {
+            if old != new {
+                ConfigSetEvent {
+                    key,
+                    old,
+                    new,
+                    admin: admin.clone(),
+                    seq: Self::next_seq(&env),
+                }
+                .publish(&env);
+            }
+        }
+        if old_treasury.as_ref() != Some(&treasury) {
+            TreasurySetEvent {
+                old: old_treasury,
+                new: treasury,
+                admin,
+                seq: Self::next_seq(&env),
+            }
+            .publish(&env);
+        }
+    }
+
+    /// Reglage et etat des frais ; vide tant que `set_fees` n'a pas ete appele.
+    pub fn fees(env: Env) -> Option<FeeConfig> {
+        env.storage().instance().get(&DataKey::Fees)
     }
 
     /// Numero d'enregistrement du dernier event emis (0 avant le premier).
@@ -916,6 +1110,144 @@ impl YieldVault {
 
     fn asset(env: &Env) -> Address {
         env.storage().instance().get(&DataKey::Asset).unwrap()
+    }
+
+    /// Cristallise les frais dus sur `assets` (actif total deja lu par
+    /// l'appelant : aucune lecture de strategie de plus) et emet les parts a
+    /// la tresorerie. Rend les events a publier, `seq` et totaux de fin
+    /// d'appel encore a remplir par `publish_fees`.
+    ///
+    /// 1. Gestion : actif x taux x duree, puis parts par dilution exacte
+    ///    (frais x parts / (actif - frais)) : au prix d'apres, elles valent
+    ///    les frais. `accrued_at` n'avance que si des parts sont emises : une
+    ///    suite d'operations rapprochees, dont chacune tronquerait les frais
+    ///    a zero, ne les efface pas. Duree bornee a un an par prelevement :
+    ///    un vault laisse sans operation ni `checkpoint` ne se bloque pas sur
+    ///    des frais superieurs a son actif.
+    /// 2. Performance, sur le prix apres gestion : taux x (prix - HWM) x
+    ///    parts, meme dilution. Le HWM devient le prix apres prelevement : un
+    ///    gain n'est facture qu'une fois. Si la troncature ne laisse aucune
+    ///    part, rien ne bouge et le gain reste facturable.
+    fn accrue_fees(env: &Env, assets: i128) -> [Option<FeeMintedEvent>; 2] {
+        let mut charges = [None, None];
+        let Some(mut cfg) = Self::fees(env.clone()) else {
+            return charges;
+        };
+        let now = env.ledger().timestamp();
+        let mut total = Self::total_shares(env.clone());
+        // Sans part ni actif, rien a facturer ni a diluer : le temps ne court
+        // pas pour des porteurs qui n'existent pas.
+        if total == 0 || assets <= 0 {
+            cfg.accrued_at = now;
+            env.storage().instance().set(&DataKey::Fees, &cfg);
+            return charges;
+        }
+        let mut minted: i128 = 0;
+
+        let elapsed = now.saturating_sub(cfg.accrued_at).min(SECONDS_PER_YEAR);
+        let fee = Self::mul_div(
+            env,
+            assets,
+            cfg.mgmt_bps as i128 * elapsed as i128,
+            BPS as i128 * SECONDS_PER_YEAR as i128,
+        );
+        let shares = Self::dilution(env, fee, assets, total);
+        if shares > 0 {
+            charges[0] = Some(FeeMintedEvent {
+                kind: symbol_short!("mgmt"),
+                fee_shares: shares,
+                fee_assets: fee,
+                recipient: cfg.treasury.clone(),
+                rate_bps: cfg.mgmt_bps,
+                hwm_before: cfg.hwm,
+                hwm_after: cfg.hwm,
+                period_start: cfg.accrued_at,
+                period_end: now,
+                seq: 0,
+                total_assets: 0,
+                total_shares: 0,
+            });
+            total += shares;
+            minted += shares;
+            cfg.accrued_at = now;
+        } else if cfg.mgmt_bps == 0 {
+            cfg.accrued_at = now;
+        }
+
+        let price = Self::mul_div(env, assets, PRICE_SCALE, total);
+        if cfg.perf_bps > 0 && price > cfg.hwm {
+            let gain = Self::mul_div(env, price - cfg.hwm, total, PRICE_SCALE);
+            let fee = Self::bps_of(env, gain, cfg.perf_bps);
+            let shares = Self::dilution(env, fee, assets, total);
+            if shares > 0 {
+                total += shares;
+                minted += shares;
+                let hwm_after = Self::mul_div(env, assets, PRICE_SCALE, total).max(cfg.hwm);
+                charges[1] = Some(FeeMintedEvent {
+                    kind: symbol_short!("perf"),
+                    fee_shares: shares,
+                    fee_assets: fee,
+                    recipient: cfg.treasury.clone(),
+                    rate_bps: cfg.perf_bps,
+                    hwm_before: cfg.hwm,
+                    hwm_after,
+                    period_start: cfg.hwm_at,
+                    period_end: now,
+                    seq: 0,
+                    total_assets: 0,
+                    total_shares: 0,
+                });
+                cfg.hwm = hwm_after;
+                cfg.hwm_at = now;
+            }
+        }
+
+        if minted > 0 {
+            let key = DataKey::Shares(cfg.treasury.clone());
+            let prev: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+            env.storage().persistent().set(&key, &(prev + minted));
+            env.storage().instance().set(&DataKey::TotalShares, &total);
+            Self::extend_ttls(env, &key);
+        }
+        env.storage().instance().set(&DataKey::Fees, &cfg);
+        charges
+    }
+
+    /// Publie les `fee_minted` d'un appel, numerotes avant l'event de
+    /// l'operation, avec les totaux de fin d'appel (D6a, section 9, point 6).
+    fn publish_fees(
+        env: &Env,
+        charges: [Option<FeeMintedEvent>; 2],
+        total_assets: i128,
+        total_shares: i128,
+    ) {
+        for charge in charges.into_iter().flatten() {
+            FeeMintedEvent {
+                seq: Self::next_seq(env),
+                total_assets,
+                total_shares,
+                ..charge
+            }
+            .publish(env);
+        }
+    }
+
+    /// Parts a emettre pour que `fee` revienne au beneficiaire au prix
+    /// d'apres emission : fee x parts / (actif - fee), tronque en faveur des
+    /// porteurs. Les frais restent sous l'actif : la gestion est bornee a 5 %
+    /// d'un an, la performance a 30 % d'un gain qui ne depasse pas l'actif.
+    fn dilution(env: &Env, fee: i128, assets: i128, total: i128) -> i128 {
+        if fee <= 0 {
+            return 0;
+        }
+        Self::mul_div(env, fee, total, assets - fee)
+    }
+
+    /// a x b / c, tronque, sans debordement silencieux.
+    fn mul_div(env: &Env, a: i128, b: i128, c: i128) -> i128 {
+        a.checked_mul(b)
+            .unwrap_or_else(|| panic_with_error!(env, VaultError::MathOverflow))
+            / c
     }
 
     fn strategy_list(env: &Env) -> Vec<StrategyConfig> {
@@ -1114,6 +1446,8 @@ impl YieldVault {
 mod test;
 #[cfg(test)]
 mod test_blend;
+#[cfg(test)]
+mod test_fees;
 #[cfg(test)]
 mod test_invariants;
 #[cfg(test)]

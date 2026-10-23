@@ -9,12 +9,15 @@ Exported as a static site (`output: "export"`): no server.
 
 ## Pages
 
-- `/` - deposit and redeem, one tab per vault instance: XLM, EURC (deliverable 3)
-  and USDC, the multi-strategy allocator (deliverable 5). The USDC tab also shows the
-  live allocation across Blend, Aquarius and the idle pocket, against the targets,
-  and whether the drift trigger would let the keeper rebalance.
+- `/` - deposit and redeem, one tab per vault instance: XLM, EURC (the fee instance
+  of deliverable 6b) and USDC, the multi-strategy allocator (deliverable 5). The USDC
+  tab also shows the live allocation across Blend, Aquarius and the idle pocket,
+  against the targets, and whether the drift trigger would let the keeper rebalance.
+  The EURC tab shows the fee settings, the NAV per share against the high-water mark
+  and what the treasury holds.
 - `/dashboard/` - compliance dashboard (deliverable 6c): the AMF audit trail emitted
-  by the allocator (deliverable 6a schema), with a record-number gap check,
+  by the allocator and the fee instance (deliverable 6a schema), with a record-number
+  gap check, the fees charged (deliverable 6b),
   allocations per batch, NAV per share and a monthly statement, governance events,
   the decision-algorithm register, and CSV / JSON export.
 

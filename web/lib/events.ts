@@ -66,6 +66,7 @@ const TOPIC_FIELDS: Record<string, string[]> = {
   paused: ["admin"],
   unpaused: ["admin"],
   fee_minted: ["kind"],
+  config_set: ["key"],
 };
 
 function decodeScVal(base64: string): unknown {

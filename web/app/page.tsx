@@ -19,6 +19,7 @@ import {
   type VaultPosition,
 } from "@/lib/stellar";
 import { VAULTS, DEFAULT_VAULT, vaultFromKey, type VaultConfig } from "@/lib/vaults";
+import { AllocationPanel } from "./allocation";
 
 type Phase = "idle" | "signing" | "success" | "error";
 type Mode = "deposit" | "redeem";
@@ -50,6 +51,9 @@ export default function Home() {
   const [funding, setFunding] = useState(false);
   const [trusting, setTrusting] = useState(false);
   const [position, setPosition] = useState<VaultPosition | null>(null);
+  // Incremente apres chaque operation signee : le panneau de repartition se
+  // relit sans attendre son prochain cycle.
+  const [operations, setOperations] = useState(0);
 
   const asset = vault?.asset;
   const code = asset?.code ?? "";
@@ -209,6 +213,7 @@ export default function Home() {
       setTxHash(hash);
       setPhase("success");
       setRedeemAll(false);
+      setOperations((n) => n + 1);
       await refreshBalance(address, vault);
       await refreshPosition(address, vault);
     } catch (e) {
@@ -446,6 +451,15 @@ export default function Home() {
 
         {error && <div className="status error">{error}</div>}
       </div>
+
+      {vault.allocator && (
+        <div className="card below">
+          <AllocationPanel vault={vault} refreshKey={operations} />
+          <a className="dashboard-link" href={`/dashboard/?vault=${vault.key}`}>
+            Compliance dashboard: audit trail, allocations, NAV &rarr;
+          </a>
+        </div>
+      )}
 
       <div className="footer">
         Testnet demo - Stellar Community Fund Build - for-yield.com

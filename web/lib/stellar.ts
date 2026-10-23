@@ -1,6 +1,8 @@
 import {
+  Account,
   Asset,
   Contract,
+  Keypair,
   Operation,
   TransactionBuilder,
   BASE_FEE,
@@ -317,7 +319,7 @@ function toStroops(amount: string): bigint {
   );
 }
 
-function fromStroops(value: bigint): string {
+export function fromStroops(value: bigint): string {
   const unit = 10n ** BigInt(DECIMALS);
   const negative = value < 0n;
   const abs = negative ? -value : value;
@@ -337,13 +339,13 @@ export type VaultPosition = {
 
 // Lecture seule : simuler un appel n'emet aucune transaction et ne coute rien.
 // Le compte source ne sert qu'a construire une enveloppe valide.
-async function simulateRead(
+async function simulateValue(
   server: rpc.Server,
-  account: Awaited<ReturnType<rpc.Server["getAccount"]>>,
+  account: Account,
   contract: Contract,
   fn: string,
   ...args: xdr.ScVal[]
-): Promise<bigint> {
+): Promise<unknown> {
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
     networkPassphrase: PASSPHRASE,
@@ -359,10 +361,37 @@ async function simulateRead(
   if (!sim.result) {
     throw new Error(`Vault read returned nothing (${fn})`);
   }
-  return BigInt(scValToNative(sim.result.retval));
+  return scValToNative(sim.result.retval);
 }
 
-function rpcServer(): rpc.Server {
+async function simulateRead(
+  server: rpc.Server,
+  account: Account,
+  contract: Contract,
+  fn: string,
+  ...args: xdr.ScVal[]
+): Promise<bigint> {
+  return BigInt(
+    (await simulateValue(server, account, contract, fn, ...args)) as
+      | bigint
+      | number,
+  );
+}
+
+// Lecture d'un contrat sans wallet connecte (dashboard, repartition) : la
+// simulation ne verifie ni l'existence ni la sequence du compte source, un
+// compte aleatoire suffit a construire l'enveloppe. Rend la valeur native
+// (bigint, objet, tableau) telle que la decode le SDK.
+export async function readContract(
+  contractId: string,
+  fn: string,
+  ...args: xdr.ScVal[]
+): Promise<unknown> {
+  const reader = new Account(Keypair.random().publicKey(), "0");
+  return simulateValue(rpcServer(), reader, new Contract(contractId), fn, ...args);
+}
+
+export function rpcServer(): rpc.Server {
   return new rpc.Server(requireConfig(RPC_URL, "NEXT_PUBLIC_RPC_URL"));
 }
 

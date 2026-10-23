@@ -266,3 +266,112 @@ button.secondary {
   font-size: 11px;
   color: var(--muted);
 }
+
+/* --- Repartition de l'allocateur (instance a strategies) ------------------ */
+
+.card.below {
+  margin-top: 14px;
+  padding: 22px;
+}
+
+.allocation-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  font-weight: 650;
+  margin-bottom: 12px;
+}
+
+.allocation-head .value {
+  font-variant-numeric: tabular-nums;
+}
+
+.muted-line {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.allocation-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #0c1322;
+  margin-bottom: 12px;
+}
+
+.segment,
+.dot {
+  background: var(--muted);
+}
+
+.segment.blend,
+.dot.blend {
+  background: var(--accent);
+}
+
+.segment.aquarius,
+.dot.aquarius {
+  background: #2ec4c4;
+}
+
+.segment.idle,
+.dot.idle {
+  background: #8a96b0;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+table.pockets {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+table.pockets th {
+  color: var(--muted);
+  font-weight: 500;
+  text-align: right;
+  padding: 6px 0;
+}
+
+table.pockets td {
+  text-align: right;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+table.pockets th:first-child,
+table.pockets td:first-child {
+  text-align: left;
+}
+
+.trigger {
+  margin-top: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.trigger.due {
+  border-color: rgba(91, 141, 239, 0.5);
+  color: var(--text);
+}
+
+.dashboard-link {
+  display: block;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+}

@@ -14,7 +14,7 @@
 
 import { IS_TESTNET } from "./network";
 
-export type VaultKey = "xlm" | "eurc";
+export type VaultKey = "xlm" | "eurc" | "usdc";
 
 // `native` = XLM, porte par le compte lui-meme. `classic` = actif Stellar
 // classique detenu via une trustline, et manipule en Soroban par son
@@ -37,11 +37,16 @@ export type VaultConfig = {
   subtitle: string;
   /// Ou se procurer l'actif de test quand Friendbot ne le distribue pas.
   faucet?: FaucetHint;
+  /// Instance a strategies (allocateur D5) : la page lit sa repartition et
+  /// le dashboard sa piste d'audit. Les instances D1 a D3 n'en ont pas et
+  /// restent sur leur bytecode d'avant le schema D6a.
+  allocator?: boolean;
 };
 
 const TESTNET_DEFAULTS: Record<VaultKey, string> = {
   xlm: "CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN",
   eurc: "CDZR2IY4V3GXUONLTVXJNCMTIR2LLFC55ZRPPEHCTI4RM7LVF25UKG5K",
+  usdc: "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
 };
 
 function contractId(key: VaultKey, fromEnv: string | undefined): string {
@@ -53,6 +58,11 @@ function contractId(key: VaultKey, fromEnv: string | undefined): string {
 // qu'elle n'est pas ecrite ici elle reste hors du selecteur.
 const EURC_TESTNET_ISSUER =
   "GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO";
+
+// USDC de test du pool Blend sur testnet, actif de l'allocateur D5. Ce n'est
+// pas l'USDC de test de Circle : la strategie Blend ne prend que celui-ci.
+const USDC_TESTNET_ISSUER =
+  "GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56";
 
 const ALL: VaultConfig[] = [
   {
@@ -76,6 +86,17 @@ const ALL: VaultConfig[] = [
       label: "Get testnet EURC from Circle",
       url: "https://faucet.circle.com/",
     },
+  },
+  {
+    key: "usdc",
+    tab: "USDC",
+    contractId: contractId("usdc", process.env.NEXT_PUBLIC_USDC_VAULT_ID),
+    asset: IS_TESTNET
+      ? { kind: "classic", code: "USDC", issuer: USDC_TESTNET_ISSUER }
+      : { kind: "classic", code: "USDC", issuer: "" },
+    subtitle:
+      "Deposit USDC into the multi-strategy vault. Deposits wait in the idle pocket until the keeper rebalances them across Blend lending and an Aquarius liquidity position, in one batch, against fixed targets.",
+    allocator: true,
   },
 ];
 

@@ -12,11 +12,13 @@ services:
     pullRequestPreviewsEnabled: false
     # Valeurs publiques (contract ID testnet + endpoints), aucun secret.
     #
-    # Deux instances du meme contrat, servies par la MEME page : l'onglet XLM
-    # (actif natif, tout compte finance par Friendbot peut deposer) et l'onglet
-    # EURC (livrable 3, actif Classic detenu via son wrapper SAC). Le choix se
-    # transporte dans l'URL : `/?vault=eurc` ouvre directement l'instance EURC,
-    # ce qui donne un lien a envoyer a un relecteur sans second deploiement.
+    # Trois instances servies par la MEME page : l'onglet XLM (actif natif,
+    # tout compte finance par Friendbot peut deposer), l'onglet EURC (livrable
+    # 3, actif Classic detenu via son wrapper SAC) et l'onglet USDC (allocateur
+    # D5 a strategies, dont `/dashboard/` montre la piste d'audit D6c). Le
+    # choix se transporte dans l'URL : `/?vault=eurc` ouvre directement
+    # l'instance EURC, ce qui donne un lien a envoyer a un relecteur sans second
+    # deploiement.
     #
     # Une instance dont l'identifiant est vide disparait du selecteur.
     envVars:
@@ -24,6 +26,11 @@ services:
         value: CCP3EJYJ55RLZYCHABIWCTCWRHQN2BYZVXLCHZLPCCKIKA4VNK6TMCHN
       - key: NEXT_PUBLIC_EURC_VAULT_ID
         value: CDZR2IY4V3GXUONLTVXJNCMTIR2LLFC55ZRPPEHCTI4RM7LVF25UKG5K
+      - key: NEXT_PUBLIC_USDC_VAULT_ID
+        value: CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV
+      # Archive des events tenue par la tache quotidienne (ops-daily.yml).
+      - key: NEXT_PUBLIC_EVENTS_ARCHIVE_URL
+        value: https://raw.githubusercontent.com/Foryield/soroban-yield-vault/refs/heads/data/events/testnet
       - key: NEXT_PUBLIC_RPC_URL
         value: https://soroban-testnet.stellar.org
       - key: NEXT_PUBLIC_HORIZON_URL

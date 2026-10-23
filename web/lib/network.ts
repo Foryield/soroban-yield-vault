@@ -46,6 +46,10 @@ const EXPLORER_SEGMENT = IS_TESTNET ? "testnet" : "public";
 
 export const EXPLORER_TX = (hash: string) =>
   `https://stellar.expert/explorer/${EXPLORER_SEGMENT}/tx/${hash}`;
+export const EXPLORER_CONTRACT = (id: string) =>
+  `https://stellar.expert/explorer/${EXPLORER_SEGMENT}/contract/${id}`;
+export const EXPLORER_ACCOUNT = (id: string) =>
+  `https://stellar.expert/explorer/${EXPLORER_SEGMENT}/account/${id}`;
 
 export function requireConfig(value: string, name: string): string {
   if (!value) {

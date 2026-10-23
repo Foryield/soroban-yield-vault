@@ -43,8 +43,14 @@ export function AllocationPanel({
     }
   }, [vault]);
 
+  // Changement d'instance : l'ancienne repartition ne doit pas rester
+  // affichee sous le nouvel onglet.
   useEffect(() => {
     setState(null);
+  }, [vault]);
+
+  // Une relecture garde l'affichage en place jusqu'a la nouvelle valeur.
+  useEffect(() => {
     load();
     const timer = setInterval(() => {
       if (document.visibilityState === "visible") load();

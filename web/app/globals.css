@@ -375,3 +375,240 @@ table.pockets td:first-child {
   color: var(--accent);
   text-decoration: none;
 }
+
+/* --- Dashboard de conformite ---------------------------------------------- */
+
+.shell.wide {
+  max-width: 1120px;
+}
+
+.logo-sub {
+  margin-left: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.shell.wide > .card,
+.dash-grid {
+  margin-bottom: 14px;
+}
+
+.shell.wide .card {
+  padding: 22px;
+}
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 760px) {
+  .dash-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 650;
+  margin-bottom: 10px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+button.small {
+  width: auto;
+  margin-top: 0;
+  font-size: 12px;
+  padding: 7px 12px;
+  border-radius: 9px;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.chip {
+  width: auto;
+  margin-top: 0;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+table.grid th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 6px 10px 6px 0;
+  white-space: nowrap;
+}
+
+table.grid td {
+  padding: 8px 10px 8px 0;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+table.grid td.wrap {
+  white-space: normal;
+  min-width: 260px;
+  line-height: 1.5;
+}
+
+table.grid .num {
+  text-align: right;
+}
+
+table.grid a,
+.sources a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.sub {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.sub.inline {
+  display: inline;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #0c1322;
+  border: 1px solid var(--border);
+}
+
+.tag.deposit {
+  color: var(--success);
+}
+
+.tag.withdraw {
+  color: #f0b45b;
+}
+
+.tag.allocate,
+.tag.deallocate {
+  color: var(--accent);
+}
+
+.tag.emergency_exit,
+.tag.paused {
+  color: var(--danger);
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+@media (max-width: 760px) {
+  .charts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-title {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+svg.chart {
+  width: 100%;
+  height: auto;
+  background: #0c1322;
+  border-radius: 10px;
+}
+
+svg.chart .axis {
+  stroke: var(--border);
+  stroke-dasharray: 3 3;
+}
+
+svg.chart .tick {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+svg.chart .line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+svg.chart .dot-point {
+  fill: var(--accent);
+}
+
+ul.sources {
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+ul.sources .warn {
+  color: #ffb4a6;
+}
+
+.row a.value {
+  color: var(--accent);
+  text-decoration: none;
+}

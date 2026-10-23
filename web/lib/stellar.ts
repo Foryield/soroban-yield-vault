@@ -36,7 +36,14 @@ import {
 } from "./network";
 import type { AssetDescriptor, VaultConfig } from "./vaults";
 
-export { EXPLORER_TX, IS_TESTNET, NETWORK_LABEL } from "./network";
+export {
+  EXPLORER_ACCOUNT,
+  EXPLORER_CONTRACT,
+  EXPLORER_TX,
+  IS_TESTNET,
+  NETWORK,
+  NETWORK_LABEL,
+} from "./network";
 export type { StellarNetwork } from "./network";
 
 // Levee quand le compte du wallet n'existe pas encore on-chain (Horizon 404).

@@ -106,3 +106,29 @@ and strategies), [PR #35](https://github.com/Foryield/soroban-yield-vault/pull/3
   to 120 days on its first call. The Aquarius seed deposit paid 527.44 XLM of
   rent for that, for a deposit that costs 0.004 XLM in resources. One-off,
   testnet XLM.
+
+## 2026-10-23: first vault deposit
+
+- **What it proves**: the D5 vault takes a deposit and mints shares; the
+  funds sit idle until the first rebalance.
+- **Deposit of 2 USDC** from the ops account, 100 % idle
+  [`d42bc230…1a36`](https://stellar.expert/explorer/testnet/tx/d42bc23001b4ec2a12e13ca34c41a853c77e016f035110e1fea18fe7f02c1a36):
+  19,999,000 shares to the depositor, 1,000 dead shares locked by the vault,
+  `total_assets` 20,000,000, event `seq` 1.
+- **Rent prepaid on first call**: 623.31 XLM charged, almost all of it
+  refundable resource fee for the 120-day extension of the vault's instance
+  and code. One-off, testnet XLM.
+- **Simulated after the deposit** (nothing submitted):
+  - `rebalance`: 1.4 USDC to Blend, 0.4 USDC to Aquarius, valued at
+    0.3990275 USDC right after entry (0.24 % entry cost, swap fee and price
+    impact on the 0.2 USDC swapped, under the 1 % bound); 35.4 M
+    instructions.
+  - `withdraw` of 0.15 USDC worth of shares, served from idle: 2.7 M
+    instructions.
+  - Both within network limits, invocation memory included (a simulation over
+    the limit fails).
+- **Reference price republished** at the ECB rate of 2026-10-22, 1.1205
+  (was 1.1234), valid until 2026-10-26 09:10 UTC
+  [`579303de…a8c5`](https://stellar.expert/explorer/testnet/tx/579303de0799d07b7cfeb28f58c03aab8e995d2ac14d17e3597f6569d33da8c5).
+  The pool stays at 1.1234 until the next alignment, done right before the
+  first Aquarius move.

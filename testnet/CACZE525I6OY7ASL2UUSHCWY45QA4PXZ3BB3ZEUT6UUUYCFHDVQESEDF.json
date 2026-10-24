@@ -1,7 +1,7 @@
 {
   "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
   "network": "testnet",
-  "lastLedger": 5352848,
+  "lastLedger": 5369482,
   "missed": [],
   "events": [
     {
@@ -117,6 +117,29 @@
       "ledger": 5352842,
       "closedAt": "2026-10-23T20:36:37Z",
       "txHash": "73df50473ec67f894b58fc2fba75b73d796dea9cc8f0ba6dfd349595c339e737",
+      "topics": [
+        "AAAADwAAAAVwcmljZQAAAA==",
+        "AAAAEgAAAAAAAAAAsKEDhWM4aCgIpDWWuVjQf8uy1296yrJk/gcAHol0sXk="
+      ],
+      "value": "AAAAEAAAAAEAAAADAAAACgAAAAAAAAAAAAAAAEK3KaAAAAAFAAAAAGrao4AAAAAKAAAAAAAAAAAAAAAAQrcpoA==",
+      "decoded": {
+        "topics": [
+          "price",
+          "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+        ],
+        "value": [
+          "1119300000",
+          "1792713600",
+          "1119300000"
+        ]
+      }
+    },
+    {
+      "id": "0023061702341853184-0000000000",
+      "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "ledger": 5369471,
+      "closedAt": "2026-10-24T19:42:22Z",
+      "txHash": "9a2c61d5f430d491c29d75fdaa43b8f8920f19d563e301d909a2b2d722170638",
       "topics": [
         "AAAADwAAAAVwcmljZQAAAA==",
         "AAAAEgAAAAAAAAAAsKEDhWM4aCgIpDWWuVjQf8uy1296yrJk/gcAHol0sXk="

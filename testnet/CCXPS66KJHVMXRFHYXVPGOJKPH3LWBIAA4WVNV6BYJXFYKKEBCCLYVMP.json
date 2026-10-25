@@ -1,7 +1,7 @@
 {
   "contract": "CCXPS66KJHVMXRFHYXVPGOJKPH3LWBIAA4WVNV6BYJXFYKKEBCCLYVMP",
   "network": "testnet",
-  "lastLedger": 5369482,
+  "lastLedger": 5386900,
   "missed": [],
   "events": [
     {
@@ -225,6 +225,58 @@
           "seq": "9",
           "total_assets": "54000001",
           "total_shares": "50003240"
+        }
+      }
+    },
+    {
+      "id": "0023136533557039104-0000000000",
+      "contract": "CCXPS66KJHVMXRFHYXVPGOJKPH3LWBIAA4WVNV6BYJXFYKKEBCCLYVMP",
+      "ledger": 5386894,
+      "closedAt": "2026-10-25T19:54:17Z",
+      "txHash": "0be985c0a40f3a2bead587c55eeccb2aed4f6aa8b59f68238d1de2a0d35a9e3e",
+      "topics": [
+        "AAAADwAAAApmZWVfbWludGVkAAA=",
+        "AAAADwAAAARtZ210"
+      ],
+      "value": "AAAAEQAAAAEAAAALAAAADwAAAApmZWVfYXNzZXRzAAAAAAAKAAAAAAAAAAAAAAAAAAALpgAAAA8AAAAKZmVlX3NoYXJlcwAAAAAACgAAAAAAAAAAAAAAAAAACskAAAAPAAAACWh3bV9hZnRlcgAAAAAAAAoAAAAAAAAAAAAAAABAX34TAAAADwAAAApod21fYmVmb3JlAAAAAAAKAAAAAAAAAAAAAAAAQF9+EwAAAA8AAAAKcGVyaW9kX2VuZAAAAAAABQAAAABq3l5pAAAADwAAAAxwZXJpb2Rfc3RhcnQAAAAFAAAAAGrdCjIAAAAPAAAACHJhdGVfYnBzAAAAAwAAAMgAAAAPAAAACXJlY2lwaWVudAAAAAAAABIAAAAAAAAAACZJM1u2jOA3LrTkaS47O3l296l+ONMwt+kkO6aA5BvxAAAADwAAAANzZXEAAAAABQAAAAAAAAAKAAAADwAAAAx0b3RhbF9hc3NldHMAAAAKAAAAAAAAAAAAAAAAAzf5gQAAAA8AAAAMdG90YWxfc2hhcmVzAAAACgAAAAAAAAAAAAAAAAL7B/E=",
+      "decoded": {
+        "topics": [
+          "fee_minted",
+          "mgmt"
+        ],
+        "value": {
+          "fee_assets": "2982",
+          "fee_shares": "2761",
+          "hwm_after": "1080000019",
+          "hwm_before": "1080000019",
+          "period_end": "1792958057",
+          "period_start": "1792870962",
+          "rate_bps": 200,
+          "recipient": "GATESM23W2GOANZOWTSGSLR3HN4XN55JPY4NGMFX5ESDXJUA4QN7DLZL",
+          "seq": "10",
+          "total_assets": "54000001",
+          "total_shares": "50006001"
+        }
+      }
+    },
+    {
+      "id": "0023136533557039104-0000000001",
+      "contract": "CCXPS66KJHVMXRFHYXVPGOJKPH3LWBIAA4WVNV6BYJXFYKKEBCCLYVMP",
+      "ledger": 5386894,
+      "closedAt": "2026-10-25T19:54:17Z",
+      "txHash": "0be985c0a40f3a2bead587c55eeccb2aed4f6aa8b59f68238d1de2a0d35a9e3e",
+      "topics": [
+        "AAAADwAAAANuYXYA"
+      ],
+      "value": "AAAAEQAAAAEAAAADAAAADwAAAANzZXEAAAAABQAAAAAAAAALAAAADwAAAAx0b3RhbF9hc3NldHMAAAAKAAAAAAAAAAAAAAAAAzf5gQAAAA8AAAAMdG90YWxfc2hhcmVzAAAACgAAAAAAAAAAAAAAAAL7B/E=",
+      "decoded": {
+        "topics": [
+          "nav"
+        ],
+        "value": {
+          "seq": "11",
+          "total_assets": "54000001",
+          "total_shares": "50006001"
         }
       }
     }

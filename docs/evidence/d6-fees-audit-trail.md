@@ -79,10 +79,51 @@ compliance dashboard (D6c).
   of truncation, borne by the treasury and never by the holders.
 - **Archive**: the seven transactions above are under `archive/d6/`.
 
+## 2026-10-24 and 25: management fee charged by the daily task (D6b)
+
+- **What it proves**: the management fee accrues pro rata temporis without
+  any operator action: the scheduled ops task calls `checkpoint()`, and the
+  fee is minted in shares to the treasury before the day's `nav`.
+- **First scheduled run on this instance**, 2026-10-23 20:36 UTC
+  ([run 40020519009](https://github.com/Foryield/soroban-yield-vault/actions/runs/40020519009)):
+  the day's `nav` was already published at 15:19 (error 22, expected), and
+  the archive ingested this instance's events seq 1 to 7.
+- **Checkpoint of 2026-10-24** (19:42:42 UTC,
+  [run 40126492347](https://github.com/Foryield/soroban-yield-vault/actions/runs/40126492347)):
+  [`c8ad10d4…7fd8`](https://stellar.expert/explorer/testnet/tx/c8ad10d41bc60d3908812057484931fa0579248b9be5408038b3fe74d07b9fd8).
+  `fee_minted`, kind `mgmt`, seq 8: period 2026-10-23 15:19:32 to
+  2026-10-24 19:42:42 UTC (102,190 seconds), rate 2 % a year on 5.4000001
+  EURC, fee 3,499 units (0.0003499 EURC), 3,240 shares to the treasury.
+  The period starts at the deposit, not at the performance checkpoint
+  15 seconds later: that one minted no management share and left the clock
+  where it was. Then `nav`, seq 9: 5.4000001 EURC for 50,003,240 shares.
+- **Checkpoint of 2026-10-25** (19:54:17 UTC,
+  [run 40228196288](https://github.com/Foryield/soroban-yield-vault/actions/runs/40228196288)):
+  [`0be985c0…9e3e`](https://stellar.expert/explorer/testnet/tx/0be985c0a40f3a2bead587c55eeccb2aed4f6aa8b59f68238d1de2a0d35a9e3e).
+  `fee_minted`, kind `mgmt`, seq 10: period 2026-10-24 19:42:42 to
+  2026-10-25 19:54:17 UTC (87,095 seconds), fee 2,982 units, 2,761 shares.
+  Each period starts where the previous one ended: no second is charged
+  twice. Then `nav`, seq 11: 50,006,001 shares.
+- **Recomputed from the formula** in `accrue_fees`
+  (`contracts/vault/src/lib.rs`): fee = assets x 200 x elapsed /
+  (10,000 x 31,536,000), shares = fee x total shares / (assets - fee), both
+  truncated. Both events match to the unit.
+- **Effect on holders**: the assets stay at 5.4000001 EURC (no strategy, no
+  yield since the 23rd), so the dilution lowers the NAV per share from
+  1.0800000 to 1.0799300, then 1.0798704. The high-water mark stays at
+  1.080000019: no performance fee is due until the NAV is back above it.
+- **Dashboard**: https://vault.for-yield.com/dashboard/?vault=eurc, checked on
+  2026-10-26: seq 1 to 11 without a gap, both `management` lines in the fee
+  table, fees for October 0.1006481 EURC in the monthly statement (0.1
+  performance plus both management charges), treasury holding 0.000648 EURC
+  (its 6,001 remaining shares).
+- **Archive**: both transactions are under `archive/d6/`.
+- **Scheduling drift**: the task is set for 17:30 UTC and GitHub started it
+  between 19:42 and 20:36 UTC on these three days. The ECB rate is published
+  before either time, so the drift has no effect on the reference price.
+
 ### Still open
 
-- The management leg on-chain, from the first daily checkpoint on this
-  instance once the ops task covers it.
 - Both legs in one transaction on-chain (proven in
   `contracts/vault/src/test_fees.rs`, `both_fees_are_split_in_one_transaction`).
 - Dashboard screenshot and the video walkthrough.

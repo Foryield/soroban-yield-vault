@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc c132e0c2a2431c71b991a58e8d669152e067b57e02b8acf44e90fdb6f7cb291a # shrinks to skew_bps = 0, fee_bps = 0, ops = [Deposit { user: 2, amount: 1001 }]
+cc 453c37554b89bab676d57c21eb0f0f912a438cc3e067573dfd4b2c478bd50d53 # shrinks to skew_bps = -2, fee_bps = 47, ops = [Yield { strategy: 0, amount: 1 }, Rebalance { by: Keeper }, Deposit { user: 0, amount: 1 }, Deposit { user: 0, amount: 1 }]

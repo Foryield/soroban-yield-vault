@@ -600,7 +600,11 @@ impl World<'_> {
                 idle += got;
                 holdings[i] -= got;
                 withdrawn += got;
-                moves.push((chain.configs[i].address.clone(), -got));
+                // Une retenue peut tout garder : un mouvement nul n'est pas
+                // rendu, comme dans le contrat.
+                if got != 0 {
+                    moves.push((chain.configs[i].address.clone(), -got));
+                }
             }
         }
         for i in 0..2 {

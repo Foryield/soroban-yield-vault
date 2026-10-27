@@ -345,7 +345,13 @@ export function NavSection({ events, code }: { events: ChainEvent[]; code: strin
       <div className="charts">
         <div>
           <div className="chart-title">NAV per share</div>
-          <StepChart points={navPoints} format={(v) => v.toFixed(6)} label="NAV per share" />
+          <StepChart
+            points={navPoints}
+            format={(v) => v.toFixed(4)}
+            label="NAV per share"
+            scale={0.01}
+          />
+          <div className="chart-note">Axis spans at least 1 % of the price, so small moves stay small.</div>
         </div>
         <div>
           <div className="chart-title">Assets under management ({code})</div>
@@ -353,6 +359,7 @@ export function NavSection({ events, code }: { events: ChainEvent[]; code: strin
             points={aumPoints}
             format={(v) => v.toLocaleString("en-US", { maximumFractionDigits: 4 })}
             label="Assets under management"
+            scale="zero"
           />
         </div>
       </div>

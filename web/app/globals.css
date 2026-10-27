@@ -1,13 +1,51 @@
+/* --- Police ---------------------------------------------------------------
+   Satoshi (Fontshare, ITF Free Font License), la police du site ForYield.
+   Chargee par l'API Fontshare dans layout.tsx : le repo est public, il ne
+   redistribue pas les fichiers de police. Repli sur la police systeme. */
+
+/* --- Tokens ---------------------------------------------------------------
+   Ambiance « ForYield nuit » : vert tres profond, texte creme, accent miel.
+   Toutes les couleurs de la page passent par ces variables ; changer
+   d'ambiance revient a redefinir ce bloc. */
+
 :root {
-  --bg: #0a0e1a;
-  --bg-card: #121829;
-  --border: #1f2940;
-  --text: #e8edf7;
-  --muted: #8a96b0;
-  --accent: #5b8def;
-  --accent-hover: #4a7ce0;
-  --success: #2ecc8f;
-  --danger: #e5573f;
+  --bg: #111a17;
+  --bg-halo: rgba(157, 186, 178, 0.13);
+  --surface: #18231f;
+  --surface-2: #1e2b27;
+  --inset: #0d1412;
+  --line: rgba(240, 236, 225, 0.09);
+  --line-2: rgba(240, 236, 225, 0.16);
+
+  --text: #f0ece1;
+  --text-2: rgba(240, 236, 225, 0.74);
+  --muted: rgba(240, 236, 225, 0.56);
+
+  --accent: #f5c85a;
+  --accent-hover: #fcdf94;
+  --accent-ink: #2b2410;
+  --accent-soft: rgba(245, 200, 90, 0.12);
+
+  --success: #4fb896;
+  --success-soft: rgba(79, 184, 150, 0.12);
+  --warning: #e9a548;
+  --danger: #e58a6f;
+  --danger-soft: rgba(229, 138, 111, 0.1);
+
+  /* Poches de l'allocateur et series des graphes. */
+  --series-1: #f5c85a;
+  --series-2: #9dbab2;
+  --series-3: #646a5c;
+
+  --radius-card: 20px;
+  --radius-field: 12px;
+  --shadow-card: 0 24px 50px -28px rgba(0, 0, 0, 0.6);
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  --font: "Satoshi", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  color-scheme: dark;
 }
 
 * {
@@ -17,123 +55,324 @@
 }
 
 body {
-  background: radial-gradient(1200px 600px at 50% -10%, #16203a 0%, var(--bg) 55%);
+  background:
+    radial-gradient(900px 520px at 78% -8%, var(--bg-halo) 0%, transparent 70%),
+    radial-gradient(700px 420px at 0% 0%, rgba(245, 200, 90, 0.05) 0%, transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-    Arial, sans-serif;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  -webkit-font-smoothing: antialiased;
 }
 
-.shell {
-  width: 100%;
-  max-width: 440px;
+a {
+  color: var(--accent);
+  text-decoration: none;
 }
 
-.brand {
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.num,
+.value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Gabarit --------------------------------------------------------------- */
+
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px 40px;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 0 16px 32px;
+  }
+}
+
+/* En-tete co-brande : le lockup ForYield d'abord, la mention « Built on
+   Stellar » ensuite, plus petite et separee (brand policy SDF : le logo
+   Stellar n'est jamais l'element le plus visible). */
+.topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 18px;
+  gap: 16px;
+  padding: 22px 0;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--line);
 }
 
-.brand .logo {
-  font-size: 20px;
+.cobrand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.cobrand .fy-logo {
+  display: block;
+  height: 36px;
+  width: auto;
+}
+
+.cobrand .divider {
+  width: 1px;
+  height: 28px;
+  background: var(--line-2);
+}
+
+.built-on {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Marge egale a la hauteur du monogramme, hauteur minimale 16 px. */
+.built-on img {
+  display: block;
+  height: 16px;
+  width: auto;
+}
+
+.topbar-sub {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  padding: 5px 11px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+
+.wallet-chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding: 16px 0;
+    margin-bottom: 20px;
+  }
+
+  .cobrand {
+    gap: 12px;
+  }
+
+  .cobrand .fy-logo {
+    height: 26px;
+  }
+
+  .cobrand .divider,
+  .topbar-sub {
+    display: none;
+  }
+}
+
+/* --- Titre de page et selecteur d'instance --------------------------------- */
+
+.intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+h1.page-title {
+  font-size: 34px;
+  line-height: 1.1;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
-.brand .logo span {
-  color: var(--accent);
+.page-lead {
+  margin-top: 10px;
+  max-width: 620px;
+  font-size: 14px;
+  color: var(--text-2);
 }
 
-.badge {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+@media (max-width: 760px) {
+  .intro {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  h1.page-title {
+    font-size: 28px;
+  }
 }
 
-/* Selecteur d'instance (XLM / EURC) et bascule depot / rachat : meme forme,
-   deux echelles. Les onglets sont des boutons, donc ils heritent de la regle
-   `button` plus bas : la largeur pleine et la marge haute sont a annuler. */
+/* Onglets (instance, depot / rachat) : boutons, donc heritent de la regle
+   `button` plus bas, dont la largeur pleine et la marge haute sont annulees. */
 .tabs {
   display: flex;
-  gap: 6px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  gap: 4px;
+  background: var(--inset);
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 4px;
-  margin-bottom: 14px;
+  flex-shrink: 0;
 }
 
 .tabs .tab {
   flex: 1;
   width: auto;
   margin-top: 0;
+  min-width: 76px;
   background: transparent;
   color: var(--muted);
   font-size: 13px;
-  padding: 9px;
+  font-weight: 500;
+  padding: 8px 14px;
   border-radius: 9px;
 }
 
 .tabs .tab:hover:not(:disabled) {
-  background: rgba(91, 141, 239, 0.12);
+  background: var(--surface-2);
   color: var(--text);
 }
 
-.tabs .tab.active {
-  background: var(--accent);
-  color: #fff;
-}
-
+.tabs .tab.active,
 .tabs .tab.active:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-2);
 }
 
-/* La bascule depot / rachat vit DANS la carte : elle prend de l'air au-dessus
-   et emprunte le fond sombre des champs pour ne pas doubler la carte. */
 .tabs.modes {
-  margin: 22px 0 4px;
-  background: #0c1322;
+  margin-bottom: 20px;
 }
+
+/* --- Grille de la page d'accueil -------------------------------------------- */
+
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.stack {
+  display: grid;
+  gap: 20px;
+}
+
+@media (max-width: 900px) {
+  .home-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Cartes ------------------------------------------------------------------ */
 
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 28px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  box-shadow: var(--shadow-card);
+}
+
+@media (max-width: 640px) {
+  .card {
+    padding: 20px;
+  }
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.card-lead {
+  font-size: 13px;
+  color: var(--text-2);
+  margin-bottom: 20px;
 }
 
 .title {
   font-size: 22px;
-  font-weight: 650;
+  font-weight: 700;
   margin-bottom: 6px;
-  letter-spacing: -0.02em;
 }
 
 .subtitle {
   font-size: 13px;
-  color: var(--muted);
-  margin-bottom: 24px;
-  line-height: 1.5;
+  color: var(--text-2);
 }
 
 .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0;
-  border-top: 1px solid var(--border);
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
   font-size: 14px;
 }
 
@@ -142,20 +381,121 @@ body {
 }
 
 .row .value {
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: 500;
 }
 
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.row a.value {
+  color: var(--accent);
+}
+
+/* --- Chiffres cles ------------------------------------------------------------ */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.kpi {
+  background: var(--surface);
+  padding: 16px 18px;
+  min-width: 0;
+}
+
+.kpi-label {
   font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 640px) {
+  .kpi {
+    padding: 14px;
+  }
+
+  .kpi-value {
+    font-size: 20px;
+  }
+}
+
+.kpi-value .unit {
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 5px;
+}
+
+.kpi.primary .kpi-value {
+  color: var(--accent);
+}
+
+.kpi-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  border: 1px dashed var(--line-2);
+  border-radius: 14px;
+  padding: 18px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+/* --- Formulaire de depot / rachat ------------------------------------------- */
+
+.field-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
 }
 
 label.field {
   display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.available {
   font-size: 12px;
   color: var(--muted);
-  margin: 20px 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+button.link {
+  display: inline;
+  width: auto;
+  margin: 0 0 0 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+button.link:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .input-wrap {
@@ -166,75 +506,203 @@ label.field {
 
 input[type="text"] {
   width: 100%;
-  background: #0c1322;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  background: var(--inset);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-field);
   color: var(--text);
-  font-size: 20px;
-  font-weight: 600;
-  padding: 14px 70px 14px 16px;
+  font-family: var(--font);
+  font-size: 24px;
+  font-weight: 700;
+  padding: 14px 76px 14px 16px;
   outline: none;
   font-variant-numeric: tabular-nums;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 
 input[type="text"]:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+input[type="text"][aria-invalid="true"] {
+  border-color: var(--danger);
 }
 
 .input-wrap .suffix {
   position: absolute;
   right: 16px;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 14px;
+}
+
+.hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.hint.error {
+  color: var(--danger);
+}
+
+/* Apercu avant signature : ce que l'operation rend, calcule dans la page
+   a partir de la position deja lue, sans appel supplementaire. */
+.review {
+  margin-top: 16px;
+  border-radius: var(--radius-field);
+  background: var(--inset);
+  border: 1px solid var(--line);
+  padding: 4px 14px;
+}
+
+.review .row {
+  font-size: 13px;
+  padding: 9px 0;
+}
+
+.review .row:first-child {
+  border-top: none;
 }
 
 button {
   width: 100%;
   margin-top: 20px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
   border: none;
-  border-radius: 12px;
+  border-radius: var(--radius-field);
+  font-family: var(--font);
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 700;
   padding: 14px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease),
+    transform 0.15s var(--ease);
 }
 
 button:hover:not(:disabled) {
   background: var(--accent-hover);
 }
 
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 button.secondary {
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line-2);
   color: var(--text);
 }
 
+button.secondary:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+button.small {
+  width: auto;
+  margin-top: 0;
+  font-size: 12px;
+  padding: 7px 12px;
+  border-radius: 9px;
+}
+
+.connect-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* --- Etapes d'une operation signee ------------------------------------------ */
+
+ol.steps {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 16px;
+  counter-reset: step;
+}
+
+ol.steps li {
+  position: relative;
+  padding-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+ol.steps li::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--line-2);
+  transition: background 0.3s var(--ease);
+}
+
+ol.steps li.done {
+  color: var(--text-2);
+}
+
+ol.steps li.done::before {
+  background: var(--success);
+}
+
+ol.steps li.current {
+  color: var(--text);
+}
+
+ol.steps li.current::before {
+  background: linear-gradient(90deg, var(--accent) 0 40%, var(--line-2) 40% 100%);
+  background-size: 250% 100%;
+}
+
+ol.steps li.failed {
+  color: var(--danger);
+}
+
+ol.steps li.failed::before {
+  background: var(--danger);
+}
+
+/* --- Bandeaux d'etat -------------------------------------------------------- */
+
 .status {
-  margin-top: 18px;
+  margin-top: 16px;
   font-size: 13px;
   line-height: 1.5;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: #0c1322;
+  padding: 12px 14px;
+  border-radius: var(--radius-field);
+  border: 1px solid var(--line-2);
+  background: var(--inset);
+  color: var(--text-2);
+}
+
+.status strong {
+  display: block;
+  color: var(--text);
+  font-weight: 700;
+  margin-bottom: 2px;
 }
 
 .status.success {
-  border-color: rgba(46, 204, 143, 0.4);
+  border-color: rgba(79, 184, 150, 0.35);
+  background: var(--success-soft);
 }
 
 .status.error {
-  border-color: rgba(229, 87, 63, 0.4);
-  color: #ffb4a6;
+  border-color: rgba(229, 138, 111, 0.35);
+  background: var(--danger-soft);
+  color: #f3c3b4;
 }
 
 .status a {
@@ -246,12 +714,13 @@ button.secondary {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid var(--muted);
-  border-top-color: var(--text);
+  border: 2px solid currentColor;
+  border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
-  vertical-align: middle;
+  vertical-align: -2px;
   margin-right: 8px;
+  opacity: 0.8;
 }
 
 @keyframes spin {
@@ -260,64 +729,79 @@ button.secondary {
   }
 }
 
+/* --- Pied de page -------------------------------------------------------------- */
+
 .footer {
-  margin-top: 16px;
-  text-align: center;
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
   font-size: 11px;
+  line-height: 1.6;
   color: var(--muted);
+  display: grid;
+  gap: 6px;
 }
 
-/* --- Repartition de l'allocateur (instance a strategies) ------------------ */
-
-.card.below {
-  margin-top: 14px;
-  padding: 22px;
+.footer p:first-child {
+  color: var(--text-2);
 }
+
+/* --- Panneaux : repartition, frais, echange ------------------------------------ */
 
 .allocation-head {
   display: flex;
   justify-content: space-between;
-  font-size: 15px;
-  font-weight: 650;
-  margin-bottom: 12px;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 14px;
 }
 
 .allocation-head .value {
-  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
 }
 
 .muted-line {
   font-size: 13px;
   color: var(--muted);
+  margin-top: 8px;
 }
 
 .allocation-bar {
   display: flex;
+  gap: 2px;
   height: 10px;
   border-radius: 999px;
   overflow: hidden;
-  background: #0c1322;
-  margin-bottom: 12px;
+  background: var(--inset);
+  margin-bottom: 14px;
+}
+
+.segment {
+  transition: width 0.6s var(--ease);
 }
 
 .segment,
 .dot {
-  background: var(--muted);
+  background: var(--series-3);
 }
 
 .segment.blend,
 .dot.blend {
-  background: var(--accent);
+  background: var(--series-1);
 }
 
 .segment.aquarius,
 .dot.aquarius {
-  background: #2ec4c4;
+  background: var(--series-2);
 }
 
 .segment.idle,
 .dot.idle {
-  background: #8a96b0;
+  background: var(--series-3);
 }
 
 .dot {
@@ -331,26 +815,32 @@ button.secondary {
 table.pockets {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
 table.pockets th {
   color: var(--muted);
+  font-size: 12px;
   font-weight: 500;
   text-align: right;
-  padding: 6px 0;
+  padding: 6px 0 6px 10px;
 }
 
 table.pockets td {
   text-align: right;
-  padding: 8px 0;
-  border-top: 1px solid var(--border);
+  padding: 10px 0 10px 10px;
+  border-top: 1px solid var(--line);
 }
 
 table.pockets th:first-child,
 table.pockets td:first-child {
   text-align: left;
+  padding-left: 0;
+}
+
+table.pockets td:first-child {
+  color: var(--text-2);
 }
 
 .trigger {
@@ -359,49 +849,68 @@ table.pockets td:first-child {
   line-height: 1.5;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid var(--border);
-  color: var(--muted);
+  border: 1px solid var(--line);
+  background: var(--inset);
+  color: var(--text-2);
+  display: flex;
+  gap: 9px;
+}
+
+.trigger::before {
+  content: "";
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--success);
 }
 
 .trigger.due {
-  border-color: rgba(91, 141, 239, 0.5);
+  border-color: rgba(245, 200, 90, 0.4);
   color: var(--text);
 }
 
+.trigger.due::before {
+  background: var(--accent);
+}
+
 .dashboard-link {
-  display: block;
-  margin-top: 14px;
-  font-size: 13px;
-  color: var(--accent);
-  text-decoration: none;
-}
-
-/* --- Dashboard de conformite ---------------------------------------------- */
-
-.shell.wide {
-  max-width: 1120px;
-}
-
-.logo-sub {
-  margin-left: 12px;
+  display: inline-flex;
+  margin-top: 18px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--muted);
 }
 
-.shell.wide > .card,
-.dash-grid {
-  margin-bottom: 14px;
+/* Deux panneaux dans une meme carte (dashboard EURC ou USDC) : un filet. */
+.allocation + .allocation {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
 }
 
-.shell.wide .card {
-  padding: 22px;
+/* --- Dashboard de conformite ---------------------------------------------------- */
+
+.section-gap > * + * {
+  margin-top: 20px;
 }
 
 .dash-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 20px;
+}
+
+/* Un enfant de grille garde sinon la largeur de son contenu le plus long
+   (identifiants en mono) et fait deborder la page sur mobile. */
+.dash-grid > *,
+.home-grid > *,
+.stack > * {
+  min-width: 0;
+}
+
+.card .mono {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 760px) {
@@ -415,12 +924,14 @@ table.pockets td:first-child {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
 }
 
 .section-title {
   font-size: 16px;
-  font-weight: 650;
-  margin-bottom: 10px;
+  font-weight: 700;
+  margin-bottom: 6px;
 }
 
 .actions {
@@ -428,26 +939,19 @@ table.pockets td:first-child {
   gap: 8px;
 }
 
-button.small {
-  width: auto;
-  margin-top: 0;
-  font-size: 12px;
-  padding: 7px 12px;
-  border-radius: 9px;
-}
-
 .note {
-  font-size: 12px;
-  color: var(--muted);
+  font-size: 13px;
+  color: var(--text-2);
   line-height: 1.5;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  max-width: 760px;
 }
 
 .chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .chip {
@@ -455,43 +959,64 @@ button.small {
   margin-top: 0;
   font-size: 12px;
   font-weight: 500;
-  padding: 5px 10px;
+  padding: 5px 11px;
   border-radius: 999px;
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
 }
 
-.chip.active {
+.chip:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.chip.active,
+.chip.active:hover:not(:disabled) {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-ink);
 }
 
 .table-wrap {
   overflow-x: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
 }
 
 table.grid {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 
 table.grid th {
   text-align: left;
   color: var(--muted);
+  font-size: 12px;
   font-weight: 500;
-  padding: 6px 10px 6px 0;
+  padding: 8px 14px 8px 0;
   white-space: nowrap;
+  border-bottom: 1px solid var(--line-2);
 }
 
 table.grid td {
-  padding: 8px 10px 8px 0;
-  border-top: 1px solid var(--border);
+  padding: 11px 14px 11px 0;
+  border-top: 1px solid var(--line);
   vertical-align: top;
   white-space: nowrap;
+}
+
+table.grid tbody tr:first-child td {
+  border-top: none;
+}
+
+table.grid tbody tr {
+  transition: background 0.15s var(--ease);
+}
+
+table.grid tbody tr:hover {
+  background: rgba(240, 236, 225, 0.025);
 }
 
 table.grid td.wrap {
@@ -507,7 +1032,6 @@ table.grid .num {
 table.grid a,
 .sources a {
   color: var(--accent);
-  text-decoration: none;
 }
 
 .sub {
@@ -526,37 +1050,43 @@ table.grid a,
 
 .tag {
   display: inline-block;
+  font-family: var(--mono);
   font-size: 11px;
-  font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 6px;
-  background: #0c1322;
-  border: 1px solid var(--border);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--inset);
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
 }
 
 .tag.deposit {
   color: var(--success);
+  border-color: rgba(79, 184, 150, 0.35);
 }
 
 .tag.withdraw {
-  color: #f0b45b;
+  color: var(--warning);
+  border-color: rgba(233, 165, 72, 0.35);
 }
 
 .tag.allocate,
 .tag.deallocate {
-  color: var(--accent);
+  color: var(--series-2);
+  border-color: rgba(157, 186, 178, 0.35);
 }
 
 .tag.emergency_exit,
 .tag.paused {
   color: var(--danger);
+  border-color: rgba(229, 138, 111, 0.4);
 }
 
 .charts {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 18px;
-  margin-bottom: 18px;
+  gap: 20px;
+  margin-bottom: 24px;
 }
 
 @media (max-width: 760px) {
@@ -567,53 +1097,169 @@ table.grid a,
 
 .chart-title {
   font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 6px;
+  font-weight: 500;
+  color: var(--text-2);
+  margin-bottom: 8px;
 }
 
 svg.chart {
+  display: block;
   width: 100%;
   height: auto;
-  background: #0c1322;
-  border-radius: 10px;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: 12px;
 }
 
 svg.chart .axis {
-  stroke: var(--border);
-  stroke-dasharray: 3 3;
+  stroke: var(--line-2);
+  stroke-dasharray: 2 4;
 }
 
 svg.chart .tick {
   fill: var(--muted);
+  font-family: var(--font);
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+svg.chart .area {
+  fill: var(--series-1);
+  opacity: 0.08;
 }
 
 svg.chart .line {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--series-1);
   stroke-width: 2;
+  stroke-linejoin: round;
 }
 
 svg.chart .dot-point {
-  fill: var(--accent);
+  fill: var(--surface);
+  stroke: var(--series-1);
+  stroke-width: 2;
+}
+
+.chart-note {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 ul.sources {
   list-style: none;
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.8;
+  color: var(--text-2);
 }
 
 ul.sources .warn {
-  color: #ffb4a6;
-}
-
-.row a.value {
-  color: var(--accent);
-  text-decoration: none;
+  color: var(--danger);
 }
 
 ul.sources .sub-item {
   padding-left: 16px;
   color: var(--muted);
+}
+
+/* --- Mouvement -------------------------------------------------------------------
+   Sobre et court : entree des cartes, remplissage de la barre de repartition,
+   trace des courbes, apparition des bandeaux et des chiffres mis a jour.
+   Tout est desactive quand le systeme demande moins de mouvement. */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes progress {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reveal {
+    animation: rise 0.5s var(--ease) both;
+    animation-delay: calc(var(--i, 0) * 70ms);
+  }
+
+  .status,
+  .review,
+  ol.steps,
+  .hint {
+    animation: rise 0.3s var(--ease) both;
+  }
+
+  .fresh {
+    animation: fade 0.45s var(--ease) both;
+  }
+
+  .allocation-bar {
+    transform-origin: left center;
+    animation: grow 0.8s var(--ease) both;
+  }
+
+  svg.chart .line {
+    stroke-dasharray: 1;
+    animation: draw 1.1s var(--ease) both;
+  }
+
+  svg.chart .area,
+  svg.chart .dot-point {
+    animation: fade 0.6s 0.5s var(--ease) both;
+  }
+
+  ol.steps li.current::before {
+    animation: progress 1.4s linear infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
+
+  .spinner {
+    animation-duration: 2s;
+  }
 }

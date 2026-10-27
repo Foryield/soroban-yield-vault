@@ -6,7 +6,7 @@
 // RPC, et ce qui s'en deduit (allocations par lot, valeur liquidative,
 // releve mensuel, gouvernance, frais).
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getStrategies, type StrategyConfig } from "@/lib/allocator";
 import { readContract } from "@/lib/stellar";
 import { registerRow, toCsv } from "@/lib/compliance";
@@ -62,6 +62,9 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   // Incremente pour relancer un chargement initial en echec.
   const [attempt, setAttempt] = useState(0);
+  // Change a chaque instance chargee : un rafraichissement parti sur la
+  // precedente ne pose pas son flux sur la nouvelle a son retour.
+  const instance = useRef(0);
 
   useEffect(() => {
     const wanted = vaultFromKey(new URLSearchParams(window.location.search).get("vault"));
@@ -76,8 +79,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (!vault) return;
     let cancelled = false;
+    instance.current += 1;
     setStrategies(null);
     setFeed(null);
+    setLastSeq(null);
     getStrategies(vault.contractId)
       .then((s) => !cancelled && setStrategies(s))
       .catch((e) => {
@@ -120,9 +125,11 @@ export default function Dashboard() {
       if (error) setAttempt((n) => n + 1);
       return;
     }
+    const started = instance.current;
     try {
       const seq = (await readContract(contracts[0], "last_seq")) as bigint;
       const next = await refreshAuditFeed(feed, contracts);
+      if (started !== instance.current) return;
       if (next !== feed) setFeed(next);
       setLastSeq(BigInt(seq));
     } catch (e) {

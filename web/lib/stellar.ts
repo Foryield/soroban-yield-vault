@@ -318,7 +318,7 @@ export async function addTrustline(
   return sent.hash;
 }
 
-function toStroops(amount: string): bigint {
+export function toStroops(amount: string): bigint {
   const [intPart, fracPart = ""] = amount.trim().split(".");
   const frac = (fracPart + "0".repeat(DECIMALS)).slice(0, DECIMALS);
   return (
@@ -512,23 +512,23 @@ async function signWithDeadline(
   }
 }
 
+export type ConfirmedCall = {
+  hash: string;
+  /// Valeur rendue par le contrat, decodee (bigint, objet, tableau).
+  result: unknown;
+};
+
 // Construit, fait signer, soumet et attend la confirmation d'un appel de
-// contrat. Depot et rachat ne different que par la fonction et ses arguments.
-async function invokeVault(
+// contrat signe par `address`. Vault et routeur d'echange passent par ici.
+export async function invokeContract(
   address: string,
-  vault: VaultConfig,
-  fn: "deposit" | "withdraw",
-  arg: bigint,
-): Promise<string> {
+  contract: Contract,
+  fn: string,
+  ...args: xdr.ScVal[]
+): Promise<ConfirmedCall> {
   const server = rpcServer();
   const account = await server.getAccount(address);
-  const contract = vaultContract(vault);
-
-  const op = contract.call(
-    fn,
-    new Address(address).toScVal(),
-    nativeToScVal(arg, { type: "i128" }),
-  );
+  const op = contract.call(fn, ...args);
 
   const built = new TransactionBuilder(account, {
     fee: BASE_FEE,
@@ -563,7 +563,32 @@ async function invokeVault(
   if (result.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
     throw new Error("Transaction not confirmed");
   }
-  return sent.hash;
+  // Transaction confirmee : un retour indecodable ne doit pas la faire passer
+  // pour un echec.
+  let decoded: unknown;
+  try {
+    decoded = result.returnValue ? scValToNative(result.returnValue) : undefined;
+  } catch (e) {
+    console.error("return value decode failed", e);
+  }
+  return { hash: sent.hash, result: decoded };
+}
+
+// Depot et rachat ne different que par la fonction et son montant.
+async function invokeVault(
+  address: string,
+  vault: VaultConfig,
+  fn: "deposit" | "withdraw",
+  arg: bigint,
+): Promise<string> {
+  const { hash } = await invokeContract(
+    address,
+    vaultContract(vault),
+    fn,
+    new Address(address).toScVal(),
+    nativeToScVal(arg, { type: "i128" }),
+  );
+  return hash;
 }
 
 export async function deposit(

@@ -21,6 +21,8 @@ import {
 import { VAULTS, DEFAULT_VAULT, vaultFromKey, type VaultConfig } from "@/lib/vaults";
 import { AllocationPanel } from "./allocation";
 import { FeePanel } from "./fees";
+import { SwapPanel } from "./swap";
+import { SWAP_PAIR } from "@/lib/swap";
 
 type Phase = "idle" | "signing" | "success" | "error";
 type Mode = "deposit" | "redeem";
@@ -452,6 +454,21 @@ export default function Home() {
 
         {error && <div className="status error">{error}</div>}
       </div>
+
+      {/* Reequilibrage D4 : sous les deux onglets dont il relie les actifs. */}
+      {address && !needsFunding && SWAP_PAIR &&
+        (vault.asset.code === SWAP_PAIR.from.code || vault.asset.code === SWAP_PAIR.to.code) && (
+          <div className="card below">
+            <SwapPanel
+              address={address}
+              refreshKey={operations}
+              onSwapped={() => {
+                setOperations((n) => n + 1);
+                refreshBalance(address, vault).catch(() => {});
+              }}
+            />
+          </div>
+        )}
 
       {vault.audited && (
         <div className="card below">

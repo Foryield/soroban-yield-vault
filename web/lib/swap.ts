@@ -36,9 +36,15 @@ export type SwapQuote = {
   amountOut: bigint;
   /// Minimum signe : en dessous, le routeur revert.
   minOut: bigint;
-  /// Frais du pool, preleves sur l'actif d'entree.
+  /// Frais du pool sur l'actif d'entree, deja inclus dans la sortie cotee.
   fee: bigint;
+  /// Horodatage de la cotation (ms) : passe QUOTE_TTL_MS, elle ne se signe plus.
+  quotedAt: number;
 };
+
+/// Duree de validite d'une cotation : au-dela, le minimum signe ne refleterait
+/// plus le prix du moment.
+export const QUOTE_TTL_MS = 30_000;
 
 type RawSwapResult = { amount_out: bigint; fee: bigint };
 
@@ -58,17 +64,27 @@ function swapArgs(from: string, amountIn: bigint, minOut: bigint) {
 }
 
 // Erreurs du routeur (contracts/router/src/lib.rs, RouterError) rendues
-// lisibles ; le reste remonte tel quel.
+// lisibles. Seule la premiere erreur de contrat du message compte : c'est
+// celle de l'appel, le journal de diagnostic qui suit peut citer celles du
+// pool ou d'un token.
 function routerError(e: unknown): Error {
   const message = e instanceof Error ? e.message : String(e);
-  if (message.includes("Error(Contract, #6)")) {
-    return new Error("The Aquarius pool cannot serve this swap now: not enough liquidity.");
+  const code = message.match(/Error\(Contract, #(\d+)\)/)?.[1];
+  switch (code) {
+    case "5":
+      return new Error("This pair is not registered in the swap router.");
+    case "6":
+      return new Error("The Aquarius pool cannot serve this swap now: not enough liquidity.");
+    case "7":
+      return new Error(
+        `The price moved beyond the ${Number(SLIPPAGE_BPS) / 100} % margin. Get a new quote.`,
+      );
   }
-  if (message.includes("Error(Contract, #7)")) {
-    return new Error("The price moved beyond the 1 % margin. Get a new quote.");
-  }
-  if (message.includes("Error(Contract, #5)")) {
-    return new Error("This pair is not registered in the swap router.");
+  console.error("swap failed", e);
+  // Le prefixe de readContract parle de vault ; toute autre erreur (refus du
+  // wallet notamment) garde sa forme, que friendlyError sait lire.
+  if (message.startsWith("Vault read failed")) {
+    return new Error(message.replace(/^Vault read failed/, "Swap simulation failed"));
   }
   return e instanceof Error ? e : new Error(message);
 }
@@ -81,18 +97,23 @@ export async function quoteSwap(from: string, amountIn: bigint): Promise<SwapQuo
       ...swapArgs(from, amountIn, 1n),
     )) as RawSwapResult;
     const amountOut = BigInt(raw.amount_out);
+    const minOut = (amountOut * (10_000n - SLIPPAGE_BPS)) / 10_000n;
     return {
       amountIn,
       amountOut,
-      minOut: (amountOut * (10_000n - SLIPPAGE_BPS)) / 10_000n,
+      // Le routeur refuse un minimum nul (MinOutMustBePositive).
+      minOut: minOut > 0n ? minOut : 1n,
       fee: BigInt(raw.fee),
+      quotedAt: Date.now(),
     };
   } catch (e) {
     throw routerError(e);
   }
 }
 
-export type SwapReceipt = { hash: string; amountOut: bigint; fee: bigint };
+/// Montant servi et frais lus dans le retour du routeur ; absents si ce retour
+/// n'a pu etre decode, l'echange etant tout de meme confirme.
+export type SwapReceipt = { hash: string; amountOut?: bigint; fee?: bigint };
 
 export async function executeSwap(from: string, quote: SwapQuote): Promise<SwapReceipt> {
   try {
@@ -102,8 +123,10 @@ export async function executeSwap(from: string, quote: SwapQuote): Promise<SwapR
       "swap_exact_in",
       ...swapArgs(from, quote.amountIn, quote.minOut),
     );
-    const served = result as RawSwapResult;
-    return { hash, amountOut: BigInt(served.amount_out), fee: BigInt(served.fee) };
+    const served = result as RawSwapResult | undefined;
+    return served
+      ? { hash, amountOut: BigInt(served.amount_out), fee: BigInt(served.fee) }
+      : { hash };
   } catch (e) {
     throw routerError(e);
   }

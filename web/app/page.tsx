@@ -57,6 +57,9 @@ export default function Home() {
   // Incremente apres chaque operation signee : le panneau de repartition se
   // relit sans attendre son prochain cycle.
   const [operations, setOperations] = useState(0);
+  // Signature en cours dans le panneau d'echange : la page ne lance ni depot,
+  // ni rachat, ni changement d'onglet pendant ce temps.
+  const [swapBusy, setSwapBusy] = useState(false);
 
   const asset = vault?.asset;
   const code = asset?.code ?? "";
@@ -112,7 +115,8 @@ export default function Home() {
   }, []);
 
   // Solde et position se relisent a chaque changement d'instance : les deux
-  // vaults ne partagent ni actif ni parts.
+  // vaults ne partagent ni actif ni parts. Et apres chaque operation signee,
+  // pour l'onglet affiche a ce moment-la.
   useEffect(() => {
     if (!address || !vault) return;
     let cancelled = false;
@@ -129,7 +133,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [address, vault, refreshBalance, refreshPosition]);
+  }, [address, vault, operations, refreshBalance, refreshPosition]);
 
   function switchVault(next: VaultConfig) {
     if (next.key === vault?.key) return;
@@ -248,7 +252,7 @@ export default function Home() {
     !!position &&
     position.shares > 0n &&
     (redeemAll || (numeric > 0 && numeric <= Number(position.value)));
-  const canSubmit = !busy && (mode === "deposit" ? canDeposit : canRedeem);
+  const canSubmit = !busy && !swapBusy && (mode === "deposit" ? canDeposit : canRedeem);
 
   return (
     <div className="shell">
@@ -269,7 +273,7 @@ export default function Home() {
               aria-selected={v.key === vault.key}
               className={v.key === vault.key ? "tab active" : "tab"}
               onClick={() => switchVault(v)}
-              disabled={busy}
+              disabled={busy || swapBusy}
             >
               {v.tab}
             </button>
@@ -462,10 +466,9 @@ export default function Home() {
             <SwapPanel
               address={address}
               refreshKey={operations}
-              onSwapped={() => {
-                setOperations((n) => n + 1);
-                refreshBalance(address, vault).catch(() => {});
-              }}
+              disabled={busy}
+              onBusyChange={setSwapBusy}
+              onSwapped={() => setOperations((n) => n + 1)}
             />
           </div>
         )}

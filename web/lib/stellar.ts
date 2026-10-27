@@ -563,10 +563,15 @@ export async function invokeContract(
   if (result.status !== rpc.Api.GetTransactionStatus.SUCCESS) {
     throw new Error("Transaction not confirmed");
   }
-  return {
-    hash: sent.hash,
-    result: result.returnValue ? scValToNative(result.returnValue) : undefined,
-  };
+  // Transaction confirmee : un retour indecodable ne doit pas la faire passer
+  // pour un echec.
+  let decoded: unknown;
+  try {
+    decoded = result.returnValue ? scValToNative(result.returnValue) : undefined;
+  } catch (e) {
+    console.error("return value decode failed", e);
+  }
+  return { hash: sent.hash, result: decoded };
 }
 
 // Depot et rachat ne different que par la fonction et son montant.

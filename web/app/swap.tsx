@@ -11,6 +11,7 @@ import {
   type AssetBalance,
 } from "@/lib/stellar";
 import {
+  QUOTE_TTL_MS,
   SLIPPAGE_BPS,
   SWAP_PAIR,
   executeSwap,
@@ -27,16 +28,32 @@ function amount(value: bigint, code: string) {
   })} ${code}`;
 }
 
+// Saisie decimale, point ou virgule (clavier en locale francaise) ; null si
+// elle ne forme pas un montant positif.
+function parseAmount(input: string): bigint | null {
+  const normalized = input.trim().replace(",", ".");
+  if (!/^\d*\.?\d+$/.test(normalized)) return null;
+  const value = toStroops(normalized);
+  return value > 0n ? value : null;
+}
+
 // Reequilibrage USDC -> EURC du livrable 4, signe par le wallet connecte :
 // cotation, minimum garanti, frais du pool, puis l'echange et ce qu'il a servi.
-// `refreshKey` relit les soldes apres une operation signee ailleurs sur la page.
+// `refreshKey` signale une operation signee ailleurs sur la page : soldes
+// relus, cotation effacee. `disabled` gele le panneau pendant une signature
+// de la page ; `onBusyChange` gele la page pendant celles du panneau, un seul
+// compte ne pouvant signer deux transactions a la fois.
 export function SwapPanel({
   address,
   refreshKey = 0,
+  disabled = false,
+  onBusyChange,
   onSwapped,
 }: {
   address: string;
   refreshKey?: number;
+  disabled?: boolean;
+  onBusyChange: (busy: boolean) => void;
   onSwapped: () => void;
 }) {
   const [balances, setBalances] = useState<[AssetBalance, AssetBalance] | null>(null);
@@ -58,42 +75,57 @@ export function SwapPanel({
       );
     } catch (e) {
       console.error("swap balances read failed", e);
+      setError("Could not read the wallet balances. Reload the page to retry.");
     }
   }, [address]);
 
+  // Une operation signee ailleurs change les soldes : la cotation, faite sur
+  // l'ancien etat, ne se signe plus.
   useEffect(() => {
+    setQuote(null);
     loadBalances();
   }, [loadBalances, refreshKey]);
 
+  const busy = phase === "quoting" || phase === "signing";
+  useEffect(() => {
+    onBusyChange(phase === "signing" || trusting);
+  }, [phase, trusting, onBusyChange]);
+
   if (!SWAP_PAIR) return null;
   const { from, to } = SWAP_PAIR;
-  const busy = phase === "quoting" || phase === "signing";
-  const amountIn = /^\d*\.?\d+$/.test(input.trim()) ? toStroops(input) : 0n;
-  const fromBalance = balances ? toStroops(balances[0].balance) : 0n;
+  const amountIn = parseAmount(input);
+  const fromBalance = balances ? toStroops(balances[0].balance) : null;
   const toTrusted = balances?.[1].trusted ?? true;
+  const insufficient = amountIn !== null && fromBalance !== null && amountIn > fromBalance;
+  const locked = busy || disabled;
 
   async function handleQuote() {
+    if (amountIn === null) return;
     setPhase("quoting");
     setError(null);
     setReceipt(null);
     try {
       setQuote(await quoteSwap(address, amountIn));
-      setPhase("idle");
     } catch (e) {
       setError(friendlyError(e));
+    } finally {
       setPhase("idle");
     }
   }
 
   async function handleSwap() {
     if (!quote) return;
+    if (Date.now() - quote.quotedAt > QUOTE_TTL_MS) {
+      setQuote(null);
+      setError(`Quote expired after ${QUOTE_TTL_MS / 1000} s: get a new one.`);
+      return;
+    }
     setPhase("signing");
     setError(null);
     try {
       setReceipt(await executeSwap(address, quote));
       setQuote(null);
       setPhase("success");
-      await loadBalances();
       onSwapped();
     } catch (e) {
       setError(friendlyError(e));
@@ -131,7 +163,7 @@ export function SwapPanel({
         <tbody>
           <tr>
             <td>{from.code} balance</td>
-            <td>{balances ? amount(fromBalance, from.code) : "..."}</td>
+            <td>{fromBalance === null ? "..." : amount(fromBalance, from.code)}</td>
           </tr>
           <tr>
             <td>{to.code} balance</td>
@@ -151,7 +183,7 @@ export function SwapPanel({
           <div className="status error">
             The swap pays out {to.code}: open its trustline first, a one-off signature.
           </div>
-          <button onClick={handleTrustline} disabled={trusting}>
+          <button onClick={handleTrustline} disabled={trusting || disabled}>
             {trusting ? (
               <>
                 <span className="spinner" />
@@ -175,7 +207,7 @@ export function SwapPanel({
                 setInput(e.target.value);
                 setQuote(null);
               }}
-              disabled={busy}
+              disabled={locked}
             />
             <span className="suffix">{from.code}</span>
           </div>
@@ -192,7 +224,7 @@ export function SwapPanel({
                   <td>{amount(quote.minOut, to.code)}</td>
                 </tr>
                 <tr>
-                  <td>Pool fee</td>
+                  <td>Pool fee, included in the price</td>
                   <td>{amount(quote.fee, from.code)}</td>
                 </tr>
               </tbody>
@@ -200,7 +232,7 @@ export function SwapPanel({
           )}
 
           {quote ? (
-            <button onClick={handleSwap} disabled={busy}>
+            <button onClick={handleSwap} disabled={locked}>
               {phase === "signing" ? (
                 <>
                   <span className="spinner" />
@@ -211,10 +243,7 @@ export function SwapPanel({
               )}
             </button>
           ) : (
-            <button
-              onClick={handleQuote}
-              disabled={busy || amountIn <= 0n || amountIn > fromBalance}
-            >
+            <button onClick={handleQuote} disabled={locked || amountIn === null || insufficient}>
               {phase === "quoting" ? (
                 <>
                   <span className="spinner" />
@@ -225,13 +254,23 @@ export function SwapPanel({
               )}
             </button>
           )}
+
+          {input.trim() !== "" && amountIn === null && (
+            <div className="muted-line">Enter a positive amount, such as 0.2.</div>
+          )}
+          {insufficient && (
+            <div className="muted-line">
+              Not enough {from.code} in the wallet: redeem from the {from.code} vault first.
+            </div>
+          )}
         </>
       )}
 
       {phase === "success" && receipt && (
         <div className="status success">
-          Swap confirmed: {amount(receipt.amountOut, to.code)} received, pool fee{" "}
-          {amount(receipt.fee, from.code)}.
+          {receipt.amountOut !== undefined && receipt.fee !== undefined
+            ? `Swap confirmed: ${amount(receipt.amountOut, to.code)} received, pool fee ${amount(receipt.fee, from.code)}.`
+            : "Swap confirmed."}
           <br />
           <a href={EXPLORER_TX(receipt.hash)} target="_blank" rel="noreferrer">
             View on Stellar Expert &rarr;

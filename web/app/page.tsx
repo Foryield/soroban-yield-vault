@@ -12,6 +12,8 @@ import {
   addTrustline,
   fundTestnetAccount,
   friendlyError,
+  fromStroops,
+  toStroops,
   AccountNotFundedError,
   EXPLORER_TX,
   IS_TESTNET,
@@ -22,19 +24,54 @@ import { VAULTS, DEFAULT_VAULT, vaultFromKey, type VaultConfig } from "@/lib/vau
 import { AllocationPanel } from "./allocation";
 import { FeePanel } from "./fees";
 import { SwapPanel } from "./swap";
+import { Footer, TopBar } from "./brand";
+import { captureFromUrl } from "./capture";
 import { SWAP_PAIR } from "@/lib/swap";
 
 type Phase = "idle" | "signing" | "success" | "error";
 type Mode = "deposit" | "redeem";
 
-function shorten(addr: string) {
-  return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
-}
-
 function formatAmount(value: string, digits = 4) {
   return Number(value).toLocaleString("en-US", {
     maximumFractionDigits: digits,
   });
+}
+
+// Montant decimal positif bien forme : seul cas ou l'apercu se calcule.
+function isAmount(value: string) {
+  return /^\d*\.?\d+$/.test(value.trim()) && Number(value) > 0;
+}
+
+// Prix d'une part, lu dans la position deja chargee (aucun appel).
+function navPerShare(position: VaultPosition) {
+  if (position.totalShares <= 0n) return null;
+  return Number(toStroops(position.totalAssets)) / Number(position.totalShares);
+}
+
+function Kpi({
+  label,
+  value,
+  unit,
+  sub,
+  primary,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  sub?: string;
+  primary?: boolean;
+}) {
+  return (
+    <div className={primary ? "kpi primary" : "kpi"}>
+      <div className="kpi-label">{label}</div>
+      {/* `key` : un chiffre mis a jour reapparait en fondu. */}
+      <div className="kpi-value fresh" key={value}>
+        {value}
+        {unit && <span className="unit">{unit}</span>}
+      </div>
+      {sub && <div className="kpi-sub">{sub}</div>}
+    </div>
+  );
 }
 
 export default function Home() {
@@ -60,6 +97,8 @@ export default function Home() {
   // Signature en cours dans le panneau d'echange : la page ne lance ni depot,
   // ni rachat, ni changement d'onglet pendant ce temps.
   const [swapBusy, setSwapBusy] = useState(false);
+  // Mode capture (dev uniquement, cf. capture.ts) : etat fige, aucun appel.
+  const [captured, setCaptured] = useState(false);
 
   const asset = vault?.asset;
   const code = asset?.code ?? "";
@@ -70,6 +109,21 @@ export default function Home() {
     const key = new URLSearchParams(window.location.search).get("vault");
     const wanted = vaultFromKey(key);
     if (wanted) setVault(wanted);
+
+    const capture = captureFromUrl();
+    if (capture) {
+      setCaptured(true);
+      setAddress(capture.address);
+      setBalance(capture.balance);
+      setTrusted(capture.trusted);
+      setNeedsFunding(capture.needsFunding);
+      setPosition(capture.position);
+      setMode(capture.mode);
+      setAmount(capture.amount);
+      setPhase(capture.phase);
+      setError(capture.error);
+      setTxHash(capture.txHash);
+    }
   }, []);
 
   // Solde de l'actif du vault ; bascule en mode "compte non finance" si
@@ -102,6 +156,7 @@ export default function Home() {
   // Restaure la session wallet persistee au chargement (silencieux : ni
   // erreur ni prompt si aucune session ou wallet indisponible).
   useEffect(() => {
+    if (captureFromUrl()) return;
     let cancelled = false;
     async function restore() {
       const addr = await reconnectWallet();
@@ -118,7 +173,7 @@ export default function Home() {
   // vaults ne partagent ni actif ni parts. Et apres chaque operation signee,
   // pour l'onglet affiche a ce moment-la.
   useEffect(() => {
-    if (!address || !vault) return;
+    if (!address || !vault || captured) return;
     let cancelled = false;
     async function load(addr: string, v: VaultConfig) {
       try {
@@ -133,7 +188,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [address, vault, operations, refreshBalance, refreshPosition]);
+  }, [address, vault, operations, captured, refreshBalance, refreshPosition]);
 
   function switchVault(next: VaultConfig) {
     if (next.key === vault?.key) return;
@@ -174,7 +229,7 @@ export default function Home() {
   }
 
   async function handleFund() {
-    if (!address || !vault) return;
+    if (!address || !vault || captured) return;
     setFunding(true);
     setError(null);
     try {
@@ -188,7 +243,7 @@ export default function Home() {
   }
 
   async function handleTrustline() {
-    if (!address || !vault) return;
+    if (!address || !vault || captured) return;
     setTrusting(true);
     setError(null);
     try {
@@ -202,7 +257,7 @@ export default function Home() {
   }
 
   async function handleSubmit() {
-    if (!address || !vault) return;
+    if (!address || !vault || captured) return;
     setPhase("signing");
     setError(null);
     setTxHash(null);
@@ -231,7 +286,8 @@ export default function Home() {
 
   if (!vault) {
     return (
-      <div className="shell">
+      <div className="page">
+        <TopBar />
         <div className="card">
           <div className="title">Not configured</div>
           <div className="subtitle">
@@ -254,105 +310,104 @@ export default function Home() {
     (redeemAll || (numeric > 0 && numeric <= Number(position.value)));
   const canSubmit = !busy && !swapBusy && (mode === "deposit" ? canDeposit : canRedeem);
 
+  // Ce que la saisie permet, et ce qu'elle rendrait : affichage seulement, le
+  // calcul reprend `sharesForAmount`, celui-la meme qu'utilise le rachat.
+  const available = mode === "deposit" ? balance : (position?.value ?? "0");
+  const wellFormed = isAmount(amount);
+  const malformed = amount.trim() !== "" && !wellFormed;
+  const overLimit = wellFormed && !redeemAll && numeric > Number(available);
+  const nav = position ? navPerShare(position) : null;
+  const previewShares =
+    wellFormed && !overLimit && position && position.totalShares > 0n
+      ? redeemAll
+        ? position.shares
+        : sharesForAmount(amount, position)
+      : null;
+  // XLM paie aussi les frais et la reserve du compte : pas de « Max » sur
+  // l'actif natif, il viderait le compte de quoi signer.
+  const canMax =
+    mode === "redeem" ? !!position && position.shares > 0n : asset?.kind !== "native";
+  const holdsShares = !!position && position.shares > 0n;
+
+  const stepIndex = phase === "signing" ? 1 : phase === "success" ? 2 : -1;
+  const steps = ["Amount", "Sign and settle", "Confirmed"];
+
   return (
-    <div className="shell">
-      <div className="brand">
-        <div className="logo">
-          For<span>Yield</span> &times; Stellar
+    <div className="page">
+      <TopBar wallet={address} />
+
+      <div className="intro reveal">
+        <div>
+          <div className="eyebrow">Soroban YieldVault</div>
+          <h1 className="page-title">{code} vault</h1>
+          <p className="page-lead">{vault.subtitle}</p>
         </div>
-        <div className="badge">{NETWORK_LABEL}</div>
+        {VAULTS.length > 1 && (
+          <div className="tabs" role="tablist" aria-label="Vault instance">
+            {VAULTS.map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                role="tab"
+                aria-selected={v.key === vault.key}
+                className={v.key === vault.key ? "tab active" : "tab"}
+                onClick={() => switchVault(v)}
+                disabled={busy || swapBusy}
+              >
+                {v.tab}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {VAULTS.length > 1 && (
-        <div className="tabs" role="tablist" aria-label="Vault instance">
-          {VAULTS.map((v) => (
-            <button
-              key={v.key}
-              type="button"
-              role="tab"
-              aria-selected={v.key === vault.key}
-              className={v.key === vault.key ? "tab active" : "tab"}
-              onClick={() => switchVault(v)}
-              disabled={busy || swapBusy}
-            >
-              {v.tab}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="card">
-        <div className="title">YieldVault</div>
-        <div className="subtitle">{vault.subtitle}</div>
-
-        {!address ? (
-          <button onClick={handleConnect}>Connect Wallet</button>
-        ) : needsFunding ? (
-          <>
-            <div className="row">
-              <span className="label">Wallet</span>
-              <span className="value mono">{shorten(address)}</span>
-            </div>
-            {IS_TESTNET ? (
+      <div className="home-grid">
+        <div className="stack">
+          <section className="card reveal" style={{ ["--i" as string]: 1 }}>
+            {!address ? (
               <>
-                <div className="status error">
-                  This account isn&apos;t active on Stellar testnet yet. Fund it
-                  with Friendbot to continue.
-                </div>
-                <button onClick={handleFund} disabled={funding}>
-                  {funding ? (
-                    <>
-                      <span className="spinner" />
-                      Funding...
-                    </>
-                  ) : (
-                    "Fund with Friendbot"
-                  )}
-                </button>
+                <div className="card-title">Deposit into the vault</div>
+                <p className="card-lead">
+                  Connect a Stellar wallet to deposit {code} and receive vault shares.
+                  Every operation is signed in your wallet and settles on {NETWORK_LABEL}.
+                </p>
+                <button onClick={handleConnect}>Connect wallet</button>
+                <p className="connect-hint">Freighter, xBull, Albedo, Lobstr or Ledger</p>
               </>
-            ) : (
-              <div className="status error">
-                This account isn&apos;t active on Stellar yet. Send XLM to it to
-                activate it, then reload.
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="row">
-              <span className="label">Wallet</span>
-              <span className="value mono">{shorten(address)}</span>
-            </div>
-            <div className="row">
-              <span className="label">{code} balance</span>
-              <span className="value">
-                {trusted ? `${formatAmount(balance)} ${code}` : "no trustline"}
-              </span>
-            </div>
-
-            {position && (
+            ) : needsFunding ? (
               <>
-                <div className="row">
-                  <span className="label">Your vault position</span>
-                  <span className="value">
-                    {formatAmount(position.value)} {code}
-                  </span>
-                </div>
-                <div className="row">
-                  <span className="label">Vault total</span>
-                  <span className="value">
-                    {formatAmount(position.totalAssets)} {code}
-                  </span>
-                </div>
+                <div className="card-title">Activate this account</div>
+                {IS_TESTNET ? (
+                  <>
+                    <div className="status error">
+                      This account isn&apos;t active on Stellar testnet yet. Fund it
+                      with Friendbot to continue.
+                    </div>
+                    <button onClick={handleFund} disabled={funding}>
+                      {funding ? (
+                        <>
+                          <span className="spinner" />
+                          Funding...
+                        </>
+                      ) : (
+                        "Fund with Friendbot"
+                      )}
+                    </button>
+                  </>
+                ) : (
+                  <div className="status error">
+                    This account isn&apos;t active on Stellar yet. Send XLM to it to
+                    activate it, then reload.
+                  </div>
+                )}
               </>
-            )}
-
-            {!trusted ? (
+            ) : !trusted ? (
               <>
-                <div className="status error">
-                  This account holds no {code} trustline. A Classic Stellar
-                  asset can only be received once its trustline is open; this
-                  is a one-off signature.
+                <div className="card-title">Enable {code}</div>
+                <div className="status">
+                  This account holds no {code} trustline. A Classic Stellar asset can
+                  only be received once its trustline is open; this is a one-off
+                  signature.
                 </div>
                 <button onClick={handleTrustline} disabled={trusting}>
                   {trusting ? (
@@ -380,22 +435,45 @@ export default function Home() {
                     type="button"
                     className={mode === "redeem" ? "tab active" : "tab"}
                     onClick={() => switchMode("redeem")}
-                    disabled={busy}
+                    disabled={busy || !holdsShares}
                   >
                     Redeem
                   </button>
                 </div>
 
-                <label className="field">
-                  {mode === "deposit"
-                    ? "Amount to deposit"
-                    : "Amount to redeem"}
-                </label>
+                <div className="field-head">
+                  <label className="field" htmlFor="amount">
+                    {mode === "deposit" ? "Amount to deposit" : "Amount to redeem"}
+                  </label>
+                  <span className="available">
+                    {mode === "deposit" ? "Wallet" : "Position"}: {formatAmount(available)} {code}
+                    {canMax && (
+                      <button
+                        type="button"
+                        className="link"
+                        onClick={() => {
+                          if (mode === "redeem" && position) {
+                            setAmount(position.value);
+                            setRedeemAll(true);
+                          } else {
+                            setAmount(balance);
+                          }
+                        }}
+                        disabled={busy}
+                      >
+                        Max
+                      </button>
+                    )}
+                  </span>
+                </div>
                 <div className="input-wrap">
                   <input
+                    id="amount"
                     type="text"
                     inputMode="decimal"
+                    autoComplete="off"
                     value={amount}
+                    aria-invalid={malformed || overLimit}
                     onChange={(e) => {
                       setAmount(e.target.value);
                       setRedeemAll(false);
@@ -404,19 +482,53 @@ export default function Home() {
                   />
                   <span className="suffix">{code}</span>
                 </div>
+                {malformed && (
+                  <div className="hint error">Enter a positive amount, such as 0.5.</div>
+                )}
+                {overLimit && (
+                  <div className="hint error">
+                    {mode === "deposit"
+                      ? `More than the ${code} in your wallet.`
+                      : "More than your position in the vault."}
+                  </div>
+                )}
 
-                {mode === "redeem" && position && position.shares > 0n && (
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => {
-                      setAmount(position.value);
-                      setRedeemAll(true);
-                    }}
-                    disabled={busy}
-                  >
-                    Redeem everything ({formatAmount(position.value)} {code})
-                  </button>
+                {previewShares !== null && previewShares > 0n && (
+                  <div className="review">
+                    {mode === "deposit" ? (
+                      <div className="row">
+                        <span className="label">You receive</span>
+                        <span className="value">
+                          &asymp; {formatAmount(fromStroops(previewShares))} shares
+                        </span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="row">
+                          <span className="label">Shares burned</span>
+                          <span className="value">
+                            {redeemAll ? "" : "≈ "}
+                            {formatAmount(fromStroops(previewShares))}
+                          </span>
+                        </div>
+                        <div className="row">
+                          <span className="label">You receive</span>
+                          <span className="value">
+                            {redeemAll ? "" : "at most "}
+                            {formatAmount(amount)} {code}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                    {nav !== null && (
+                      <div className="row">
+                        <span className="label">Price per share</span>
+                        <span className="value">
+                          {nav.toFixed(6)} {code}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 <button onClick={handleSubmit} disabled={!canSubmit}>
@@ -426,70 +538,136 @@ export default function Home() {
                       Confirm in your wallet...
                     </>
                   ) : mode === "deposit" ? (
-                    "Deposit"
+                    `Deposit${wellFormed && !overLimit ? ` ${formatAmount(amount)} ${code}` : ""}`
+                  ) : redeemAll ? (
+                    "Redeem everything"
                   ) : (
-                    "Redeem"
+                    `Redeem${wellFormed && !overLimit ? ` ${formatAmount(amount)} ${code}` : ""}`
                   )}
                 </button>
+
+                {(stepIndex >= 0 || phase === "error") && (
+                  <ol className="steps" aria-label="Operation progress">
+                    {steps.map((label, i) => {
+                      const state =
+                        phase === "error"
+                          ? i === 0
+                            ? "done"
+                            : i === 1
+                              ? "failed"
+                              : ""
+                          : i < stepIndex || (phase === "success" && i === stepIndex)
+                            ? "done"
+                            : i === stepIndex
+                              ? "current"
+                              : "";
+                      return (
+                        <li key={label} className={state} aria-current={state === "current" ? "step" : undefined}>
+                          {label}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+
+                {trusted && Number(balance) === 0 && vault.faucet && mode === "deposit" && (
+                  <div className="status">
+                    No {code} on this account.{" "}
+                    <a href={vault.faucet.url} target="_blank" rel="noreferrer">
+                      {vault.faucet.label} &rarr;
+                    </a>
+                  </div>
+                )}
               </>
             )}
 
-            {trusted && Number(balance) === 0 && vault.faucet && (
-              <div className="status">
-                No {code} on this account.{" "}
-                <a href={vault.faucet.url} target="_blank" rel="noreferrer">
-                  {vault.faucet.label} &rarr;
+            {phase === "success" && txHash && (
+              <div className="status success" role="status">
+                <strong>
+                  {mode === "deposit" ? "Deposit" : "Redemption"} confirmed on {NETWORK_LABEL}
+                </strong>
+                Your position is up to date.{" "}
+                <a href={EXPLORER_TX(txHash)} target="_blank" rel="noreferrer">
+                  View on Stellar Expert &rarr;
                 </a>
               </div>
             )}
-          </>
-        )}
 
-        {phase === "success" && txHash && (
-          <div className="status success">
-            {mode === "deposit" ? "Deposit" : "Redemption"} confirmed on{" "}
-            {NETWORK_LABEL}. Your vault position above is up to date.
-            <br />
-            <a href={EXPLORER_TX(txHash)} target="_blank" rel="noreferrer">
-              View on Stellar Expert &rarr;
-            </a>
-          </div>
-        )}
+            {error && (
+              <div className="status error" role="alert">
+                {error}
+              </div>
+            )}
+          </section>
 
-        {error && <div className="status error">{error}</div>}
-      </div>
-
-      {/* Reequilibrage D4 : sous les deux onglets dont il relie les actifs. */}
-      {address && !needsFunding && SWAP_PAIR &&
-        (vault.asset.code === SWAP_PAIR.from.code || vault.asset.code === SWAP_PAIR.to.code) && (
-          <div className="card below">
-            <SwapPanel
-              address={address}
-              refreshKey={operations}
-              disabled={busy}
-              onBusyChange={setSwapBusy}
-              onSwapped={() => setOperations((n) => n + 1)}
-            />
-          </div>
-        )}
-
-      {vault.audited && (
-        <div className="card below">
-          {vault.allocator && <AllocationPanel vault={vault} refreshKey={operations} />}
-          {vault.fees && <FeePanel vault={vault} refreshKey={operations} />}
-          <a className="dashboard-link" href={`/dashboard/?vault=${vault.key}`}>
-            Compliance dashboard: audit trail, {vault.fees ? "fees" : "allocations"}, NAV &rarr;
-          </a>
+          {/* Reequilibrage D4 : sous les deux onglets dont il relie les actifs.
+              Absent en mode capture, qui ne lit rien on-chain. */}
+          {address && !needsFunding && !captured && SWAP_PAIR &&
+            (vault.asset.code === SWAP_PAIR.from.code || vault.asset.code === SWAP_PAIR.to.code) && (
+              <section className="card reveal" style={{ ["--i" as string]: 2 }}>
+                <SwapPanel
+                  address={address}
+                  refreshKey={operations}
+                  disabled={busy}
+                  onBusyChange={setSwapBusy}
+                  onSwapped={() => setOperations((n) => n + 1)}
+                />
+              </section>
+            )}
         </div>
-      )}
 
-      <div className="footer">
-        Testnet demo - Stellar Community Fund Build - for-yield.com
-        <br />
-        Testnet tokens only, with no value. ForYield is not an authorised
-        crypto-asset service provider; this page is not an offer of a financial
-        service.
+        <div className="stack">
+          <section className="card reveal" style={{ ["--i" as string]: 2 }}>
+            <div className="card-title">Your position</div>
+            <p className="card-lead">Read on-chain from the vault contract.</p>
+            {address && position ? (
+              <div className="kpis">
+                <Kpi
+                  primary
+                  label="Position value"
+                  value={formatAmount(position.value)}
+                  unit={code}
+                  sub={`${formatAmount(fromStroops(position.shares))} shares`}
+                />
+                <Kpi
+                  label="Share of the vault"
+                  value={
+                    position.totalShares > 0n
+                      ? `${((Number(position.shares) / Number(position.totalShares)) * 100).toFixed(2)} %`
+                      : "-"
+                  }
+                />
+                <Kpi label="Vault total" value={formatAmount(position.totalAssets)} unit={code} />
+                <Kpi
+                  label="Price per share"
+                  value={nav !== null ? nav.toFixed(6) : "-"}
+                  unit={nav !== null ? code : undefined}
+                />
+              </div>
+            ) : (
+              <div className="empty">
+                {!address
+                  ? "Connect a wallet to see your position, your share of the vault and its price per share."
+                  : needsFunding || !trusted
+                    ? `Your position appears here once the account can hold ${code}.`
+                    : "Reading your position on-chain..."}
+              </div>
+            )}
+          </section>
+
+          {vault.audited && (
+            <section className="card reveal" style={{ ["--i" as string]: 3 }}>
+              {vault.allocator && <AllocationPanel vault={vault} refreshKey={operations} />}
+              {vault.fees && <FeePanel vault={vault} refreshKey={operations} />}
+              <a className="dashboard-link" href={`/dashboard/?vault=${vault.key}`}>
+                Compliance dashboard: audit trail, {vault.fees ? "fees" : "allocations"}, NAV &rarr;
+              </a>
+            </section>
+          )}
+        </div>
       </div>
+
+      <Footer />
     </div>
   );
 }

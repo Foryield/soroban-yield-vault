@@ -18,10 +18,11 @@ import {
   type AuditFeed,
   type ChainEvent,
 } from "@/lib/events";
-import { EXPLORER_CONTRACT, NETWORK, NETWORK_LABEL } from "@/lib/stellar";
+import { EXPLORER_CONTRACT, NETWORK } from "@/lib/stellar";
 import { VAULTS, vaultFromKey, type VaultConfig } from "@/lib/vaults";
 import { AllocationPanel } from "../allocation";
 import { FeePanel } from "../fees";
+import { Footer, TopBar } from "../brand";
 import {
   AlgorithmRegistry,
   Allocations,
@@ -144,7 +145,8 @@ export default function Dashboard() {
 
   if (!vault) {
     return (
-      <div className="shell">
+      <div className="page">
+        <TopBar sub="Compliance dashboard" />
         <div className="card">
           <div className="title">Not configured</div>
           <div className="subtitle">No audited vault is configured for this network.</div>
@@ -184,31 +186,35 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="shell wide">
-      <div className="brand">
-        <div className="logo">
-          For<span>Yield</span> &times; Stellar
-          <span className="logo-sub">Compliance dashboard</span>
-        </div>
-        <div className="badge">{NETWORK_LABEL}</div>
-      </div>
+    <div className="page section-gap">
+      <TopBar sub="Compliance dashboard" />
 
-      {AUDITED_VAULTS.length > 1 && (
-        <div className="tabs" role="tablist" aria-label="Vault instance">
-          {AUDITED_VAULTS.map((v) => (
-            <button
-              key={v.key}
-              type="button"
-              role="tab"
-              aria-selected={v.key === vault.key}
-              className={v.key === vault.key ? "tab active" : "tab"}
-              onClick={() => setVault(v)}
-            >
-              {v.tab}
-            </button>
-          ))}
+      <div className="intro reveal">
+        <div>
+          <div className="eyebrow">Compliance dashboard &middot; deliverable 6c</div>
+          <h1 className="page-title">{code} vault audit trail</h1>
+          <p className="page-lead">
+            Every event the vault emits, rebuilt into allocations, NAV, governance and fees.
+            Refreshed every 15 seconds.
+          </p>
         </div>
-      )}
+        {AUDITED_VAULTS.length > 1 && (
+          <div className="tabs" role="tablist" aria-label="Vault instance">
+            {AUDITED_VAULTS.map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                role="tab"
+                aria-selected={v.key === vault.key}
+                className={v.key === vault.key ? "tab active" : "tab"}
+                onClick={() => setVault(v)}
+              >
+                {v.tab}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="dash-grid">
         <section className="card">
@@ -345,12 +351,7 @@ export default function Dashboard() {
         )}
       </section>
 
-      <div className="footer">
-        Testnet demo - Stellar Community Fund Build - for-yield.com
-        <br />
-        Testnet tokens only, with no value. ForYield is not an authorised crypto-asset service
-        provider; this page is not an offer of a financial service.
-      </div>
+      <Footer />
     </div>
   );
 }

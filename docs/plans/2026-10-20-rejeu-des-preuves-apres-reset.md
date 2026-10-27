@@ -123,8 +123,12 @@ paquet `onboarding/` (`npm run demo`), une fois l'instance de démo redéployée
 
 ## 7. D4 : pool Aquarius, SwapRouter et rééquilibrage
 
+Le pool de D4 apparie l'EURC de Circle. `seed_aquarius_pool.sh` apparie le
+FYEUR par défaut depuis D5 : `PAIRED_ASSET` est donc obligatoire ici.
+
 ```bash
-scripts/seed_aquarius_pool.sh d1-ops 15000000 15000000   # imprime pool_hash
+PAIRED_ASSET=EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO \
+  scripts/seed_aquarius_pool.sh d1-ops 15000000 15000000   # imprime pool_hash
 scripts/deploy_swap_router.sh d1-ops <pool_hash>         # imprime contract_id
 SWAP_ROUTER=<contract_id> scripts/check_aquarius.sh d1-ops
 ```
@@ -164,11 +168,157 @@ représentatif.
 
 ## 8. D5 et D6
 
-À compléter à mesure que les livrables existent : déploiement de l'allocateur
-et de la stratégie Aquarius LP, allocations de preuve (D5) ; module de frais,
-accumulation et distribution, events de conformité (D6). Chaque livrable
-ajoute ici ses commandes au moment où il produit ses premières preuves, pas
-au moment du rejeu.
+Reconstitue ce que consignent `docs/evidence/d5-defindex-allocator.md` et
+`docs/evidence/d6-fees-audit-trail.md` : l'allocateur USDC sur Blend et
+Aquarius, puis l'instance EURC à frais. Le site, la tâche quotidienne et
+l'archive des events sont ensuite rebranchés sur les nouvelles adresses.
+
+### 8.1 Soldes en plus des étapes 1 à 4
+
+- **USDC** : 218 au total. Aux 101,5 de l'étape 2 s'ajoutent environ 112 pour
+  ensemencer le pool USDC / FYEUR au taux BCE (100 FYEUR en face), 0,02 pour
+  l'amorçage des deux stratégies, 2 pour le dépôt de preuve et 1,25 pour la
+  séquence de démonstration. Un pool dix fois plus petit ferait dépasser au
+  rééquilibrage la marge de glissement de 1 % de la stratégie Aquarius.
+- **EURC** : 12,5 au total. Aux 6,5 de l'étape 3 s'ajoutent 5 pour le dépôt
+  de preuve D6, 0,5 de rendement simulé, et 0,5 pour la prise 9 du tournage.
+- **AQUA** : 2, un par pool créé (USDC / EURC en D4, USDC / FYEUR ici).
+  L'échange de l'étape 4 en rend 2,1.
+- **XLM** : le premier appel de chaque contrat prépaie 120 jours de loyer,
+  527 XLM pour la stratégie Aquarius et 623 XLM pour le vault D5 en octobre.
+  Les 10 000 XLM du Friendbot suffisent, le minimum par défaut de la
+  vérification préalable ne le dit pas.
+
+La vérification préalable de l'étape 5, avec ces minimums (unités 7
+décimales) :
+
+```bash
+MIN_USDC=2180000000 MIN_EURC=125000000 MIN_AQUA=20000000 MIN_XLM=20000000000 \
+  scripts/replay_preflight.sh d1-ops
+```
+
+### 8.2 Clés d'exploitation
+
+`fy-ops-bot` (keeper, clé de la tâche quotidienne) et `fy-treasury`
+(trésorerie des frais) sont des identités locales, comme `d1-ops` : leurs
+adresses ne changent pas, seuls leurs comptes sont à recréer. Le secret
+GitHub `FY_OPS_BOT_SECRET` reste valable.
+
+```bash
+stellar keys fund fy-ops-bot --network testnet
+stellar keys fund fy-treasury --network testnet
+stellar tx new change-trust --source fy-treasury --network testnet \
+  --line EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO
+```
+
+La ligne de confiance permet à la trésorerie de racheter ses parts de frais.
+
+### 8.3 D5 : FYEUR et pool USDC / FYEUR
+
+Le FYEUR remplace l'EURC de Circle dans la jambe Aquarius : le pool USDC /
+EURC du testnet est arbitré par un robot tiers loin du taux BCE (journal D5,
+21/10). Le script recrée la clé émettrice `fy-eur-issuer` si elle manque,
+puis le contrat d'actif, la ligne de confiance et l'émission.
+
+```bash
+scripts/issue_test_eur.sh d1-ops 10000000000          # 1 000 FYEUR
+scripts/seed_aquarius_pool.sh d1-ops <USDC> 1000000000 # imprime pool_hash
+```
+
+`<USDC>` vaut 100 fois le taux BCE du jour, en unités 7 décimales : le
+21/10, à 1,1234, c'était `1123400000`. Le pool naît ainsi au prix de
+référence que la stratégie publiera à son déploiement.
+
+### 8.4 D5 : allocateur
+
+```bash
+scripts/build_blend_strategy.sh        # facultatif : prouve le wasm Blend vendorisé
+scripts/deploy_d5.sh d1-ops <pool_hash>
+```
+
+Le script vérifie l'empreinte du wasm Blend, compile le vault et la
+stratégie Aquarius depuis `main`, déploie et amorce les deux stratégies,
+puis le vault avec ses cibles (Blend 70 %, Aquarius 20 %, déclencheur
+500 pb). Il imprime `blend_strategy`, `aquarius_strategy` et le vault.
+
+Le keeper est d'abord `d1-ops`. Le confier ensuite à `fy-ops-bot` sur le
+vault et sur la stratégie Aquarius, `d1-ops` restant admin :
+
+```bash
+stellar contract invoke --id <vault D5> --source d1-ops --network testnet -- \
+  set_keeper --keeper $(stellar keys address fy-ops-bot)
+stellar contract invoke --id <stratégie Aquarius> --source d1-ops --network testnet -- \
+  set_keeper --keeper $(stellar keys address fy-ops-bot)
+```
+
+### 8.5 D5 : transactions de preuve
+
+Dans l'ordre du journal D5 du 23/10 :
+
+```bash
+stellar contract invoke --id <vault D5> --source d1-ops --network testnet -- \
+  deposit --from $(stellar keys address d1-ops) --amount 20000000
+stellar contract invoke --id <vault D5> --source fy-ops-bot --network testnet -- \
+  checkpoint
+scripts/align_aquarius_pool.sh d1-ops <stratégie Aquarius>
+stellar contract invoke --id <vault D5> --source fy-ops-bot --network testnet -- \
+  rebalance --caller $(stellar keys address fy-ops-bot)
+```
+
+Attendu : le dépôt reste oisif ; `nav` publié ; un seul lot de deux
+`allocate`, Blend 1,4 USDC et Aquarius 0,4 USDC, décidés par le keeper, soit
+70 / 20 / 10 %.
+
+Pour répéter la séance filmée, `scripts/d5_demo_sequence.sh` déroule les six
+étapes du brief de tournage, une fois ses adresses mises à jour (8.7).
+
+### 8.6 D6 : instance EURC à frais
+
+```bash
+scripts/deploy_d6b.sh d1-ops $(stellar keys address fy-treasury) $(stellar keys address fy-ops-bot)
+```
+
+Le script compile le vault, le déploie sans stratégie sur l'EURC de Circle,
+puis règle les frais : performance 20 %, gestion 2 % par an. Transactions de
+preuve, dans l'ordre du journal D6 du 23/10 :
+
+```bash
+EURC_SAC=$(stellar contract id asset --network testnet \
+  --asset EURC:GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO)
+stellar contract invoke --id <vault EURC> --source d1-ops --network testnet -- \
+  deposit --from $(stellar keys address d1-ops) --amount 50000000
+stellar contract invoke --id $EURC_SAC --source d1-ops --network testnet -- \
+  transfer --from $(stellar keys address d1-ops) --to <vault EURC> --amount 5000000
+stellar contract invoke --id <vault EURC> --source fy-ops-bot --network testnet -- \
+  checkpoint
+stellar contract invoke --id <vault EURC> --source fy-treasury --network testnet -- \
+  withdraw --from $(stellar keys address fy-treasury) --shares <fee_shares>
+```
+
+Le transfert simule un rendement, à présenter comme tel. Attendu : un
+`fee_minted` de type `perf` de 0,1 EURC, puis le rachat par la trésorerie des
+`<fee_shares>` lues dans cet event. Le premier `fee_minted` de type `mgmt`
+vient du checkpoint de la tâche quotidienne, le lendemain. Les deux frais dans
+une même transaction relèvent de la prise 9 du tournage.
+
+### 8.7 Rebrancher le site, la tâche et l'archive
+
+Les nouvelles adresses remplacent les anciennes, sur une branche relue
+avant fusion :
+
+- `web/lib/vaults.ts` et `render.yaml` (`NEXT_PUBLIC_*`) : vaults D5 et EURC ;
+- `.github/workflows/ops-daily.yml` : `VAULT`, `FEE_VAULT`,
+  `AQUARIUS_STRATEGY` ;
+- `web/scripts/ingest-events.mjs` : le vault D5, ses deux stratégies et le
+  vault EURC ;
+- `scripts/d5_demo_sequence.sh` : `VAULT`, `AQUARIUS` et les noms des
+  stratégies ;
+- `README.md` et `docs/the-arch.md` : tableaux des contrats.
+
+La branche `data/events` garde les fichiers des anciens contrats : ce sont
+leurs preuves. Ceux des nouveaux se créent à la première ingestion. Après la
+fusion, lancer `ops-daily` à la main (`workflow_dispatch`) et vérifier le
+dashboard des deux onglets : `seq` continus, prix de référence publié.
 
 ## 9. Après chaque transaction de preuve
 

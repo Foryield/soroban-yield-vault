@@ -1,7 +1,7 @@
 {
   "contract": "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5",
   "network": "testnet",
-  "lastLedger": 5422571,
+  "lastLedger": 5440145,
   "missed": [],
   "events": [
     {
@@ -44,6 +44,94 @@
         ],
         "value": {
           "amount": "14000000",
+          "from": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+        }
+      }
+    },
+    {
+      "id": "0023337980408172544-0000000003",
+      "contract": "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5",
+      "ledger": 5433797,
+      "closedAt": "2026-10-28T13:03:45Z",
+      "txHash": "f57dc94c12411eea2cbaa7c1a1965688a220e2de4e67a89c65cad881591dddf2",
+      "topics": [
+        "AAAADgAAAA1CbGVuZFN0cmF0ZWd5AAAA",
+        "AAAADwAAAAdkZXBvc2l0AA=="
+      ],
+      "value": "AAAAEQAAAAEAAAACAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAAAao0bAAAADwAAAARmcm9tAAAAEgAAAAFJKyeCuuxC03s5CMSWfJAxXr7eW8gQYjAIHqQaJZVDaw==",
+      "decoded": {
+        "topics": [
+          "BlendStrategy",
+          "deposit"
+        ],
+        "value": {
+          "amount": "6982939",
+          "from": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+        }
+      }
+    },
+    {
+      "id": "0023338289645764608-0000000003",
+      "contract": "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5",
+      "ledger": 5433869,
+      "closedAt": "2026-10-28T13:09:45Z",
+      "txHash": "b8cd77953586c695c50684e920ea982ec34ee370b8ea524ceae6225e145a7f48",
+      "topics": [
+        "AAAADgAAAA1CbGVuZFN0cmF0ZWd5AAAA",
+        "AAAADwAAAAdkZXBvc2l0AA=="
+      ],
+      "value": "AAAAEQAAAAEAAAACAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAAAHMwRAAAADwAAAARmcm9tAAAAEgAAAAFJKyeCuuxC03s5CMSWfJAxXr7eW8gQYjAIHqQaJZVDaw==",
+      "decoded": {
+        "topics": [
+          "BlendStrategy",
+          "deposit"
+        ],
+        "value": {
+          "amount": "1887249",
+          "from": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+        }
+      }
+    },
+    {
+      "id": "0023338431379730432-0000000002",
+      "contract": "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5",
+      "ledger": 5433902,
+      "closedAt": "2026-10-28T13:12:30Z",
+      "txHash": "74b91f57e364436dfc94927634af170a3224d64c1a6f08a1382e5ee5311e6dfe",
+      "topics": [
+        "AAAADgAAAA1CbGVuZFN0cmF0ZWd5AAAA",
+        "AAAADwAAAAh3aXRoZHJhdw=="
+      ],
+      "value": "AAAAEQAAAAEAAAACAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAAAfZjGAAAADwAAAARmcm9tAAAAEgAAAAFJKyeCuuxC03s5CMSWfJAxXr7eW8gQYjAIHqQaJZVDaw==",
+      "decoded": {
+        "topics": [
+          "BlendStrategy",
+          "withdraw"
+        ],
+        "value": {
+          "amount": "8231110",
+          "from": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+        }
+      }
+    },
+    {
+      "id": "0023342850901053440-0000000002",
+      "contract": "CCDZZ4NXLWFXWIJIFSOG37K3NIMITZPMUJAHLELRSHO7XO5VA5ZYDEV5",
+      "ledger": 5434931,
+      "closedAt": "2026-10-28T14:38:15Z",
+      "txHash": "b852479979efddb6483ce5da966d61944fa949489731ecdf80127ba2f35f6339",
+      "topics": [
+        "AAAADgAAAA1CbGVuZFN0cmF0ZWd5AAAA",
+        "AAAADwAAAAh3aXRoZHJhdw=="
+      ],
+      "value": "AAAAEQAAAAEAAAACAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAAAD0I/AAAADwAAAARmcm9tAAAAEgAAAAFJKyeCuuxC03s5CMSWfJAxXr7eW8gQYjAIHqQaJZVDaw==",
+      "decoded": {
+        "topics": [
+          "BlendStrategy",
+          "withdraw"
+        ],
+        "value": {
+          "amount": "999999",
           "from": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
         }
       }

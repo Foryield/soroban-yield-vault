@@ -1,7 +1,7 @@
 {
   "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
   "network": "testnet",
-  "lastLedger": 5422571,
+  "lastLedger": 5440145,
   "missed": [],
   "events": [
     {
@@ -223,6 +223,73 @@
           "1115000000",
           "1793059200",
           "1118800000"
+        ]
+      }
+    },
+    {
+      "id": "0023337980408172544-0000000019",
+      "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "ledger": 5433797,
+      "closedAt": "2026-10-28T13:03:45Z",
+      "txHash": "f57dc94c12411eea2cbaa7c1a1965688a220e2de4e67a89c65cad881591dddf2",
+      "topics": [
+        "AAAADwAAAA1kZXBvc2l0X2V2ZW50AAAA",
+        "AAAADgAAABJBcXVhcml1c0xwU3RyYXRlZ3kAAA=="
+      ],
+      "value": "AAAAEQAAAAEAAAACAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAAAHsodAAAADwAAAARmcm9tAAAAEgAAAAFJKyeCuuxC03s5CMSWfJAxXr7eW8gQYjAIHqQaJZVDaw==",
+      "decoded": {
+        "topics": [
+          "deposit_event",
+          "AquariusLpStrategy"
+        ],
+        "value": {
+          "amount": "2017821",
+          "from": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+        }
+      }
+    },
+    {
+      "id": "0023338289645764608-0000000019",
+      "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "ledger": 5433869,
+      "closedAt": "2026-10-28T13:09:45Z",
+      "txHash": "b8cd77953586c695c50684e920ea982ec34ee370b8ea524ceae6225e145a7f48",
+      "topics": [
+        "AAAADwAAAA1kZXBvc2l0X2V2ZW50AAAA",
+        "AAAADgAAABJBcXVhcml1c0xwU3RyYXRlZ3kAAA=="
+      ],
+      "value": "AAAAEQAAAAEAAAACAAAADwAAAAZhbW91bnQAAAAAAAoAAAAAAAAAAAAAAAAACEmmAAAADwAAAARmcm9tAAAAEgAAAAFJKyeCuuxC03s5CMSWfJAxXr7eW8gQYjAIHqQaJZVDaw==",
+      "decoded": {
+        "topics": [
+          "deposit_event",
+          "AquariusLpStrategy"
+        ],
+        "value": {
+          "amount": "543142",
+          "from": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV"
+        }
+      }
+    },
+    {
+      "id": "0023365206205829120-0000000000",
+      "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "ledger": 5440136,
+      "closedAt": "2026-10-28T21:52:00Z",
+      "txHash": "03feb135334f56c88532f5fecfda71dfb8d78b227deb9503daeabb54b2e36f67",
+      "topics": [
+        "AAAADwAAAAVwcmljZQAAAA==",
+        "AAAAEgAAAAAAAAAAsKEDhWM4aCgIpDWWuVjQf8uy1296yrJk/gcAHol0sXk="
+      ],
+      "value": "AAAAEAAAAAEAAAADAAAACgAAAAAAAAAAAAAAAEJbnCAAAAAFAAAAAGrhOwAAAAAKAAAAAAAAAAAAAAAAQnWMwA==",
+      "decoded": {
+        "topics": [
+          "price",
+          "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+        ],
+        "value": [
+          "1113300000",
+          "1793145600",
+          "1115000000"
         ]
       }
     }

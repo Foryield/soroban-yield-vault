@@ -159,3 +159,39 @@ and strategies), [PR #35](https://github.com/Foryield/soroban-yield-vault/pull/3
   `decided_by` the keeper, `algo` `fy_alloc_v1`, `reason` `drift`. Allocation
   after: 70.0 / 19.9 / 10.0 %, `total_assets` 1.9990448 USDC (0.24 % entry
   cost on the Aquarius leg, swap fee and price impact). Fee 0.50 XLM.
+
+## 2026-10-28: walkthrough session, deposits, two batch rebalances, redemptions
+
+- **What it proves**: the allocator under an outside depositor: the tester
+  wallet `GBHFMYSEYXO42SCVOQ7GLJFR5CC2WVJKM5XED466GE2OKLL2DKJGH4ZX` deposits
+  from the demo page, the keeper spreads the idle funds across both strategies
+  in one transaction, and redemptions pull back from Blend when idle cash is
+  short. Figures below are read from the decoded events (archive branch
+  `data/events`).
+- **Deposit of 1 USDC** by the tester, seq 10:
+  [`3947da40…fc00`](https://stellar.expert/explorer/testnet/tx/3947da4035e9429ec35f93b38da1ccbf9253c23492e06a143272eb9a35a3fc00).
+- **Rebalance** signed by the keeper, two `allocate` events in one
+  transaction, Blend +0.6982939 USDC (seq 11) and Aquarius +0.2017821 USDC
+  (seq 12), `algo` `fy_alloc_v1`, `reason` `drift`:
+  [`f57dc94c…ddf2`](https://stellar.expert/explorer/testnet/tx/f57dc94c12411eea2cbaa7c1a1965688a220e2de4e67a89c65cad881591dddf2).
+- **Second rebalance** after three small deposits by the tester, Blend
+  +0.1887249 USDC (seq 16) and Aquarius +0.0543142 USDC (seq 17):
+  [`b8cd7795…7f48`](https://stellar.expert/explorer/testnet/tx/b8cd77953586c695c50684e920ea982ec34ee370b8ea524ceae6225e145a7f48).
+- **Redemption of 1 USDC** larger than the idle cash: `deallocate` from Blend
+  of 0.823111 USDC, `reason` `redeem`, `decided_by` the redeeming holder
+  (seq 19), then `withdraw` (seq 20):
+  [`74b91f57…6dfe`](https://stellar.expert/explorer/testnet/tx/74b91f57e364436dfc94927634af170a3224d64c1a6f08a1382e5ee5311e6dfe).
+- **Recorded sequence of the video**: redemption of 0.0999999 USDC pulled from
+  Blend (seq 21-22)
+  [`b8524799…6339`](https://stellar.expert/explorer/testnet/tx/b852479979efddb6483ce5da966d61944fa949489731ecdf80127ba2f35f6339),
+  deposit of 1 USDC (seq 23)
+  [`66832a82…5d0c`](https://stellar.expert/explorer/testnet/tx/66832a829f4e837a71d13baaba08aad23659a4dd55a3f34c140eac2c43115d0c),
+  redemption of 0.2 USDC served from idle (seq 24)
+  [`56ab01fa…214a`](https://stellar.expert/explorer/testnet/tx/56ab01fa85312b3950d0837418593d1c2f658f9358f5b1950bd9c895ccce214a).
+- **Pool aligned** on the reference price before the rebalances by two
+  FYEUR swaps from the ops account:
+  [`ebed8bf9…b43c`](https://stellar.expert/explorer/testnet/tx/ebed8bf9ff3ee3ce0b1010f022b9f095ff4d3dcd13e4aa234eca570168fbb43c),
+  [`2e0eba55…6471`](https://stellar.expert/explorer/testnet/tx/2e0eba559ac6378678a55bea685597c8902c46b92b3a4ea1f02e6fe0e27e6471).
+- **Test USDC**: the ops account sent the tester 10 Blend testnet USDC
+  [`13cc4f8b…15e1`](https://stellar.expert/explorer/testnet/tx/13cc4f8b658b04d48e60107461e6f834cd9ed1c6bf0bede4e98e08b7f94915e1);
+  this vault takes Blend's test USDC, not Circle's.

@@ -631,3 +631,23 @@ with the tests rewired onto the Aquarius stack.
   `archive/d4/`.
 - **Before filming**: run `scripts/check_aquarius.sh d1-ops` again; the pool
   will be drained by the same mechanism and may need another re-seed.
+
+## 2026-10-28 : walkthrough session, two USDC to EURC swaps signed in the browser
+
+- **What it proves**: the D4 rebalance leg run by an outside wallet from the
+  demo page (rebalance panel of PR #43), not by the ops key: quote by
+  simulation, `min_out` at the quote minus 1 %, one signature, served by the
+  Aquarius pool through our SwapRouter `CCQJWT73…Q6EA`.
+- **Pool re-seeded beforehand** at 1.5 USDC / 1.5 EURC by the ops account
+  (the pool had been drained to 0 / 0 by third-party swaps, as anticipated):
+  [`ae3d9753…5f7f`](https://stellar.expert/explorer/testnet/tx/ae3d97535976127318a091068a374271fcfaf3cc5a2389d9dcb91438b1dd5f7f).
+- **Swap 0.1 USDC into 0.0934862 EURC**, tester wallet
+  `GBHFMYSEYXO42SCVOQ7GLJFR5CC2WVJKM5XED466GE2OKLL2DKJGH4ZX`:
+  [`e12a9287…9dde`](https://stellar.expert/explorer/testnet/tx/e12a9287f0885575536bf47a2132dda3b64c6067e9251a762b90dd4840139dde).
+- **Swap 0.2 USDC into 0.1558754 EURC**, same wallet:
+  [`9b957f73…ab5a`](https://stellar.expert/explorer/testnet/tx/9b957f733d3cb1bb7b6d563577aa7568dd76ec312a47011df69d117bd5b9ab5a).
+- In both, the asset path read from the transaction is wallet → SwapRouter →
+  Aquarius router → pool `CDYPTHT6…QDJV` and back, the router holding nothing
+  at the end.
+- The EURC received went straight into the D6b vault, see
+  `d6-fees-audit-trail.md` (same day).

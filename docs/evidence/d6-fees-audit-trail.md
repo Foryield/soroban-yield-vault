@@ -124,6 +124,31 @@ compliance dashboard (D6c).
 
 ### Still open
 
-- Both legs in one transaction on-chain (proven in
-  `contracts/vault/src/test_fees.rs`, `both_fees_are_split_in_one_transaction`).
+- ~~Both legs in one transaction on-chain~~: done on 2026-10-28, see below.
 - Dashboard screenshot and the video walkthrough.
+
+## 2026-10-28: both fee legs in one transaction, on-chain (D6b)
+
+- **What it proves**: the atomic split. One transaction mints the management
+  fee and the performance fee, each in its own `fee_minted` event, before the
+  deposit that triggered the accrual. Until this date the split was proven in
+  `test_fees.rs` only.
+- **Simulated yield, stated as such**: 0.5 EURC transferred straight to the
+  vault by the ops account (13:40:55 UTC), the instance having no strategy:
+  [`55693e23…dd64`](https://stellar.expert/explorer/testnet/tx/55693e23950ad17afc34ebe62c4f16c894dd2c71e66f2709005e20d2241bdd64).
+- **Deposit of 1 EURC by the tester wallet**
+  `GBHFMYSEYXO42SCVOQ7GLJFR5CC2WVJKM5XED466GE2OKLL2DKJGH4ZX` (13:43:10 UTC):
+  [`efb022c4…56bc`](https://stellar.expert/explorer/testnet/tx/efb022c4a9b6b9ca75ad78ee2a6acf6a685ed8bff1ff429647fe4f969c2c56bc).
+  Events in this order:
+  - `fee_minted`, kind `mgmt`, seq 16: rate 200 bps, fee 2,189 units, 1,855
+    shares to the treasury, high-water mark unchanged at 1.080000019 ;
+  - `fee_minted`, kind `perf`, seq 17: rate 2,000 bps, fee 997,081 units
+    (0.0997081 EURC), 859,741 shares to the treasury, high-water mark
+    1.080000019 to 1.159744981 ;
+  - `deposit`, seq 18: 1 EURC for 8,622,585 shares, priced after both fees.
+- **Next accruals**: deposit of 0.1558875 EURC by the tester (the EURC received
+  from the D4 swap of the same day), management fee only, seq 19-20
+  [`357835a0…e57d`](https://stellar.expert/explorer/testnet/tx/357835a0592ba8126610c0edb27bea4e46e2c626a90bc25574fa7b39ca6de57d) ;
+  daily checkpoint by the keeper, management fee then `nav`, seq 21-22
+  [`4ec96c69…8c55`](https://stellar.expert/explorer/testnet/tx/4ec96c69fc4eb18cf9a7db3500ced8b85ed43416e78a175ef96de9072b4e8c55).
+  No performance fee: the NAV stays below the new high-water mark.

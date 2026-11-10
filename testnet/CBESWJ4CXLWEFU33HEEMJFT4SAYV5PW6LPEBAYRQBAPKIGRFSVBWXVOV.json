@@ -1,7 +1,7 @@
 {
   "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
   "network": "testnet",
-  "lastLedger": 5629860,
+  "lastLedger": 5649666,
   "missed": [],
   "events": [
     {
@@ -832,6 +832,27 @@
         "value": {
           "seq": "35",
           "total_assets": "28233459",
+          "total_shares": "28202749"
+        }
+      }
+    },
+    {
+      "id": "0024265061983862784-0000000000",
+      "contract": "CBESWJ4CXLWEFU33HEEMJFT4SAYV5PW6LPEBAYRQBAPKIGRFSVBWXVOV",
+      "ledger": 5649650,
+      "closedAt": "2026-11-10T00:51:32Z",
+      "txHash": "f4be25cb0e6222dfea8d5f63537b8b28fce6433e902924a4283ef37b088b53f9",
+      "topics": [
+        "AAAADwAAAANuYXYA"
+      ],
+      "value": "AAAAEQAAAAEAAAADAAAADwAAAANzZXEAAAAABQAAAAAAAAAkAAAADwAAAAx0b3RhbF9hc3NldHMAAAAKAAAAAAAAAAAAAAAAAa8CawAAAA8AAAAMdG90YWxfc2hhcmVzAAAACgAAAAAAAAAAAAAAAAGuVv0=",
+      "decoded": {
+        "topics": [
+          "nav"
+        ],
+        "value": {
+          "seq": "36",
+          "total_assets": "28246635",
           "total_shares": "28202749"
         }
       }

@@ -1,7 +1,7 @@
 {
   "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
   "network": "testnet",
-  "lastLedger": 5770711,
+  "lastLedger": 5787224,
   "missed": [],
   "events": [
     {
@@ -727,6 +727,29 @@
           "1101400000",
           "1794787200",
           "1105200000"
+        ]
+      }
+    },
+    {
+      "id": "0024855916339814400-0000000000",
+      "contract": "CACZE525I6OY7ASL2UUSHCWY45QA4PXZ3BB3ZEUT6UUUYCFHDVQESEDF",
+      "ledger": 5787219,
+      "closedAt": "2026-11-17T23:55:41Z",
+      "txHash": "7cff39f54a2088f0f97cb72f6510c451c8de6790f48c39d3e7a518b67e9199da",
+      "topics": [
+        "AAAADwAAAAVwcmljZQAAAA==",
+        "AAAAEgAAAAAAAAAAsKEDhWM4aCgIpDWWuVjQf8uy1296yrJk/gcAHol0sXk="
+      ],
+      "value": "AAAAEAAAAAEAAAADAAAACgAAAAAAAAAAAAAAAEF/4iAAAAAFAAAAAGr7mQAAAAAKAAAAAAAAAAAAAAAAQaYHwA==",
+      "decoded": {
+        "topics": [
+          "price",
+          "GCYKCA4FMM4GQKAIUQ2ZNOKY2B74XMWXN55MVMTE7YDQAHUJOSYXSTTR"
+        ],
+        "value": [
+          "1098900000",
+          "1794873600",
+          "1101400000"
         ]
       }
     }
